@@ -1,0 +1,26 @@
+name: Publish
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install build tools
+        run: pip install uv build twine
+      - name: Sync deps
+        run: uv sync
+      - name: Build
+        run: task build
+      - name: Publish to PyPI
+        run: task publish
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }} 

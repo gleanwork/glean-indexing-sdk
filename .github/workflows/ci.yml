@@ -1,0 +1,26 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install tools
+        run: pip install uv build
+      - name: Sync deps
+        run: uv sync
+      - name: Lint
+        run: task lint
+      - name: Format check
+        run: task fmt
+      - name: Type check
+        run: task type-check
+      - name: Test
+        run: task test 

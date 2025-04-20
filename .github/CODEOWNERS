@@ -1,0 +1,42 @@
+# =============================================================================
+# Code Owners for glean-indexing-sdk
+# =============================================================================
+# 
+# These owners will be the default owners for everything in the repo.
+# Unless a later match takes precedence, these users will be requested
+# for review when someone opens a pull request.
+#
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owners - fallback for any files not explicitly defined
+* @glean-io/indexing-sdk-maintainers
+
+# Core SDK components
+/src/glean/indexing/ @glean-io/indexing-sdk-maintainers
+
+# Configuration and build files
+/pyproject.toml @glean-io/indexing-sdk-maintainers
+/taskfile.yml @glean-io/indexing-sdk-maintainers
+/.github/ @glean-io/indexing-sdk-maintainers
+/mise.toml @glean-io/indexing-sdk-maintainers
+/.pre-commit-config.yaml @glean-io/indexing-sdk-maintainers
+
+# Documentation
+/README.md @glean-io/indexing-sdk-maintainers @glean-io/docs-team
+/docs/ @glean-io/indexing-sdk-maintainers @glean-io/docs-team
+*.md @glean-io/indexing-sdk-maintainers
+
+# Testing infrastructure
+/tests/ @glean-io/indexing-sdk-maintainers
+/.github/workflows/ @glean-io/indexing-sdk-maintainers @glean-io/platform-team
+
+# Connector examples and templates
+/src/glean/indexing/connectors/examples/ @glean-io/indexing-sdk-maintainers @glean-io/connector-experts
+
+# API client integrations
+/src/glean/indexing/clients/ @glean-io/indexing-sdk-maintainers @glean-io/api-team
+
+# Release and package management
+/CHANGELOG.md @glean-io/indexing-sdk-maintainers
+/RELEASE.md @glean-io/indexing-sdk-maintainers
+/.cz.toml @glean-io/indexing-sdk-maintainers 

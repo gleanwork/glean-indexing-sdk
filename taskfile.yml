@@ -9,13 +9,12 @@ vars:
   PYTHON: "uv run python"
   PYTEST: "uv run pytest"
   RUFF: "uv run ruff"
-  MYPY: "uv run mypy"
+  PYRIGHT: "uv run pyright"
   CODESPELL: "uv run codespell"
   PTW: "uv run ptw"
   TEST_DIR: "tests/"
   PYTHON_FILES: "."
-  EXCLUDE_DIRS: "--exclude docs/ --exclude tests/"
-  MYPY_CACHE: ".mypy_cache"
+  EXCLUDE_DIRS: "--exclude .venv/ --exclude **/site-packages/"
 
 tasks:
   # Default task: Lists all available tasks
@@ -39,47 +38,36 @@ tasks:
     cmds:
       - echo "Creating virtual environment and installing dependencies with uv..."
       - "uv venv .venv"
-      - "uv pip install -e .[dev,test,lint,typing,codespell]"
+      - "uv pip install -e .[dev,test,lint,typing]"
     status:
       - test -d ".venv"
 
-  # Test and lint task: Run tests and linters
+  # Test and lint task: Run all tests and lint fixes
   test:all:
     desc: Run all tests and lint fixes
     cmds:
       - task: test
       - task: lint:fix 
+      - task: lint:pyright
 
   # Test task: Run unit tests
   test:
     aliases: [tests]
     desc: Run unit tests
     cmds:
-      - "{{.PYTEST}} --disable-socket --allow-unix-socket  -v --tb=auto -rA --durations=10 -p no:logging {{.TEST_DIR}}"
+      - "{{.PYTEST}} -v --tb=auto -rA --durations=10 -p no:logging {{.TEST_DIR}}"
 
   # Test watch task: Run tests in watch mode
   test:watch:
     desc: Run tests in watch mode
     cmds:
-      - "{{.PTW}} --snapshot-update --now . -- -vv --tb=auto -rA --durations=10 -p no:logging {{.TEST_DIR}}"
+      - "{{.PTW}} --now . -- -vv --tb=auto -rA --durations=10 -p no:logging {{.TEST_DIR}}"
 
-  # Unit tests task: Run unit tests
-  test:unit:
-    aliases: [unit_test, unit_tests]
-    desc: Run unit tests
-    vars:
-      TEST_DIR: "tests/unit_tests/"
+  # Test coverage task: Run tests with coverage
+  test:cov:
+    desc: Run tests with coverage
     cmds:
-      - "{{.PYTEST}} -v --tb=auto -rA --durations=10 -p no:logging {{.TEST_DIR}}"
-  
-  # Integration tests task: Run integration tests
-  test:integration:
-    aliases: [integration_test, integration_tests]
-    desc: Run integration tests
-    vars:
-      TEST_DIR: "tests/integration_tests/"
-    cmds:
-      - "{{.PYTEST}} -v --tb=auto -rA --durations=10 -p no:logging {{.TEST_DIR}}"
+      - "{{.PYTEST}} --cov=glean --cov-report=term --cov-report=html -v {{.TEST_DIR}}"
 
   # Lint task: Run all linters
   lint:
@@ -87,39 +75,38 @@ tasks:
     cmds:
       - task: lint:ruff
       - task: lint:format:check
-      - task: lint:mypy
+      - task: lint:pyright
 
   # Lint diff task: Run linters on changed files
   lint:diff:
     desc: Run linters on changed files
     vars:
       PYTHON_FILES:
-        sh: git diff --name-only --diff-filter=d master | grep -E '\.py$$|\.ipynb$$'
+        sh: git diff --name-only --diff-filter=d main | grep -E '\.py$$|\.ipynb$$'
     cmds:
       - task: lint:ruff
       - task: lint:format:check
-      - task: lint:mypy
+      - task: lint:pyright
 
   # Lint package task: Run linters on package files
   lint:package:
     desc: Run linters on package files
     vars:
-      PYTHON_FILES: "src/glean_connector_sdk"
+      PYTHON_FILES: "src/glean/indexing"
     cmds:
       - task: lint:ruff
       - task: lint:format:check
-      - task: lint:mypy
+      - task: lint:pyright
 
   # Lint tests task: Run linters on test files
   lint:tests:
     desc: Run linters on test files
     vars:
       PYTHON_FILES: "tests"
-      MYPY_CACHE: ".mypy_cache_test"
     cmds:
       - task: lint:ruff
       - task: lint:format:check
-      - task: lint:mypy
+      - task: lint:pyright
 
   # Lint Fix task: Run lint autofixers
   lint:fix:
@@ -133,7 +120,7 @@ tasks:
     desc: Run lint autofixers on changed files
     vars:
       PYTHON_FILES:
-        sh: git diff --name-only --diff-filter=d master | grep -E '\.py$$|\.ipynb$$'
+        sh: git diff --name-only --diff-filter=d main | grep -E '\.py$$|\.ipynb$$'
     cmds:
       - task: lint:fix:ruff
       - task: format:diff
@@ -142,7 +129,7 @@ tasks:
   lint:fix:package:
     desc: Run lint autofixers on package files
     vars:
-      PYTHON_FILES: "src/glean_connector_sdk"
+      PYTHON_FILES: "src/glean/indexing"
     cmds:
       - task: lint:fix:ruff
       - task: format
@@ -174,11 +161,21 @@ tasks:
     cmds:
       - '[ "{{.PYTHON_FILES}}" = "" ] || {{.RUFF}} format {{.PYTHON_FILES}} --diff'
 
-  # Lint Mypy task: Run mypy type checker
-  lint:mypy:
-    internal: true
+  # Lint Pyright task: Run Pyright type checker
+  lint:pyright:
     cmds:
-      - '[ "{{.PYTHON_FILES}}" = "" ] || mkdir -p {{.MYPY_CACHE}} && {{.MYPY}} {{.PYTHON_FILES}} --cache-dir {{.MYPY_CACHE}} {{.EXCLUDE_DIRS}}'
+      - |
+        # Pyright typically infers from pyproject.toml if no args are given,
+        # or checks specified files/dirs.
+        # If PYTHON_FILES is ".", Pyright uses its config (include/exclude).
+        # Otherwise, it checks the specified PYTHON_FILES.
+        if [ "{{.PYTHON_FILES}}" = "." ]; then
+          echo "Running: {{.PYRIGHT}}" # Pyright will use pyproject.toml config
+          {{.PYRIGHT}}
+        else
+          echo "Running: {{.PYRIGHT}} {{.PYTHON_FILES}}"
+          {{.PYRIGHT}} {{.PYTHON_FILES}}
+        fi
 
   # Format task: Run code formatters
   format:
@@ -192,7 +189,7 @@ tasks:
     desc: Run formatters on changed files
     vars:
       PYTHON_FILES:
-        sh: git diff --name-only --diff-filter=d master | grep -E '\.py$$|\.ipynb$$'
+        sh: git diff --name-only --diff-filter=d main | grep -E '\.py$$|\.ipynb$$'
     cmds:
       - task: format:ruff
       - task: format:imports
@@ -221,6 +218,20 @@ tasks:
     cmds:
       - "{{.CODESPELL}} --toml pyproject.toml -w --skip=docs/"
 
+  # Clean task: Clean build artifacts
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf dist .venv build **/*.egg-info .pytest_cache .coverage htmlcov .ruff_cache
+      - find . -name "*.pyc" -delete
+      - find . -name "__pycache__" -delete
+
+  # Build task: Build the package
+  build:
+    desc: Build the package
+    cmds:
+      - "{{.PYTHON}} -m build"
+
   # Release task: Bump version and create a new tag (use DRY_RUN=true for preview)
   release:
     desc: Bump version and create a new tag (use DRY_RUN=true for preview)
@@ -236,15 +247,3 @@ tasks:
           {{.CZ}} bump --yes
           {{.CZ}} changelog
         fi
-        
-  # Build task: Build package
-  build:
-    desc: Build package
-    cmds:
-      - "{{.PYTHON}} -m build"
-      
-  # Publish task: Publish package to PyPI
-  publish:
-    desc: Publish package to PyPI
-    cmds:
-      - "{{.PYTHON}} -m twine upload dist/*" 

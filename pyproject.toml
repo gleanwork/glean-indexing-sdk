@@ -3,65 +3,129 @@ requires = ["hatchling>=1.18.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "glean-connector-sdk"
+name = "glean-indexing-sdk"
 version = "0.0.1"
-description = "SDK for building custom Glean connectors (datasource & people)"
-authors = [
-    { name = "Glean", email = "dev@glean.com" }
-]
+description = "SDK for building custom Glean indexing integrations"
+authors = [{ name = "Steve Calvert", email = "steve.calvert@glean.com" }]
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10,<4.0"
-packages = [{ include = "glean.*" }]
 dependencies = [
-    "glean-sdk>=0.1.0",
+    "glean-api-client>=0.6.3",
     "jinja2>=3.1.2",
 ]
 
 [project.optional-dependencies]
 dev = [
     "commitizen>=4.4.1",
+    "build>=1.0.0",
+    "twine>=4.0.0",
+    "pip-audit>=2.6.0",
 ]
 test = [
     "pytest>=7.4.3",
     "pytest-asyncio>=0.23.2",
+    "pytest-cov>=4.1.0",
+    "pytest-httpx>=0.35.0",
     "python-dotenv>=1.1.0",
     "pytest-socket>=0.7.0",
     "pytest-watcher>=0.3.4",
 ]
-codespell = [
-    "codespell>=2.2.6",
-]
-test_integration = []
 lint = [
     "ruff>=0.5",
 ]
 typing = [
-    "mypy>=1.10",
-    "types-requests>=2.31.0.1",
+    "pyright>=1.1.370",
 ]
 
 [project.urls]
-"Source Code" = "https://github.com/glean-io/glean-connector-sdk"
+"Source Code" = "https://github.com/glean-io/glean-indexing-sdk"
 
-[tool.mypy]
-disallow_untyped_defs = "True"
-exclude = ["docs/", "tests/"]
+[tool.pyright]
+include = ["src", "tests"]
+exclude = ["docs/", "**/__pycache__", ".venv/", ".llm/"]
+pythonVersion = "3.10"
+pythonPlatform = "All"
+typeCheckingMode = "basic"
+reportMissingImports = false
+reportMissingTypeStubs = false
+reportUnusedImport = true
+reportUnusedClass = true
+reportUnusedFunction = true
+reportUnusedVariable = true
+reportDuplicateImport = true
+reportWildcardImportFromLibrary = true
+venv = ".venv"
+venvPath = "."
 
 [tool.ruff]
 line-length = 160
 exclude = ["docs/"]
+target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "T201"]
+select = ["E", "F", "I", "W", "N", "D", "UP", "ANN", "T201"]
+ignore = ["ANN101", "ANN102", "D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN", "D", "W291", "W292", "W293", "UP007"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["glean"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
 [tool.coverage.run]
-omit = ["tests/*"]
+source = ["src"]
+omit = [
+    "tests/*",
+    "*/site-packages/*",
+    "*/__pycache__/*",
+    "*/examples/*",
+]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 [tool.pytest.ini_options]
-addopts = "--strict-markers --strict-config --durations=5"
+addopts = "--strict-markers --strict-config --durations=10 -ra"
 markers = [
+    "unit: unit tests",
+    "integration: integration tests",
+    "slow: slow tests",
+    "network: tests that require network access",
     "compile: mark placeholder test used to compile integration tests without running them",
 ]
 asyncio_mode = "auto"
-pythonpath = ["src"] 
+pythonpath = ["src"]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/glean"] 

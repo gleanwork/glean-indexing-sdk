@@ -61,7 +61,7 @@ class TestBaseDatasourceConnector:
         data_client = MockDataClient([])
         connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
 
-        config = connector.config
+        config = connector.configuration
         assert config.name == "test_connector"
         assert config.display_name == "Test Connector"
         assert config.url_regex == r"https://test\.example\.com/.*"

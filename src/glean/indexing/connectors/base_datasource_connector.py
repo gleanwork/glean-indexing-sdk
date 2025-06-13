@@ -49,11 +49,6 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         self.batch_size = 1000
 
     @property
-    def config(self) -> CustomDatasourceConfig:
-        """Get the datasource configuration."""
-        return self.configuration
-
-    @property
     def display_name(self) -> str:
         """Get the display name for this datasource."""
         return self.name.replace("_", " ").title()
@@ -90,7 +85,7 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         Args:
             is_test: Whether this is a test datasource
         """
-        config = self.config
+        config = self.configuration
 
         if not config.name:
             raise ValueError("Missing required field: name in Configuration")

@@ -2,7 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Generic
+from typing import Generic, List, Optional, Sequence
 
 from glean.indexing.models import IndexingMode, TGleanModel, TSourceData
 
@@ -25,6 +25,16 @@ class BaseConnector(ABC, Generic[TSourceData, TGleanModel]):
             name: The name of the connector.
         """
         self.name = name
+
+    @abstractmethod
+    def get_data(self, since: Optional[str] = None) -> Sequence[TSourceData]:
+        """Get data from the data client or source system."""
+        pass
+
+    @abstractmethod
+    def transform(self, data: Sequence[TSourceData]) -> List[TGleanModel]:
+        """Transform source data to Glean model objects."""
+        pass
 
     @abstractmethod
     def index_data(self, mode: IndexingMode = IndexingMode.FULL) -> None:

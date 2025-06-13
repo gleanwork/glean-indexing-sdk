@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import List, Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
@@ -58,6 +58,11 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         """Get the display name for this datasource."""
         return self.name.replace("_", " ").title()
 
+    @property
+    def observability(self) -> ConnectorObservability:
+        """The observability instance for this connector."""
+        return self._observability
+
     def get_identities(self) -> DatasourceIdentityDefinitions:
         """
         Gets all identities for this datasource (users, groups & memberships).
@@ -66,6 +71,17 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             A DatasourceIdentityDefinitions object containing all identities for this datasource.
         """
         return DatasourceIdentityDefinitions(users=[])
+
+    def get_data(self, since: Optional[str] = None) -> Sequence[TSourceData]:
+        """Get data from the datasource via the data client.
+
+        Args:
+            since: If provided, only get data modified since this timestamp.
+
+        Returns:
+            A sequence of source data items from the external system.
+        """
+        return self.data_client.get_source_data(since=since)
 
     def configure_datasource(self, is_test: bool = False) -> None:
         """
@@ -279,29 +295,6 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                 self._observability.increment_counter("batch_upload_errors")
                 raise
 
-    def get_data(self, since: Optional[str] = None) -> Sequence[TSourceData]:
-        """Get data from the datasource via the data client.
-
-        Args:
-            since: If provided, only get data modified since this timestamp.
-
-        Returns:
-            A sequence of source data items from the external system.
-        """
-        return self.data_client.get_source_data(since=since)
-
-    @abstractmethod
-    def transform(self, data: Sequence[TSourceData]) -> List[DocumentDefinition]:
-        """Transform source data to Glean document format.
-
-        Args:
-            data: The source data to transform.
-
-        Returns:
-            A list of DocumentDefinition objects ready for indexing.
-        """
-        pass
-
     def _get_last_crawl_timestamp(self) -> Optional[str]:
         """
         Get the timestamp of the last successful crawl for incremental indexing.
@@ -312,7 +305,3 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             ISO timestamp string or None for full crawl
         """
         return None
-
-    def get_observability(self) -> ConnectorObservability:
-        """Get the observability instance for this connector."""
-        return self._observability

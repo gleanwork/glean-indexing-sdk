@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import List, Optional, Sequence
 
 from glean.api_client.models import EmployeeInfoDefinition
@@ -37,6 +37,11 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
         self.data_client = data_client
         self._observability = ConnectorObservability(name)
         self.batch_size = 1000
+
+    @property
+    def observability(self) -> ConnectorObservability:
+        """The observability instance for this connector."""
+        return self._observability
 
     def index_data(self, mode: IndexingMode = IndexingMode.FULL) -> None:
         """Index people data to Glean.
@@ -93,18 +98,6 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
         """
         return self.data_client.get_source_data(since=since)
 
-    @abstractmethod
-    def transform(self, data: Sequence[TSourceData]) -> List[EmployeeInfoDefinition]:
-        """Transform source data to Glean employee format.
-
-        Args:
-            data: The source data to transform.
-
-        Returns:
-            A list of EmployeeInfoDefinition objects ready for indexing.
-        """
-        pass
-
     def _batch_index_employees(self, employees: List[EmployeeInfoDefinition]) -> None:
         """Index employees to Glean in batches."""
         if not employees:
@@ -144,7 +137,3 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
             ISO timestamp string or None for full crawl
         """
         return None
-
-    def get_observability(self) -> ConnectorObservability:
-        """Get the observability instance for this connector."""
-        return self._observability

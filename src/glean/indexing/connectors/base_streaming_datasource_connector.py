@@ -139,7 +139,7 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
             with api_client() as client:
                 client.indexing.documents.bulk_index(
                     datasource=self.name,
-                    documents=transformed_batch,
+                    documents=list(transformed_batch),
                     upload_id=upload_id,
                     is_first_page=is_first_batch,
                     is_last_page=is_last_batch,

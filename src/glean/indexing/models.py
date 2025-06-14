@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, List, TypedDict, TypeVar
+from typing import Any, Sequence, TypedDict, TypeVar
 
 from glean.api_client.models import (
     ContentDefinition,
@@ -27,9 +27,9 @@ TGleanModel = TypeVar("TGleanModel")
 
 
 class DatasourceIdentityDefinitions(TypedDict, total=False):
-    users: List[Any]
-    groups: List[Any]
-    memberships: List[Any]
+    users: Sequence[Any]
+    groups: Sequence[Any]
+    memberships: Sequence[Any]
 
 
 # --- End moved types ---

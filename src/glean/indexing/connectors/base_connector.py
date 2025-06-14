@@ -2,7 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Generic, List, Optional, Sequence
+from typing import Generic, Optional, Sequence
 
 from glean.indexing.models import IndexingMode, TGleanModel, TSourceData
 
@@ -11,11 +11,29 @@ logger = logging.getLogger(__name__)
 
 class BaseConnector(ABC, Generic[TSourceData, TGleanModel]):
     """
-    Base class for all Glean connectors.
+    Abstract base class for all Glean connectors.
+
+    This class defines the core interface and lifecycle for all connector types (datasource, people, streaming, etc.).
+    Connector implementors should inherit from this class and provide concrete implementations for all abstract methods.
 
     Type Parameters:
-        TSourceData: The type of data from external sources
-        TGleanModel: The type of Glean API model objects to be indexed
+        TSourceData: The type of raw data fetched from the external source (e.g., dict, TypedDict, or custom model).
+        TGleanModel: The type of Glean API model object produced by the connector (e.g., DocumentDefinition, EmployeeInfoDefinition).
+
+    Required Methods for Subclasses:
+        - get_data(since: Optional[str] = None) -> Sequence[TSourceData]:
+            Fetches source data from the external system. Should support incremental fetches if possible.
+        - transform(data: Sequence[TSourceData]) -> List[TGleanModel]:
+            Transforms source data into Glean API model objects ready for indexing.
+        - index_data(mode: IndexingMode = IndexingMode.FULL) -> None:
+            Orchestrates the full indexing process (fetch, transform, upload).
+
+    Attributes:
+        name (str): The unique name of the connector (should be snake_case).
+
+    Example:
+        class MyConnector(BaseConnector[MyRawType, DocumentDefinition]):
+            ...
     """
 
     def __init__(self, name: str):
@@ -32,7 +50,7 @@ class BaseConnector(ABC, Generic[TSourceData, TGleanModel]):
         pass
 
     @abstractmethod
-    def transform(self, data: Sequence[TSourceData]) -> List[TGleanModel]:
+    def transform(self, data: Sequence[TSourceData]) -> Sequence[TGleanModel]:
         """Transform source data to Glean model objects."""
         pass
 

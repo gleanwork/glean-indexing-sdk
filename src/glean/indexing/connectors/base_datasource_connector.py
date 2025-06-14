@@ -3,7 +3,7 @@
 import logging
 import uuid
 from abc import ABC
-from typing import List, Optional, Sequence
+from typing import Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
 from glean.indexing.clients.glean_client import api_client
@@ -24,11 +24,27 @@ logger = logging.getLogger(__name__)
 
 class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], ABC):
     """
-    Base class for datasource connectors with identity and content crawling.
+    Base class for all Glean datasource connectors.
 
-    Type Parameters:
-        TSourceData: The type of raw data from your external source
-        DocumentDefinition: Glean document model (fixed for datasource connectors)
+    This class provides the core logic for indexing document/content data from external systems into Glean.
+    Subclasses must define a `configuration` attribute of type `CustomDatasourceConfig` describing the datasource.
+
+    To implement a custom connector, inherit from this class and implement:
+        - configuration: CustomDatasourceConfig (class or instance attribute)
+        - get_data(self, since: Optional[str] = None) -> Sequence[TSourceData]
+        - transform(self, data: Sequence[TSourceData]) -> List[DocumentDefinition]
+
+    Attributes:
+        name (str): The unique name of the connector (should be snake_case).
+        configuration (CustomDatasourceConfig): The datasource configuration for Glean registration.
+        batch_size (int): The batch size for uploads (default: 1000).
+        data_client (BaseConnectorDataClient): The data client for fetching source data.
+        observability (ConnectorObservability): Observability and metrics for this connector.
+
+    Example:
+        class MyWikiConnector(BaseDatasourceConnector[WikiPageData]):
+            configuration = CustomDatasourceConfig(...)
+            ...
     """
 
     connector_type: ConnectorType = ConnectorType.DATASOURCE
@@ -260,12 +276,12 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                 self._observability.increment_counter("batch_upload_errors")
                 raise
 
-    def _batch_index_documents(self, documents: List[DocumentDefinition]) -> None:
+    def _batch_index_documents(self, documents: Sequence[DocumentDefinition]) -> None:
         """Index documents in batches with proper page signaling."""
         if not documents:
             return
 
-        batches = list(BatchProcessor(documents, batch_size=self.batch_size))
+        batches = list(BatchProcessor(list(documents), batch_size=self.batch_size))
         total_batches = len(batches)
 
         logger.info(f"Uploading {len(documents)} documents in {total_batches} batches")

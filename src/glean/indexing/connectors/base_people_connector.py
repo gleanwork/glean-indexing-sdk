@@ -3,7 +3,7 @@
 import logging
 import uuid
 from abc import ABC
-from typing import List, Optional, Sequence
+from typing import Optional, Sequence
 
 from glean.api_client.models import EmployeeInfoDefinition
 from glean.indexing.clients.glean_client import api_client
@@ -98,12 +98,12 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
         """
         return self.data_client.get_source_data(since=since)
 
-    def _batch_index_employees(self, employees: List[EmployeeInfoDefinition]) -> None:
+    def _batch_index_employees(self, employees: Sequence[EmployeeInfoDefinition]) -> None:
         """Index employees to Glean in batches."""
         if not employees:
             return
 
-        batches = list(BatchProcessor(employees, batch_size=self.batch_size))
+        batches = list(BatchProcessor(list(employees), batch_size=self.batch_size))
         total_batches = len(batches)
 
         logger.info(f"Uploading {len(employees)} employees in {total_batches} batches")

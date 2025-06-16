@@ -8,8 +8,6 @@ from glean.api_client.models import (
     EmployeeInfoDefinition,
 )
 
-# --- Types moved from glean.indexing.utils.models ---
-
 
 class ConnectorType(str, Enum):
     DATASOURCE = "datasource"
@@ -31,8 +29,6 @@ class DatasourceIdentityDefinitions(TypedDict, total=False):
     groups: Sequence[Any]
     memberships: Sequence[Any]
 
-
-# --- End moved types ---
 
 __all__ = [
     "CustomDatasourceConfig",

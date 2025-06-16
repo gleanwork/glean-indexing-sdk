@@ -17,8 +17,8 @@ class DummyStreamingDataClient(BaseStreamingDataClient[dict]):
                 "title": f"Document {i}",
                 "content": f"Content {i}",
                 "url": f"https://example.com/{i}",
-                "created_at": 1672531200,  # 2023-01-01T00:00:00Z as int
-                "updated_at": 1672617600,  # 2023-01-02T00:00:00Z as int
+                "created_at": 1672531200,
+                "updated_at": 1672617600,
                 "author": {"id": "user@example.com"},
                 "type": "document",
                 "tags": ["example"],

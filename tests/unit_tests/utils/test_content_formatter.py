@@ -7,8 +7,6 @@ from glean.indexing.utils import ContentFormatter
 
 
 class TestContentFormatter:
-    """Tests for the ContentFormatter utility."""
-
     def test_render_simple_template(self):
         """Test rendering a simple template."""
         formatter = ContentFormatter("Hello, {{ name }}!")

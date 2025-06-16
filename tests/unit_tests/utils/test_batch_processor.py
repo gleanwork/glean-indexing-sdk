@@ -2,8 +2,6 @@ from glean.indexing.utils import BatchProcessor
 
 
 class TestBatchProcessor:
-    """Tests for the BatchProcessor utility."""
-
     def test_batch_processing(self):
         """Test that data is properly batched."""
         data = list(range(10))

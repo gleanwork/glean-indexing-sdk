@@ -18,11 +18,27 @@ logger = logging.getLogger(__name__)
 
 class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], ABC):
     """
-    Base class for people connectors with dependency injection.
+    Base class for all Glean people connectors.
 
-    Type Parameters:
-        TSourceData: The type of raw employee data from your external source
-        EmployeeInfoDefinition: Glean employee model (fixed for people connectors)
+    This class provides the core logic for indexing people/identity data (users, groups, memberships) from external systems into Glean.
+    Subclasses must define a `configuration` attribute of type `CustomDatasourceConfig` describing the people source.
+
+    To implement a custom people connector, inherit from this class and implement:
+        - configuration: CustomDatasourceConfig (class or instance attribute)
+        - get_data(self, since: Optional[str] = None) -> Sequence[TSourceData]
+        - transform(self, data: Sequence[TSourceData]) -> Sequence[EmployeeInfoDefinition]
+
+    Attributes:
+        name (str): The unique name of the connector (should be snake_case).
+        configuration (CustomDatasourceConfig): The people source configuration for Glean registration.
+        batch_size (int): The batch size for uploads (default: 1000).
+        data_client (BaseConnectorDataClient): The data client for fetching source data.
+        observability (ConnectorObservability): Observability and metrics for this connector.
+
+    Example:
+        class MyPeopleConnector(BasePeopleConnector[MyEmployeeData]):
+            configuration = CustomDatasourceConfig(...)
+            ...
     """
 
     def __init__(self, name: str, data_client: BaseConnectorDataClient[TSourceData]):

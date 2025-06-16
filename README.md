@@ -64,8 +64,8 @@ Use datasource connectors to index documents, files, and content from external s
 
 > [!TIP] Choose the right connector type:
 >
-> **BaseDatasourceConnector** - For most use cases (< 50k documents)
-> **BaseStreamingDatasourceConnector** - For large datasets (memory efficient)
+> **BaseDatasourceConnector** - For most use cases where all data can fit comfortably in memory and your API can return all data efficiently in one call.
+> **BaseStreamingDatasourceConnector** - For very large datasets, memory-constrained environments, or when your API requires incremental/paginated access.
 > **Single Document Indexing** - For real-time updates of individual documents
 
 ## BaseDatasourceConnector
@@ -74,14 +74,15 @@ Use datasource connectors to index documents, files, and content from external s
 
 #### Perfect for
 
-- Document repositories with < 50,000 documents
+- Document repositories where all data can fit comfortably in memory
 - Wikis, knowledge bases, documentation sites
 - File systems with moderate amounts of content
 - Systems where you can fetch all data in memory at once
+- Documents that cannot be fetched via paginated APIs
 
 #### Avoid when
 
-- You have millions of documents
+- You have very large datasets that cannot fit in memory
 - Documents are very large (> 10MB each)
 - Memory usage is a concern
 
@@ -296,15 +297,15 @@ connector.index_data(mode=IndexingMode.FULL)
 
 #### Perfect for
 
-- Large document repositories (50k+ documents)
-- Memory-constrained environments  
+- Large document repositories that cannot fit in memory
+- Memory-constrained environments
 - Documents that are fetched via paginated APIs
 - Very large individual documents (> 10MB)
 - When you want to process data incrementally
 
 #### Avoid when
 
-- You have a small document set (< 10k documents)
+- You have a small document set that fits comfortably in memory
 - Your API can return all data efficiently in one call
 - Memory usage is not a concern
 

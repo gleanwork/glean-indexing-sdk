@@ -47,6 +47,7 @@ task release
 ```
 
 This will:
+
 - Bump the version based on commit messages
 - Generate/update the changelog
 - Create a git tag
@@ -83,4 +84,4 @@ This will build the package and upload it to PyPI.
 - Go to the GitHub releases page
 - Create a new release using the tag
 - Copy the relevant section from CHANGELOG.md as the release description
-- Publish the release 
+- Publish the release

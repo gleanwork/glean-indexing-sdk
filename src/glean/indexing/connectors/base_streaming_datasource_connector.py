@@ -15,16 +15,31 @@ logger = logging.getLogger(__name__)
 
 class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC):
     """
-    Base class for streaming datasource connectors.
+    Base class for all Glean streaming datasource connectors.
 
-    Use this for large datasets to minimize memory usage.
-    This class processes data in batches, allowing for efficient handling
-    of large datasets without loading all data into memory at once.
+    This class provides the core logic for memory-efficient, incremental indexing of large document/content datasets from external systems into Glean.
+    Subclasses must define a `configuration` attribute of type `CustomDatasourceConfig` describing the datasource.
 
-    Note: This class requires a StreamingConnectorDataClient for data retrieval.
+    To implement a custom streaming connector, inherit from this class and implement:
+        - configuration: CustomDatasourceConfig (class or instance attribute)
+        - get_data(self, since: Optional[str] = None) -> Generator[TSourceData, None, None]
+        - transform(self, data: Sequence[TSourceData]) -> Sequence[DocumentDefinition]
 
-    Type Parameters:
-        TSourceData: The type of raw data from your external source
+    Attributes:
+        name (str): The unique name of the connector (should be snake_case).
+        configuration (CustomDatasourceConfig): The datasource configuration for Glean registration.
+        batch_size (int): The batch size for uploads (default: 1000).
+        data_client (StreamingConnectorDataClient): The streaming data client for fetching source data.
+        observability (ConnectorObservability): Observability and metrics for this connector.
+
+    Notes:
+        - Use this class for very large datasets, paginated APIs, or memory-constrained environments.
+        - The data client should yield data incrementally (e.g., via a generator).
+
+    Example:
+        class MyStreamingConnector(BaseStreamingDatasourceConnector[MyDocData]):
+            configuration = CustomDatasourceConfig(...)
+            ...
     """
 
     def __init__(self, name: str, data_client: StreamingConnectorDataClient[TSourceData]):

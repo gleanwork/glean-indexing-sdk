@@ -1,5 +1,3 @@
-"""Mock API clients for example connectors."""
-
 import logging
 from typing import List
 
@@ -10,12 +8,6 @@ class MockDataSourceClient:
     """Mock API client for a datasource."""
 
     def get_all_items(self) -> List[dict]:
-        """Get all items from the datasource.
-
-        Returns:
-            A list of dictionaries containing all items.
-        """
-        # In a real connector, this would call the source API
         return [
             {
                 "id": f"doc-{i}",
@@ -32,15 +24,6 @@ class MockDataSourceClient:
         ]
 
     def get_modified_items(self, since: str) -> List[dict]:
-        """Get items modified since a given timestamp.
-
-        Args:
-            since: ISO format timestamp to filter by.
-
-        Returns:
-            A list of dictionaries containing modified items.
-        """
-        # In a real connector, this would call the source API with filtering
         return [
             {
                 "id": "doc-3",
@@ -60,12 +43,6 @@ class MockPeopleClient:
     """Mock API client for a people source."""
 
     def get_all_people(self) -> List[dict]:
-        """Get all people from the source.
-
-        Returns:
-            A list of dictionaries containing all people.
-        """
-        # In a real connector, this would call the source API
         return [
             {
                 "id": f"user-{i}",
@@ -81,15 +58,6 @@ class MockPeopleClient:
         ]
 
     def get_modified_people(self, since: str) -> List[dict]:
-        """Get people modified since a given timestamp.
-
-        Args:
-            since: ISO format timestamp to filter by.
-
-        Returns:
-            A list of dictionaries containing modified people.
-        """
-        # In a real connector, this would call the source API with filtering
         return [
             {
                 "id": "user-3",

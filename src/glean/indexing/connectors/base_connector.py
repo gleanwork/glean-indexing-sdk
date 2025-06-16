@@ -4,12 +4,12 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Generic, Optional, Sequence
 
-from glean.indexing.models import IndexingMode, TGleanModel, TSourceData
+from glean.indexing.models import IndexingMode, TIndexableEntityDefinition, TSourceData
 
 logger = logging.getLogger(__name__)
 
 
-class BaseConnector(ABC, Generic[TSourceData, TGleanModel]):
+class BaseConnector(ABC, Generic[TSourceData, TIndexableEntityDefinition]):
     """
     Abstract base class for all Glean connectors.
 
@@ -18,13 +18,13 @@ class BaseConnector(ABC, Generic[TSourceData, TGleanModel]):
 
     Type Parameters:
         TSourceData: The type of raw data fetched from the external source (e.g., dict, TypedDict, or custom model).
-        TGleanModel: The type of Glean API model object produced by the connector (e.g., DocumentDefinition, EmployeeInfoDefinition).
+        TIndexableEntityDefinition: The type of Glean API entity definition produced by the connector (e.g., DocumentDefinition, EmployeeInfoDefinition).
 
     Required Methods for Subclasses:
         - get_data(since: Optional[str] = None) -> Sequence[TSourceData]:
             Fetches source data from the external system. Should support incremental fetches if possible.
-        - transform(data: Sequence[TSourceData]) -> List[TGleanModel]:
-            Transforms source data into Glean API model objects ready for indexing.
+        - transform(data: Sequence[TSourceData]) -> List[TIndexableEntityDefinition]:
+            Transforms source data into Glean API entity definitions ready for indexing.
         - index_data(mode: IndexingMode = IndexingMode.FULL) -> None:
             Orchestrates the full indexing process (fetch, transform, upload).
 
@@ -50,8 +50,8 @@ class BaseConnector(ABC, Generic[TSourceData, TGleanModel]):
         pass
 
     @abstractmethod
-    def transform(self, data: Sequence[TSourceData]) -> Sequence[TGleanModel]:
-        """Transform source data to Glean model objects."""
+    def transform(self, data: Sequence[TSourceData]) -> Sequence[TIndexableEntityDefinition]:
+        """Transform source data to Glean entity definitions."""
         pass
 
     @abstractmethod

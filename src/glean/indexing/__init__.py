@@ -20,7 +20,7 @@ from glean.indexing.models import (
     DatasourceIdentityDefinitions,
     IndexingMode,
     TSourceData,
-    TGleanModel,
+    TIndexableEntityDefinition,
 )
 from glean.indexing import models
 
@@ -42,7 +42,7 @@ __all__ = [
     "DatasourceIdentityDefinitions",
     "IndexingMode",
     "TSourceData",
-    "TGleanModel",
+    "TIndexableEntityDefinition",
     
     "MockGleanClient",
     "api_client",

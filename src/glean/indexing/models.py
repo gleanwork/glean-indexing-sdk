@@ -10,15 +10,22 @@ from glean.api_client.models import (
 
 
 class IndexingMode(str, Enum):
+    """Specifies the indexing strategy for a datasource: full or incremental."""
+
     FULL = "full"
     INCREMENTAL = "incremental"
 
 
 TSourceData = TypeVar("TSourceData")
-TGleanModel = TypeVar("TGleanModel")
+"""Type variable for the raw source data type used in indexing pipelines."""
+
+TIndexableEntityDefinition = TypeVar("TIndexableEntityDefinition")
+"""Type variable for the Glean API entity definition produced by the connector (e.g., DocumentDefinition, EmployeeInfoDefinition)."""
 
 
 class DatasourceIdentityDefinitions(TypedDict, total=False):
+    """Defines user, group, and membership identity data for a datasource."""
+
     users: Sequence[Any]
     groups: Sequence[Any]
     memberships: Sequence[Any]
@@ -32,5 +39,5 @@ __all__ = [
     "IndexingMode",
     "DatasourceIdentityDefinitions",
     "TSourceData",
-    "TGleanModel",
+    "TIndexableEntityDefinition",
 ]

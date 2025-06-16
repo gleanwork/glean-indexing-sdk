@@ -10,7 +10,6 @@ from glean.indexing.clients.glean_client import api_client
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseConnectorDataClient
 from glean.indexing.models import (
-    ConnectorType,
     CustomDatasourceConfig,
     DatasourceIdentityDefinitions,
     IndexingMode,
@@ -46,8 +45,6 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             configuration = CustomDatasourceConfig(...)
             ...
     """
-
-    connector_type: ConnectorType = ConnectorType.DATASOURCE
 
     configuration: CustomDatasourceConfig
 

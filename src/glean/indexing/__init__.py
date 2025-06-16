@@ -17,7 +17,6 @@ from glean.indexing.observability.observability import ConnectorObservability
 from glean.indexing.testing import ConnectorTestHarness
 from glean.indexing.utils import BatchProcessor, ContentFormatter, ConnectorMetrics
 from glean.indexing.models import (
-    ConnectorType,
     DatasourceIdentityDefinitions,
     IndexingMode,
     TSourceData,
@@ -40,7 +39,6 @@ __all__ = [
     "ConnectorObservability",
     "ConnectorTestHarness",
     
-    "ConnectorType",
     "DatasourceIdentityDefinitions",
     "IndexingMode",
     "TSourceData",

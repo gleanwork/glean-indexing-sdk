@@ -9,12 +9,6 @@ from glean.api_client.models import (
 )
 
 
-class ConnectorType(str, Enum):
-    DATASOURCE = "datasource"
-    PEOPLE = "people"
-    STREAMING_DATASOURCE = "streaming_datasource"
-
-
 class IndexingMode(str, Enum):
     FULL = "full"
     INCREMENTAL = "incremental"
@@ -35,7 +29,6 @@ __all__ = [
     "DocumentDefinition",
     "EmployeeInfoDefinition",
     "ContentDefinition",
-    "ConnectorType",
     "IndexingMode",
     "DatasourceIdentityDefinitions",
     "TSourceData",

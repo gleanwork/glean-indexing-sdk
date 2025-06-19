@@ -86,11 +86,13 @@ Use datasource connectors to index documents, files, and content from external s
 
 #### Step 1: Define Your Data Type
 
-```python
+```python snippet=non_streaming/wiki_page_data.py
 from typing import List, TypedDict
+
 
 class WikiPageData(TypedDict):
     """Type definition for your source data structure."""
+
     id: str
     title: str
     content: str
@@ -103,17 +105,21 @@ class WikiPageData(TypedDict):
 
 #### Step 2: Create Your DataClient
 
-```python
+```python snippet=non_streaming/wiki_data_client.py
 from typing import Sequence
+
 from glean.indexing.connectors.base_data_client import BaseConnectorDataClient
+
+from .wiki_page_data import WikiPageData
+
 
 class WikiDataClient(BaseConnectorDataClient[WikiPageData]):
     """Fetches data from your external system."""
-    
+
     def __init__(self, wiki_base_url: str, api_token: str):
         self.wiki_base_url = wiki_base_url
         self.api_token = api_token
-    
+
     def get_source_data(self, since=None) -> Sequence[WikiPageData]:
         """Fetch all your documents here."""
         # Your implementation here - call APIs, read files, query databases
@@ -122,15 +128,23 @@ class WikiDataClient(BaseConnectorDataClient[WikiPageData]):
 
 #### Step 3: Create Your Connector
 
-```python
+```python snippet=non_streaming/wiki_connector.py
 from typing import List, Sequence
-from glean.indexing.models import DocumentDefinition, ContentDefinition, CustomDatasourceConfig
+
 from glean.indexing.connectors import BaseDatasourceConnector
-from glean.api_client.models.userreferencedefinition import UserReferenceDefinition
+from glean.indexing.models import (
+    ContentDefinition,
+    CustomDatasourceConfig,
+    DocumentDefinition,
+    UserReferenceDefinition,
+)
+
+from .wiki_page_data import WikiPageData
+
 
 class CompanyWikiConnector(BaseDatasourceConnector[WikiPageData]):
     """Transform and upload your data to Glean."""
-    
+
     configuration: CustomDatasourceConfig = CustomDatasourceConfig(
         name="company_wiki",
         display_name="Company Wiki",
@@ -138,7 +152,7 @@ class CompanyWikiConnector(BaseDatasourceConnector[WikiPageData]):
         trust_url_regex_for_view_activity=True,
         is_user_referenced_by_email=True,
     )
-    
+
     def transform(self, data: Sequence[WikiPageData]) -> List[DocumentDefinition]:
         """Transform your data to Glean's format."""
         documents = []
@@ -148,10 +162,7 @@ class CompanyWikiConnector(BaseDatasourceConnector[WikiPageData]):
                 title=page["title"],
                 datasource=self.name,
                 view_url=page["url"],
-                body=ContentDefinition(
-                    mime_type="text/plain",
-                    text_content=page["content"]
-                ),
+                body=ContentDefinition(mime_type="text/plain", text_content=page["content"]),
                 author=UserReferenceDefinition(email=page["author"]),
                 created_at=self._parse_timestamp(page["created_at"]),
                 updated_at=self._parse_timestamp(page["updated_at"]),
@@ -159,24 +170,25 @@ class CompanyWikiConnector(BaseDatasourceConnector[WikiPageData]):
             )
             documents.append(document)
         return documents
-    
+
     def _parse_timestamp(self, timestamp_str: str) -> int:
         """Convert ISO timestamp to Unix epoch seconds."""
         from datetime import datetime
-        dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+
+        dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
         return int(dt.timestamp())
 ```
 
 #### Step 4: Run the Connector
 
-```python
+```python snippet=non_streaming/run_connector.py
 from glean.indexing.models import IndexingMode
 
+from .wiki_connector import CompanyWikiConnector
+from .wiki_data_client import WikiDataClient
+
 # Initialize
-data_client = WikiDataClient(
-    wiki_base_url="https://wiki.company.com",
-    api_token="your-wiki-token"
-)
+data_client = WikiDataClient(wiki_base_url="https://wiki.company.com", api_token="your-wiki-token")
 connector = CompanyWikiConnector(name="company_wiki", data_client=data_client)
 
 # Configure the datasource in Glean
@@ -188,11 +200,18 @@ connector.index_data(mode=IndexingMode.FULL)
 
 ### Complete Example
 
-```python
+```python snippet=non_streaming/complete.py
 from typing import List, Sequence, TypedDict
-from glean.indexing.models import DocumentDefinition, ContentDefinition, CustomDatasourceConfig, IndexingMode
-from glean.indexing.connectors import BaseDatasourceConnector, BaseConnectorDataClient
-from glean.api_client.models.userreferencedefinition import UserReferenceDefinition
+
+from glean.indexing.connectors import BaseConnectorDataClient, BaseDatasourceConnector
+from glean.indexing.models import (
+    ContentDefinition,
+    CustomDatasourceConfig,
+    DocumentDefinition,
+    IndexingMode,
+    UserReferenceDefinition,
+)
+
 
 class WikiPageData(TypedDict):
     id: str
@@ -204,10 +223,12 @@ class WikiPageData(TypedDict):
     url: str
     tags: List[str]
 
+
 class WikiDataClient(BaseConnectorDataClient[WikiPageData]):
     def __init__(self, wiki_base_url: str, api_token: str):
         self.wiki_base_url = wiki_base_url
         self.api_token = api_token
+
     def get_source_data(self, since=None) -> Sequence[WikiPageData]:
         # Example static data
         return [
@@ -233,6 +254,7 @@ class WikiDataClient(BaseConnectorDataClient[WikiPageData]):
             },
         ]
 
+
 class CompanyWikiConnector(BaseDatasourceConnector[WikiPageData]):
     configuration: CustomDatasourceConfig = CustomDatasourceConfig(
         name="company_wiki",
@@ -241,6 +263,7 @@ class CompanyWikiConnector(BaseDatasourceConnector[WikiPageData]):
         trust_url_regex_for_view_activity=True,
         is_user_referenced_by_email=True,
     )
+
     def transform(self, data: Sequence[WikiPageData]) -> List[DocumentDefinition]:
         documents = []
         for page in data:
@@ -250,10 +273,7 @@ class CompanyWikiConnector(BaseDatasourceConnector[WikiPageData]):
                     title=page["title"],
                     datasource=self.name,
                     view_url=page["url"],
-                    body=ContentDefinition(
-                        mime_type="text/plain",
-                        text_content=page["content"]
-                    ),
+                    body=ContentDefinition(mime_type="text/plain", text_content=page["content"]),
                     author=UserReferenceDefinition(email=page["author"]),
                     created_at=self._parse_timestamp(page["created_at"]),
                     updated_at=self._parse_timestamp(page["updated_at"]),
@@ -261,15 +281,15 @@ class CompanyWikiConnector(BaseDatasourceConnector[WikiPageData]):
                 )
             )
         return documents
+
     def _parse_timestamp(self, timestamp_str: str) -> int:
         from datetime import datetime
-        dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+
+        dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
         return int(dt.timestamp())
 
-data_client = WikiDataClient(
-    wiki_base_url="https://wiki.company.com",
-    api_token="your-wiki-token"
-)
+
+data_client = WikiDataClient(wiki_base_url="https://wiki.company.com", api_token="your-wiki-token")
 connector = CompanyWikiConnector(name="company_wiki", data_client=data_client)
 connector.configure_datasource()
 connector.index_data(mode=IndexingMode.FULL)
@@ -297,11 +317,13 @@ connector.index_data(mode=IndexingMode.FULL)
 
 #### Step 1: Define Your Data Type
 
-```python
+```python snippet=streaming/article_data.py
 from typing import TypedDict
+
 
 class ArticleData(TypedDict):
     """Type definition for knowledge base article data."""
+
     id: str
     title: str
     content: str
@@ -312,57 +334,66 @@ class ArticleData(TypedDict):
 
 #### Step 2: Create Your Streaming DataClient
 
-```python
-import requests
+```python snippet=streaming/article_data_client.py
 from typing import Generator
+
+import requests
+
 from glean.indexing.connectors.base_streaming_data_client import StreamingConnectorDataClient
+
+from .article_data import ArticleData
+
 
 class LargeKnowledgeBaseClient(StreamingConnectorDataClient[ArticleData]):
     """Streaming client that yields data incrementally."""
-    
+
     def __init__(self, kb_api_url: str, api_key: str):
         self.kb_api_url = kb_api_url
         self.api_key = api_key
-    
+
     def get_source_data(self, since=None) -> Generator[ArticleData, None, None]:
         """Stream documents one page at a time to save memory."""
         page = 1
         page_size = 100
-        
+
         while True:
             params = {"page": page, "size": page_size}
             if since:
                 params["modified_since"] = since
-                
+
             response = requests.get(
                 f"{self.kb_api_url}/articles",
                 headers={"Authorization": f"Bearer {self.api_key}"},
-                params=params
+                params=params,
             )
             response.raise_for_status()
-            
+
             data = response.json()
             articles = data.get("articles", [])
-            
+
             if not articles:
                 break
-                
+
             for article in articles:
                 yield ArticleData(article)
-                
+
             if len(articles) < page_size:
                 break
-                
+
             page += 1
 ```
 
 #### Step 3: Create Your Streaming Connector
 
-```python
+```python snippet=streaming/article_connector.py
 from typing import List, Sequence
-from glean.indexing.models import DocumentDefinition, ContentDefinition, CustomDatasourceConfig
-from glean.indexing.connectors import BaseStreamingDatasourceConnector
+
 from glean.api_client.models.userreferencedefinition import UserReferenceDefinition
+from glean.indexing.connectors import BaseStreamingDatasourceConnector
+from glean.indexing.models import ContentDefinition, CustomDatasourceConfig, DocumentDefinition
+
+from .article_data import ArticleData
+
 
 class KnowledgeBaseConnector(BaseStreamingDatasourceConnector[ArticleData]):
     configuration: CustomDatasourceConfig = CustomDatasourceConfig(
@@ -371,9 +402,11 @@ class KnowledgeBaseConnector(BaseStreamingDatasourceConnector[ArticleData]):
         url_regex=r"https://kb\.company\.com/.*",
         trust_url_regex_for_view_activity=True,
     )
+
     def __init__(self, name: str, data_client):
         super().__init__(name, data_client)
         self.batch_size = 50
+
     def transform(self, data: Sequence[ArticleData]) -> List[DocumentDefinition]:
         documents = []
         for article in data:
@@ -383,29 +416,30 @@ class KnowledgeBaseConnector(BaseStreamingDatasourceConnector[ArticleData]):
                     title=article["title"],
                     datasource=self.name,
                     view_url=article["url"],
-                    body=ContentDefinition(
-                        mime_type="text/html",
-                        text_content=article["content"]
-                    ),
+                    body=ContentDefinition(mime_type="text/html", text_content=article["content"]),
                     author=UserReferenceDefinition(email=article["author"]),
                     updated_at=self._parse_timestamp(article["updated_at"]),
                 )
             )
         return documents
+
     def _parse_timestamp(self, timestamp_str: str) -> int:
         from datetime import datetime
-        dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+
+        dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
         return int(dt.timestamp())
 ```
 
 #### Step 4: Run the Connector
 
-```python
+```python snippet=streaming/run_connector.py
 from glean.indexing.models import IndexingMode
 
+from .article_connector import KnowledgeBaseConnector
+from .article_data_client import LargeKnowledgeBaseClient
+
 data_client = LargeKnowledgeBaseClient(
-    kb_api_url="https://kb-api.company.com",
-    api_key="your-kb-api-key"
+    kb_api_url="https://kb-api.company.com", api_key="your-kb-api-key"
 )
 connector = KnowledgeBaseConnector(name="knowledge_base", data_client=data_client)
 

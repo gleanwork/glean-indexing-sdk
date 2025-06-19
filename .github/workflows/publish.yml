@@ -19,6 +19,8 @@ jobs:
         run: uv sync
       - name: Build
         run: task build
+      - name: Test
+        run: task test:all
       - name: Publish to PyPI
         run: task publish
         env:

@@ -10,8 +10,7 @@ from glean.api_client.models.customdatasourceconfig import (
 )
 from glean.api_client.models.documentdefinition import DocumentDefinition
 from glean.api_client.models.userreferencedefinition import UserReferenceDefinition
-from glean.indexing.connectors.base_data_client import BaseDataClient
-from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
+from glean.indexing.connectors import BaseDataClient, BaseDatasourceConnector
 from tests.unit_tests.utils.mock_clients import MockDataSourceClient
 
 

@@ -5,17 +5,17 @@ the base classes and utilities to create custom connectors for Glean's indexing 
 """
 
 from importlib.metadata import version, PackageNotFoundError
-from glean.indexing.connectors.base_connector import BaseConnector
-from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
-from glean.indexing.connectors.base_streaming_datasource_connector import BaseStreamingDatasourceConnector
-from glean.indexing.connectors.base_people_connector import BasePeopleConnector
-from glean.indexing.connectors.base_data_client import BaseConnectorDataClient
-from glean.indexing.connectors.base_streaming_data_client import StreamingConnectorDataClient
-from glean.indexing.clients.glean_client import api_client
-from glean.indexing.clients.mocks import MockGleanClient
+from glean.indexing.connectors import (
+    BaseConnector,
+    BaseDatasourceConnector,
+    BaseStreamingDatasourceConnector,
+    BasePeopleConnector,
+    BaseConnectorDataClient,
+    StreamingConnectorDataClient,
+)
+from glean.indexing.common import BatchProcessor, ContentFormatter, ConnectorMetrics, api_client, MockGleanClient
 from glean.indexing.observability.observability import ConnectorObservability
 from glean.indexing.testing import ConnectorTestHarness
-from glean.indexing.utils import BatchProcessor, ContentFormatter, ConnectorMetrics
 from glean.indexing.models import (
     DatasourceIdentityDefinitions,
     IndexingMode,

@@ -6,7 +6,7 @@ from abc import ABC
 from typing import Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
-from glean.indexing.clients.glean_client import api_client
+from glean.indexing.common import BatchProcessor, api_client
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseConnectorDataClient
 from glean.indexing.models import (
@@ -16,7 +16,6 @@ from glean.indexing.models import (
     TSourceData,
 )
 from glean.indexing.observability.observability import ConnectorObservability
-from glean.indexing.utils import BatchProcessor
 
 logger = logging.getLogger(__name__)
 

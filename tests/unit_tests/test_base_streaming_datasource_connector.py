@@ -3,10 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from glean.api_client.models import DocumentDefinition
-from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
-from glean.indexing.connectors.base_streaming_datasource_connector import (
-    BaseStreamingDatasourceConnector,
-)
+from glean.indexing.connectors import BaseStreamingDataClient, BaseStreamingDatasourceConnector
 
 
 class DummyStreamingDataClient(BaseStreamingDataClient[dict]):

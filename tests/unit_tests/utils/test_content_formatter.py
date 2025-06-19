@@ -3,7 +3,7 @@
 import os
 import tempfile
 
-from glean.indexing.utils import ContentFormatter
+from glean.indexing.common import ContentFormatter
 
 
 class TestContentFormatter:

@@ -1,4 +1,4 @@
-from glean.indexing.utils import BatchProcessor
+from glean.indexing.common import BatchProcessor
 
 
 class TestBatchProcessor:

@@ -6,7 +6,7 @@ from glean.indexing.connectors.base_datasource_connector import BaseDatasourceCo
 from glean.indexing.connectors.base_people_connector import BasePeopleConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient, StreamingConnectorDataClient
 from glean.indexing.connectors.base_streaming_datasource_connector import BaseStreamingDatasourceConnector
-from glean.indexing.testing import ConnectorTestHarness
+from glean.indexing.testing.connector_test_harness import ConnectorTestHarness
 
 __all__ = [
     "BaseConnector",

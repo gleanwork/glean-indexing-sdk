@@ -4,7 +4,7 @@ import logging
 import time
 from unittest.mock import MagicMock
 
-from glean.indexing.utils import ConnectorMetrics
+from glean.indexing.common import ConnectorMetrics
 
 
 class TestConnectorMetrics:

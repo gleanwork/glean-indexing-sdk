@@ -5,9 +5,8 @@ import uuid
 from abc import ABC
 from typing import Generator, List, Optional, Sequence
 
-from glean.indexing.clients.glean_client import api_client
-from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
-from glean.indexing.connectors.base_streaming_data_client import StreamingConnectorDataClient
+from glean.indexing.common import api_client
+from glean.indexing.connectors import BaseDatasourceConnector, StreamingConnectorDataClient
 from glean.indexing.models import IndexingMode, TSourceData
 
 logger = logging.getLogger(__name__)

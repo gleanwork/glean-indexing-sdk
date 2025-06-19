@@ -1,7 +1,6 @@
 import pytest
 
-from glean.indexing.connectors.base_data_client import BaseDataClient
-from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
+from glean.indexing.connectors import BaseDataClient, BaseStreamingDataClient
 
 
 class DummyDataClient(BaseDataClient[dict]):

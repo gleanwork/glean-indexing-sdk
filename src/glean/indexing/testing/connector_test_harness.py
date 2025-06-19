@@ -3,9 +3,7 @@
 import logging
 from unittest.mock import patch
 
-from glean.indexing.connectors.base_connector import BaseConnector
-from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
-from glean.indexing.connectors.base_people_connector import BasePeopleConnector
+from glean.indexing.connectors import BaseConnector, BaseDatasourceConnector, BasePeopleConnector
 from glean.indexing.testing.mock_glean_client import MockGleanClient
 from glean.indexing.testing.response_validator import ResponseValidator
 

@@ -6,6 +6,7 @@ from glean.api_client.models import (
     CustomDatasourceConfig,
     DocumentDefinition,
     EmployeeInfoDefinition,
+    UserReferenceDefinition,
 )
 
 
@@ -36,6 +37,7 @@ __all__ = [
     "DocumentDefinition",
     "EmployeeInfoDefinition",
     "ContentDefinition",
+    "UserReferenceDefinition",
     "IndexingMode",
     "DatasourceIdentityDefinitions",
     "TSourceData",

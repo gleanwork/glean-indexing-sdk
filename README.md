@@ -1,6 +1,10 @@
+
 # Glean Indexing SDK
 
 A Python SDK for building custom Glean indexing integrations. This package provides the base classes and utilities to create custom connectors for Glean's indexing APIs.
+
+> [!WARNING]
+> This is an experimental repository. APIs, interfaces, and functionality may change significantly without notice.
 
 ## Installation
 

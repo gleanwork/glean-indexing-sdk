@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "glean-indexing-sdk"
-version = "0.0.2"
+version = "0.0.3"
 description = "SDK for building custom Glean indexing integrations"
 authors = [{ name = "Steve Calvert", email = "steve.calvert@glean.com" }]
 readme = "README.md"

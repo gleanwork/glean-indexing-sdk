@@ -181,12 +181,12 @@ tasks:
   lint:readme:
     desc: Lint the README.md file
     cmds:
-      - npx -y markdown-code --check
+      - npx -y markdown-code check
 
   lint:readme:fix:
     desc: Fix the README.md file
     cmds:
-      - npx -y markdown-code --write
+      - npx -y markdown-code sync
 
   # Format task: Run code formatters
   format:

@@ -40,7 +40,23 @@ class ContentFormatter:
 
         Returns:
             A ContentFormatter instance.
+        
+        Raises:
+            FileNotFoundError: If the template file doesn't exist.
+            PermissionError: If the template file can't be read.
+            UnicodeDecodeError: If the template file contains invalid UTF-8.
         """
-        with open(template_path, "r", encoding="utf-8") as f:
-            template_str = f.read()
+        try:
+            with open(template_path, "r", encoding="utf-8") as f:
+                template_str = f.read()
+        except FileNotFoundError:
+            logger.error(f"Template file not found: {template_path}")
+            raise
+        except PermissionError:
+            logger.error(f"Permission denied reading template file: {template_path}")
+            raise
+        except UnicodeDecodeError as e:
+            logger.error(f"Invalid UTF-8 encoding in template file {template_path}: {e}")
+            raise
+        
         return cls(template_str)

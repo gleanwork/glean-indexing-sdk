@@ -136,12 +136,13 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
 
             groups = identities.get("groups")
             if groups:
-                logger.info(f"Indexing {len(groups)} groups")
-                self._batch_index_groups(groups)
-
+                # Validate that memberships are provided before indexing groups
                 memberships = identities.get("memberships")
                 if not memberships:
                     raise ValueError("Groups were provided, but no memberships were provided.")
+
+                logger.info(f"Indexing {len(groups)} groups")
+                self._batch_index_groups(groups)
 
                 logger.info(f"Indexing {len(memberships)} memberships")
                 self._batch_index_memberships(memberships)

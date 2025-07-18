@@ -178,11 +178,13 @@ tasks:
           {{.PYRIGHT}} {{.PYTHON_FILES}}
         fi
 
+  # Lint Readme task: Lint the README.md file
   lint:readme:
     desc: Lint the README.md file
     cmds:
       - npx -y markdown-code check
 
+  # Lint Readme fix task: Fix the README.md file
   lint:readme:fix:
     desc: Fix the README.md file
     cmds:

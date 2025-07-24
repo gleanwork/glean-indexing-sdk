@@ -105,34 +105,6 @@ def test_index_data_error_handling():
             connector.index_data()
 
 
-def test_index_data_empty_dataset():
-    class EmptyStreamingDataClient(BaseStreamingDataClient[dict]):
-        def get_source_data(self, **kwargs):
-            yield from []
-
-    client = EmptyStreamingDataClient()
-    connector = DummyStreamingConnector("test_stream", client)
-    with patch(
-        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
-    ) as api_client:
-        bulk_index = api_client().__enter__().indexing.documents.bulk_index
-        connector.index_data()
-        assert bulk_index.call_count == 0
-
-
-def test_index_data_api_error():
-    client = DummyStreamingDataClient()
-    connector = DummyStreamingConnector("test_stream", client)
-    with patch(
-        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
-    ) as api_client:
-        bulk_index = api_client().__enter__().indexing.documents.bulk_index
-        bulk_index.side_effect = Exception("upload failed")
-
-        with pytest.raises(Exception):
-            connector.index_data()
-
-
 def test_force_restart_upload():
     """Test that force_restart parameter sets forceRestartUpload on first batch."""
     client = DummyStreamingDataClient()

@@ -128,3 +128,72 @@ class TestBaseDatasourceConnector:
 
         timestamp = connector._get_last_crawl_timestamp()
         assert timestamp is None
+
+    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    def test_force_restart_upload(self, mock_api_client):
+        """Test that force_restart parameter sets forceRestartUpload on first batch."""
+        mock_client = Mock()
+        mock_api_client.return_value.__enter__.return_value = mock_client
+
+        test_data = [
+            {
+                "id": "1",
+                "title": "Test Doc 1",
+                "content": "Content 1",
+                "url": "https://test.example.com/1",
+            },
+            {
+                "id": "2",
+                "title": "Test Doc 2",
+                "content": "Content 2",
+                "url": "https://test.example.com/2",
+            },
+        ]
+        data_client = MockDataClient(test_data)
+        connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
+        connector.batch_size = 1
+
+        connector.index_data(force_restart=True)
+
+        # Should be called twice (one batch per document)
+        assert mock_client.indexing.documents.bulk_index.call_count == 2
+
+        # First call should have forceRestartUpload=True
+        first_call_kwargs = mock_client.indexing.documents.bulk_index.call_args_list[0][1]
+        assert first_call_kwargs["forceRestartUpload"] is True
+        assert first_call_kwargs["is_first_page"] is True
+        assert first_call_kwargs["is_last_page"] is False
+
+        # Second call should NOT have forceRestartUpload
+        second_call_kwargs = mock_client.indexing.documents.bulk_index.call_args_list[1][1]
+        assert "forceRestartUpload" not in second_call_kwargs
+        assert second_call_kwargs["is_first_page"] is False
+        assert second_call_kwargs["is_last_page"] is True
+
+    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    def test_normal_upload_no_force_restart(self, mock_api_client):
+        """Test that normal upload does not include forceRestartUpload parameter."""
+        mock_client = Mock()
+        mock_api_client.return_value.__enter__.return_value = mock_client
+
+        test_data = [
+            {
+                "id": "1",
+                "title": "Test Doc",
+                "content": "Content",
+                "url": "https://test.example.com/1",
+            }
+        ]
+        data_client = MockDataClient(test_data)
+        connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
+
+        connector.index_data(force_restart=False)
+
+        # Should be called once
+        assert mock_client.indexing.documents.bulk_index.call_count == 1
+
+        # Should NOT have forceRestartUpload parameter
+        call_kwargs = mock_client.indexing.documents.bulk_index.call_args[1]
+        assert "forceRestartUpload" not in call_kwargs
+        assert call_kwargs["is_first_page"] is True
+        assert call_kwargs["is_last_page"] is True

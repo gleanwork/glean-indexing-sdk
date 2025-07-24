@@ -47,6 +47,7 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
         super().__init__(name, data_client)  # type: ignore[arg-type]
         self.batch_size = 1000
         self._upload_id: Optional[str] = None
+        self._force_restart: bool = False
 
     def generate_upload_id(self) -> str:
         """Generate a unique upload ID for batch tracking."""
@@ -67,12 +68,16 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
         logger.info(f"Fetching streaming data from source{' since ' + since if since else ''}")
         yield from self.data_client.get_source_data(since=since)
 
-    def index_data(self, mode: IndexingMode = IndexingMode.FULL) -> None:
+    def index_data(
+        self, mode: IndexingMode = IndexingMode.FULL, force_restart: bool = False
+    ) -> None:
         """
         Index data from the datasource to Glean using streaming.
 
         Args:
             mode: The indexing mode to use (FULL or INCREMENTAL).
+            force_restart: If True, forces a restart of the upload, discarding any previous upload progress.
+                          This sets forceRestartUpload=True on the first batch and generates a new upload ID.
         """
         logger.info(f"Starting {mode.name.lower()} streaming indexing for datasource '{self.name}'")
 
@@ -81,6 +86,7 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
             since = "2023-01-01T00:00:00Z"
 
         upload_id = self.generate_upload_id()
+        self._force_restart = force_restart
         data_iterator = self.get_data(since=since)
         is_first_batch = True
         batch: List[TSourceData] = []
@@ -150,14 +156,20 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
             transformed_batch = self.transform(batch)
             logger.info(f"Transformed batch {batch_number}: {len(transformed_batch)} documents")
 
+            bulk_index_kwargs = {
+                "datasource": self.name,
+                "documents": list(transformed_batch),
+                "upload_id": upload_id,
+                "is_first_page": is_first_batch,
+                "is_last_page": is_last_batch,
+            }
+
+            if self._force_restart and is_first_batch:
+                bulk_index_kwargs["forceRestartUpload"] = True
+                logger.info("Force restarting upload - discarding any previous upload progress")
+
             with api_client() as client:
-                client.indexing.documents.bulk_index(
-                    datasource=self.name,
-                    documents=list(transformed_batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_batch,
-                    is_last_page=is_last_batch,
-                )
+                client.indexing.documents.bulk_index(**bulk_index_kwargs)
 
             logger.info(f"Batch {batch_number} indexed successfully")
 

@@ -55,6 +55,13 @@ class BaseConnector(ABC, Generic[TSourceData, TIndexableEntityDefinition]):
         pass
 
     @abstractmethod
-    def index_data(self, mode: IndexingMode = IndexingMode.FULL) -> None:
-        """Index data from the connector to Glean."""
+    def index_data(
+        self, mode: IndexingMode = IndexingMode.FULL, force_restart: bool = False
+    ) -> None:
+        """Index data from the connector to Glean.
+
+        Args:
+            mode: The indexing mode to use (FULL or INCREMENTAL).
+            force_restart: If True, forces a restart of the upload, discarding any previous upload progress.
+        """
         pass

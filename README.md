@@ -202,6 +202,19 @@ connector.configure_datasource()
 connector.index_data(mode=IndexingMode.FULL)
 ```
 
+**When to use forced restarts:**
+- When you need to abort and restart a failed or interrupted upload
+- When you want to ensure a clean upload state by discarding partial uploads  
+- When recovering from upload errors or inconsistent states
+
+**How it works:**
+- Generates a new `upload_id` to ensure clean separation from previous uploads
+- Sets `forceRestartUpload=True` on the **first batch only**
+- Continues with normal batch processing for subsequent batches
+
+This feature is available on all connector types: `BaseDatasourceConnector`, `BaseStreamingDatasourceConnector`, and `BasePeopleConnector`.
+```
+
 ### Complete Example
 
 ```python snippet=non_streaming/complete.py
@@ -297,6 +310,9 @@ data_client = WikiDataClient(wiki_base_url="https://wiki.company.com", api_token
 connector = CompanyWikiConnector(name="company_wiki", data_client=data_client)
 connector.configure_datasource()
 connector.index_data(mode=IndexingMode.FULL)
+
+# Force restart upload if needed (discards any previous upload progress)
+# connector.index_data(mode=IndexingMode.FULL, force_restart=True)
 ```
 
 ## BaseStreamingDatasourceConnector

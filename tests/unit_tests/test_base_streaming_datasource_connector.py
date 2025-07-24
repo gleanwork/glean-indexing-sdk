@@ -104,3 +104,85 @@ def test_index_data_error_handling():
         bulk_index.side_effect = Exception("upload failed")
         with pytest.raises(Exception):
             connector.index_data()
+
+
+def test_index_data_empty_dataset():
+    class EmptyStreamingDataClient(BaseStreamingDataClient[dict]):
+        def get_source_data(self, **kwargs):
+            return
+            yield  # This is unreachable but makes it a generator
+
+    client = EmptyStreamingDataClient()
+    connector = DummyStreamingConnector("test_stream", client)
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
+        bulk_index = api_client().__enter__().indexing.documents.bulk_index
+        connector.index_data()
+        assert bulk_index.call_count == 0
+
+
+def test_index_data_api_error():
+    client = DummyStreamingDataClient()
+    connector = DummyStreamingConnector("test_stream", client)
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
+        bulk_index = api_client().__enter__().indexing.documents.bulk_index
+        bulk_index.side_effect = Exception("upload failed")
+
+        with pytest.raises(Exception):
+            connector.index_data()
+
+
+def test_force_restart_upload():
+    """Test that force_restart parameter sets forceRestartUpload on first batch."""
+    client = DummyStreamingDataClient()
+    connector = DummyStreamingConnector("test_stream", client)
+    connector.batch_size = 2
+
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
+        bulk_index = api_client().__enter__().indexing.documents.bulk_index
+        connector.index_data(force_restart=True)
+
+        assert bulk_index.call_count == 3
+
+        # First call should have forceRestartUpload=True
+        first_call_kwargs = bulk_index.call_args_list[0][1]
+        assert first_call_kwargs["forceRestartUpload"] is True
+        assert first_call_kwargs["is_first_page"] is True
+        assert first_call_kwargs["is_last_page"] is False
+
+        # Subsequent calls should NOT have forceRestartUpload
+        second_call_kwargs = bulk_index.call_args_list[1][1]
+        assert "forceRestartUpload" not in second_call_kwargs
+        assert second_call_kwargs["is_first_page"] is False
+        assert second_call_kwargs["is_last_page"] is False
+
+        third_call_kwargs = bulk_index.call_args_list[2][1]
+        assert "forceRestartUpload" not in third_call_kwargs
+        assert third_call_kwargs["is_first_page"] is False
+        assert third_call_kwargs["is_last_page"] is True
+
+
+def test_normal_upload_no_force_restart():
+    """Test that normal upload does not include forceRestartUpload parameter."""
+    client = DummyStreamingDataClient()
+    connector = DummyStreamingConnector("test_stream", client)
+    connector.batch_size = 5
+
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
+        bulk_index = api_client().__enter__().indexing.documents.bulk_index
+        connector.index_data(force_restart=False)
+
+        assert bulk_index.call_count == 1
+
+        # Should NOT have forceRestartUpload parameter
+        call_kwargs = bulk_index.call_args[1]
+        assert "forceRestartUpload" not in call_kwargs
+        assert call_kwargs["is_first_page"] is True
+        assert call_kwargs["is_last_page"] is True

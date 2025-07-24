@@ -309,9 +309,6 @@ data_client = WikiDataClient(wiki_base_url="https://wiki.company.com", api_token
 connector = CompanyWikiConnector(name="company_wiki", data_client=data_client)
 connector.configure_datasource()
 connector.index_data(mode=IndexingMode.FULL)
-
-# Force restart upload if needed (discards any previous upload progress)
-# connector.index_data(mode=IndexingMode.FULL, force_restart=True)
 ```
 
 ## BaseStreamingDatasourceConnector

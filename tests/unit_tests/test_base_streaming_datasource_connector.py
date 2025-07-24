@@ -82,8 +82,7 @@ def test_index_data_batches_and_uploads():
 def test_index_data_empty():
     class EmptyClient(BaseStreamingDataClient[dict]):
         def get_source_data(self, **kwargs):
-            if False:
-                yield
+            yield from []
 
     connector = DummyStreamingConnector("test_stream", EmptyClient())
     with patch(
@@ -109,8 +108,7 @@ def test_index_data_error_handling():
 def test_index_data_empty_dataset():
     class EmptyStreamingDataClient(BaseStreamingDataClient[dict]):
         def get_source_data(self, **kwargs):
-            return
-            yield  # This is unreachable but makes it a generator
+            yield from []
 
     client = EmptyStreamingDataClient()
     connector = DummyStreamingConnector("test_stream", client)

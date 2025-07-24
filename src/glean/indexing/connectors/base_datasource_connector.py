@@ -114,12 +114,16 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             client.indexing.datasources.add(**config.dict(exclude_unset=True))
             logger.info(f"Successfully configured datasource: {config.name}")
 
-    def index_data(self, mode: IndexingMode = IndexingMode.FULL) -> None:
+    def index_data(
+        self, mode: IndexingMode = IndexingMode.FULL, force_restart: bool = False
+    ) -> None:
         """
         Index data from the datasource to Glean with identity crawl followed by content crawl.
 
         Args:
             mode: The indexing mode to use (FULL or INCREMENTAL).
+            force_restart: If True, forces a restart of the upload, discarding any previous upload progress.
+                          This sets forceRestartUpload=True on the first batch and generates a new upload ID.
         """
         self._observability.start_execution()
 
@@ -169,7 +173,7 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             self._observability.start_timer("data_upload")
             if documents:
                 logger.info(f"Indexing {len(documents)} documents")
-                self._batch_index_documents(documents)
+                self._batch_index_documents(documents, force_restart=force_restart)
             self._observability.end_timer("data_upload")
 
             logger.info(f"Successfully indexed {len(documents)} documents to Glean")
@@ -272,8 +276,15 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                 self._observability.increment_counter("batch_upload_errors")
                 raise
 
-    def _batch_index_documents(self, documents: Sequence[DocumentDefinition]) -> None:
-        """Index documents in batches with proper page signaling."""
+    def _batch_index_documents(
+        self, documents: Sequence[DocumentDefinition], force_restart: bool = False
+    ) -> None:
+        """Index documents in batches with proper page signaling.
+
+        Args:
+            documents: The documents to index
+            force_restart: If True, forces a restart by generating a new upload ID and setting forceRestartUpload=True on the first batch
+        """
         if not documents:
             return
 
@@ -285,14 +296,21 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         upload_id = str(uuid.uuid4())
         for i, batch in enumerate(batches):
             try:
+                is_first_page = i == 0
+                bulk_index_kwargs = {
+                    "datasource": self.name,
+                    "documents": list(batch),
+                    "upload_id": upload_id,
+                    "is_first_page": is_first_page,
+                    "is_last_page": (i == total_batches - 1),
+                }
+
+                if force_restart and is_first_page:
+                    bulk_index_kwargs["forceRestartUpload"] = True
+                    logger.info("Force restarting upload - discarding any previous upload progress")
+
                 with api_client() as client:
-                    client.indexing.documents.bulk_index(
-                        datasource=self.name,
-                        documents=list(batch),
-                        upload_id=upload_id,
-                        is_first_page=(i == 0),
-                        is_last_page=(i == total_batches - 1),
-                    )
+                    client.indexing.documents.bulk_index(**bulk_index_kwargs)
 
                 logger.info(f"Document batch {i + 1}/{total_batches} uploaded successfully")
                 self._observability.increment_counter("batches_uploaded")

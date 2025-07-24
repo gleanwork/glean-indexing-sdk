@@ -58,11 +58,15 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
         """The observability instance for this connector."""
         return self._observability
 
-    def index_data(self, mode: IndexingMode = IndexingMode.FULL) -> None:
+    def index_data(
+        self, mode: IndexingMode = IndexingMode.FULL, force_restart: bool = False
+    ) -> None:
         """Index people data to Glean.
 
         Args:
             mode: The indexing mode to use (FULL or INCREMENTAL).
+            force_restart: If True, forces a restart of the upload, discarding any previous upload progress.
+                          This sets forceRestartUpload=True on the first batch and generates a new upload ID.
         """
         self._observability.start_execution()
 
@@ -89,7 +93,7 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
             self._observability.record_metric("employees_transformed", len(employees))
 
             self._observability.start_timer("data_upload")
-            self._batch_index_employees(employees)
+            self._batch_index_employees(employees, force_restart=force_restart)
             self._observability.end_timer("data_upload")
 
             logger.info(f"Successfully indexed {len(employees)} employees to Glean")
@@ -113,8 +117,15 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
         """
         return self.data_client.get_source_data(since=since)
 
-    def _batch_index_employees(self, employees: Sequence[EmployeeInfoDefinition]) -> None:
-        """Index employees to Glean in batches."""
+    def _batch_index_employees(
+        self, employees: Sequence[EmployeeInfoDefinition], force_restart: bool = False
+    ) -> None:
+        """Index employees to Glean in batches.
+
+        Args:
+            employees: The employees to index
+            force_restart: If True, forces a restart by generating a new upload ID and setting forceRestartUpload=True on the first batch
+        """
         if not employees:
             return
 
@@ -126,13 +137,20 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
         upload_id = str(uuid.uuid4())
         for i, batch in enumerate(batches):
             try:
+                is_first_page = i == 0
+                bulk_index_kwargs = {
+                    "employees": list(batch),
+                    "upload_id": upload_id,
+                    "is_first_page": is_first_page,
+                    "is_last_page": (i == total_batches - 1),
+                }
+
+                if force_restart and is_first_page:
+                    bulk_index_kwargs["forceRestartUpload"] = True
+                    logger.info("Force restarting upload - discarding any previous upload progress")
+
                 with api_client() as client:
-                    client.indexing.people.bulk_index(
-                        employees=list(batch),
-                        upload_id=upload_id,
-                        is_first_page=(i == 0),
-                        is_last_page=(i == total_batches - 1),
-                    )
+                    client.indexing.people.bulk_index(**bulk_index_kwargs)
 
                 logger.info(f"Employee batch {i + 1}/{total_batches} uploaded successfully")
                 self._observability.increment_counter("batches_uploaded")

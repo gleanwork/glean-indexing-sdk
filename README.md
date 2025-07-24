@@ -213,7 +213,6 @@ connector.index_data(mode=IndexingMode.FULL)
 - Continues with normal batch processing for subsequent batches
 
 This feature is available on all connector types: `BaseDatasourceConnector`, `BaseStreamingDatasourceConnector`, and `BasePeopleConnector`.
-```
 
 ### Complete Example
 

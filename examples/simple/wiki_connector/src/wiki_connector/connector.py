@@ -10,7 +10,6 @@ from glean.indexing.models import (
     DocumentDefinition,
     UserReferenceDefinition,
 )
-
 from wiki_connector.models import WikiPageData
 
 

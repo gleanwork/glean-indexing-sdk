@@ -4,9 +4,8 @@ import argparse
 import logging
 import sys
 
-from glean.indexing.models import IndexingMode
-
 from connector.sample_connector import SampleConnector, SampleDataClient
+from glean.indexing.models import IndexingMode
 
 # Configure logging for container output
 logging.basicConfig(

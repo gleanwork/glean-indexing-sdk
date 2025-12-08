@@ -8,9 +8,8 @@ from datetime import datetime
 
 from temporalio import activity
 
-from glean.indexing.models import IndexingMode
-
 from basic_workflow.connector import create_connector
+from glean.indexing.models import IndexingMode
 
 
 @activity.defn

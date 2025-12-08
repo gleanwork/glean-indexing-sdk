@@ -9,9 +9,9 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from temporalio.client import Client, Schedule, ScheduleActionStartWorkflow, ScheduleSpec, ScheduleIntervalSpec
+from temporalio.client import Client, Schedule, ScheduleActionStartWorkflow, ScheduleSpec
 
-from scheduled_workflow.workflow import ScheduledIndexingWorkflow, ScheduledIndexingInput
+from scheduled_workflow.workflow import ScheduledIndexingInput, ScheduledIndexingWorkflow
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,7 +65,7 @@ async def create_schedule(
         ),
     )
 
-    handle = await client.create_schedule(
+    await client.create_schedule(
         schedule_id,
         schedule,
     )
@@ -73,7 +73,9 @@ async def create_schedule(
     logger.info(f"Schedule created: {schedule_id}")
     logger.info(f"Cron expression: {cron_expression}")
     logger.info(f"Connector: {connector_name} (mode={mode})")
-    logger.info(f"View in Temporal UI: http://localhost:8233/namespaces/default/schedules/{schedule_id}")
+    logger.info(
+        f"View in Temporal UI: http://localhost:8233/namespaces/default/schedules/{schedule_id}"
+    )
 
 
 async def list_schedules() -> None:

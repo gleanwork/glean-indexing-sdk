@@ -10,7 +10,6 @@ import os
 from typing import Any
 
 from glean.indexing.models import IndexingMode
-
 from lambda_handler.connector import SampleConnector, SampleDataClient
 
 # Configure logging for Lambda
@@ -75,11 +74,13 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         return {
             "statusCode": 200,
-            "body": json.dumps({
-                "status": "completed",
-                "mode": mode_str,
-                "message": "Indexing completed successfully",
-            }),
+            "body": json.dumps(
+                {
+                    "status": "completed",
+                    "mode": mode_str,
+                    "message": "Indexing completed successfully",
+                }
+            ),
         }
 
     except Exception as e:
@@ -87,8 +88,10 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         return {
             "statusCode": 500,
-            "body": json.dumps({
-                "status": "error",
-                "error": str(e),
-            }),
+            "body": json.dumps(
+                {
+                    "status": "error",
+                    "error": str(e),
+                }
+            ),
         }

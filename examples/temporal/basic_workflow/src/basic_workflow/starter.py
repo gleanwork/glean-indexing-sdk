@@ -74,7 +74,9 @@ async def start_workflow(
     )
 
     logger.info(f"Workflow started: {workflow_id}")
-    logger.info(f"View in Temporal UI: http://localhost:8233/namespaces/default/workflows/{workflow_id}")
+    logger.info(
+        f"View in Temporal UI: http://localhost:8233/namespaces/default/workflows/{workflow_id}"
+    )
 
     # Optionally wait for result
     result = await handle.result()

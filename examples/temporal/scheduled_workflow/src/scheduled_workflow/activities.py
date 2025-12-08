@@ -5,7 +5,6 @@ from datetime import datetime
 from temporalio import activity
 
 from glean.indexing.models import IndexingMode
-
 from scheduled_workflow.connector import create_connector
 
 

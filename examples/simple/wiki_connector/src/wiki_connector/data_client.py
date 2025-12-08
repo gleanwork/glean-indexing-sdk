@@ -3,7 +3,6 @@
 from typing import Optional, Sequence
 
 from glean.indexing.connectors import BaseConnectorDataClient
-
 from wiki_connector.models import WikiPageData
 
 

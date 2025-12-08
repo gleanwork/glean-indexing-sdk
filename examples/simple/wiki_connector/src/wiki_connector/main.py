@@ -6,7 +6,6 @@ import os
 from dotenv import load_dotenv
 
 from glean.indexing.models import IndexingMode
-
 from wiki_connector.connector import CompanyWikiConnector
 from wiki_connector.data_client import WikiDataClient
 

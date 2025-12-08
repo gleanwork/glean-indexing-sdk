@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Glean Connector Lambda Function
+
+Parameters:
+  GleanInstance:
+    Type: String
+    Description: Glean instance name
+  GleanApiToken:
+    Type: String
+    Description: Glean Indexing API token
+    NoEcho: true
+  SourceApiUrl:
+    Type: String
+    Description: Source system API URL
+    Default: https://docs.company.com
+  SourceApiKey:
+    Type: String
+    Description: Source system API key
+    NoEcho: true
+    Default: ""
+
+Globals:
+  Function:
+    Timeout: 900  # 15 minutes (Lambda max)
+    MemorySize: 512
+    Runtime: python3.11
+
+Resources:
+  ConnectorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: glean-connector
+      CodeUri: src/
+      Handler: lambda_handler.handler.handler
+      Description: Glean indexing connector
+      Environment:
+        Variables:
+          GLEAN_INSTANCE: !Ref GleanInstance
+          GLEAN_INDEXING_API_TOKEN: !Ref GleanApiToken
+          SOURCE_API_URL: !Ref SourceApiUrl
+          SOURCE_API_KEY: !Ref SourceApiKey
+      Events:
+        # Daily full sync at 2 AM UTC
+        DailyFullSync:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 2 * * ? *)
+            Input: '{"mode": "FULL", "configure": false}'
+            Description: Daily full sync
+            Enabled: true
+        # Hourly incremental sync during business hours
+        HourlyIncrementalSync:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 9-17 ? * MON-FRI *)
+            Input: '{"mode": "INCREMENTAL", "configure": false}'
+            Description: Hourly incremental sync
+            Enabled: true
+
+  # CloudWatch Log Group with retention
+  ConnectorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ConnectorFunction}
+      RetentionInDays: 14
+
+Outputs:
+  FunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt ConnectorFunction.Arn
+  FunctionName:
+    Description: Lambda function name
+    Value: !Ref ConnectorFunction

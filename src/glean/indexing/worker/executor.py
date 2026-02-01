@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional
 from glean.indexing.worker.discovery import ConnectorInfo, ProjectDiscovery
 from glean.indexing.worker.protocol import (
     ExecutionCompleteNotification,
+    HeartbeatNotification,
     JsonRpcNotification,
     LogNotification,
     PhaseCompleteNotification,
@@ -79,6 +80,11 @@ class ConnectorExecutor:
         self._step_mode = False
         self._step_event = asyncio.Event()
 
+        # Heartbeat control
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._heartbeat_phase: str = ""
+        self._heartbeat_start: float = 0.0
+
     def emit(self, notification: JsonRpcNotification) -> None:
         """Emit a notification to the parent process."""
         self.emit_notification(notification)
@@ -87,6 +93,34 @@ class ConnectorExecutor:
         """Emit a log notification."""
         source = self.connector_info.class_name if self.connector_info else None
         self.emit(LogNotification(level=level, message=message, source=source).to_notification())
+
+    def _start_heartbeat(self, phase: str) -> None:
+        """Start emitting heartbeats for a long-running phase."""
+        self._heartbeat_phase = phase
+        self._heartbeat_start = time.time()
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+    def _stop_heartbeat(self) -> None:
+        """Stop the heartbeat task."""
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            self._heartbeat_task = None
+
+    async def _heartbeat_loop(self) -> None:
+        """Emit heartbeat notifications every 2 seconds."""
+        try:
+            while True:
+                await asyncio.sleep(2.0)
+                elapsed = time.time() - self._heartbeat_start
+                self.emit(
+                    HeartbeatNotification(
+                        phase=self._heartbeat_phase,
+                        elapsed_seconds=elapsed,
+                        message=f"Working on {self._heartbeat_phase}...",
+                    ).to_notification()
+                )
+        except asyncio.CancelledError:
+            pass
 
     async def execute(
         self,
@@ -282,6 +316,9 @@ class ConnectorExecutor:
 
             self.log("info", f"Using data client: {type(data_client).__name__}")
 
+            # Start heartbeat during data fetching
+            self._start_heartbeat(phase_name)
+
             # Check if this is an async streaming data client
             if hasattr(data_client, "get_source_data"):
                 index = 0
@@ -290,6 +327,9 @@ class ConnectorExecutor:
                 # Check if it's an async generator
                 if hasattr(get_source_data, "__anext__"):
                     async for record in get_source_data:
+                        # Stop heartbeat after first record (data is flowing)
+                        if index == 0:
+                            self._stop_heartbeat()
                         await self._wait_for_continue()
                         if self._abort_requested:
                             break
@@ -310,6 +350,9 @@ class ConnectorExecutor:
                 else:
                     # Sync generator
                     for record in get_source_data:
+                        # Stop heartbeat after first record (data is flowing)
+                        if index == 0:
+                            self._stop_heartbeat()
                         await self._wait_for_continue()
                         if self._abort_requested:
                             break
@@ -332,6 +375,9 @@ class ConnectorExecutor:
         except Exception as e:
             self.log("error", f"Error fetching data: {e}")
             logger.exception("Error in real fetch phase")
+        finally:
+            # Ensure heartbeat is stopped
+            self._stop_heartbeat()
 
         phase_duration = (time.time() - phase_start) * 1000
         self.emit(

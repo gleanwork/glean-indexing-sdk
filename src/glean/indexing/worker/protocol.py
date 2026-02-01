@@ -265,3 +265,22 @@ class ExecutionCompleteNotification:
                 "total_duration_ms": self.total_duration_ms,
             },
         )
+
+
+@dataclass
+class HeartbeatNotification:
+    """Notification to indicate the worker is still alive and working."""
+
+    phase: str
+    elapsed_seconds: float
+    message: Optional[str] = None
+
+    def to_notification(self) -> JsonRpcNotification:
+        return JsonRpcNotification(
+            method="heartbeat",
+            params={
+                "phase": self.phase,
+                "elapsed_seconds": self.elapsed_seconds,
+                "message": self.message,
+            },
+        )

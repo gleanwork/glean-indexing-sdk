@@ -88,9 +88,15 @@ class ProjectDiscovery:
                 continue
 
             for py_file in search_path.rglob("*.py"):
-                # Skip test files, __pycache__, etc.
+                # Skip test files, __pycache__, virtual envs, etc.
+                path_str = str(py_file)
                 if (
-                    "__pycache__" in str(py_file)
+                    "__pycache__" in path_str
+                    or ".venv" in path_str
+                    or "venv" in path_str
+                    or "node_modules" in path_str
+                    or "site-packages" in path_str
+                    or ".git" in path_str
                     or "test" in py_file.name.lower()
                     or py_file.name.startswith("_")
                 ):

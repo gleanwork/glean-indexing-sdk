@@ -247,11 +247,7 @@ class ConnectorExecutor:
         self.log("info", f"Starting {phase_name} phase")
 
         # Try to instantiate connector
-        connector_instance = None
-        try:
-            connector_instance = connector_class()
-        except Exception as e:
-            self.log("warning", f"Could not instantiate connector: {e}")
+        connector_instance = self._try_instantiate_connector(connector_class)
 
         for index, record in enumerate(mock_data):
             await self._wait_for_continue()
@@ -365,6 +361,82 @@ class ConnectorExecutor:
                 if k not in ["id", "title", "body", "content", "name", "url"]
             },
         }
+
+    def _try_instantiate_connector(self, connector_class: Any) -> Optional[Any]:
+        """Try various strategies to instantiate a connector."""
+        # Strategy 1: Try direct instantiation (for simple connectors)
+        try:
+            return connector_class()
+        except TypeError:
+            pass  # Needs arguments
+
+        # Strategy 2: For streaming connectors, try to find and use data client
+        # Look for a data_client class in the same module or discovered classes
+        data_client = self._find_data_client_for_connector(connector_class)
+        if data_client is not None:
+            try:
+                # Get datasource name from connector's configuration if available
+                name = "studio_test"
+                if hasattr(connector_class, "configuration"):
+                    config = connector_class.configuration
+                    if hasattr(config, "name"):
+                        name = config.name
+
+                return connector_class(name, data_client)
+            except Exception as e:
+                self.log("debug", f"Could not instantiate with data client: {e}")
+
+        # Strategy 3: Create a mock data client wrapper
+        try:
+            name = "studio_test"
+            if hasattr(connector_class, "configuration"):
+                config = connector_class.configuration
+                if hasattr(config, "name"):
+                    name = config.name
+
+            # Try with a mock data client that yields nothing
+            mock_client = self._create_mock_data_client()
+            if mock_client is not None:
+                return connector_class(name, mock_client)
+        except Exception as e:
+            self.log("debug", f"Could not instantiate with mock client: {e}")
+
+        self.log("info", "Using simulation mode for transformation")
+        return None
+
+    def _find_data_client_for_connector(self, connector_class: Any) -> Optional[Any]:
+        """Try to find and instantiate a matching data client."""
+        # Get all discovered connectors (which includes data clients)
+        connectors = self.discovery.discover_connectors()
+
+        # Look for classes with "DataClient" in the name or base classes
+        for info in connectors:
+            if "DataClient" in info.class_name or any(
+                "DataClient" in bc for bc in info.base_classes
+            ):
+                try:
+                    client_class = self.discovery.load_connector_class(info)
+                    # Try to instantiate the data client
+                    return client_class()
+                except Exception as e:
+                    self.log("debug", f"Could not instantiate {info.class_name}: {e}")
+
+        return None
+
+    def _create_mock_data_client(self) -> Optional[Any]:
+        """Create a mock data client for testing."""
+        # Create a simple mock that yields nothing
+        # This allows us to at least test the transform method
+        try:
+            from glean.indexing.connectors import BaseStreamingDataClient
+
+            class MockDataClient(BaseStreamingDataClient):
+                def get_source_data(self, **kwargs):
+                    return iter([])
+
+            return MockDataClient()
+        except ImportError:
+            return None
 
     def _detect_field_mappings(
         self, input_data: Dict[str, Any], output_data: Dict[str, Any]

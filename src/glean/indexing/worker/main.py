@@ -272,20 +272,40 @@ class WorkerServer:
         # Start parent watchdog
         watchdog_task = asyncio.create_task(self._parent_watchdog())
 
+        # Create a queue for stdin lines (read in separate thread)
+        stdin_queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+        # Start stdin reader in background thread
+        def read_stdin() -> None:
+            """Read lines from stdin and put them in the queue."""
+            while self._running:
+                try:
+                    line = sys.stdin.readline()
+                    if not line:
+                        # EOF
+                        asyncio.run_coroutine_threadsafe(
+                            stdin_queue.put(None), loop
+                        )
+                        break
+                    asyncio.run_coroutine_threadsafe(
+                        stdin_queue.put(line), loop
+                    )
+                except Exception:
+                    break
+
+        reader_future = loop.run_in_executor(None, read_stdin)
+
         try:
             while self._running:
                 try:
-                    # Read line from stdin with timeout to allow checking _running flag
+                    # Wait for line from queue with timeout
                     try:
-                        line = await asyncio.wait_for(
-                            loop.run_in_executor(None, sys.stdin.readline),
-                            timeout=1.0
-                        )
+                        line = await asyncio.wait_for(stdin_queue.get(), timeout=1.0)
                     except asyncio.TimeoutError:
                         # No input, just loop to check _running flag
                         continue
 
-                    if not line:
+                    if line is None:
                         # EOF - parent closed stdin
                         logger.info("stdin closed, exiting")
                         break

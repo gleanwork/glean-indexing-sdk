@@ -74,6 +74,7 @@ class ProjectDiscovery:
     def discover_connectors(self) -> List[ConnectorInfo]:
         """Discover connector classes in the project."""
         connectors: List[ConnectorInfo] = []
+        seen: set[tuple[str, str]] = set()  # (file_path, class_name)
 
         # Search common locations for connector files
         search_paths = [
@@ -97,7 +98,11 @@ class ProjectDiscovery:
 
                 try:
                     found = self._parse_file_for_connectors(py_file)
-                    connectors.extend(found)
+                    for connector in found:
+                        key = (connector.file_path, connector.class_name)
+                        if key not in seen:
+                            seen.add(key)
+                            connectors.append(connector)
                 except Exception as e:
                     logger.debug(f"Error parsing {py_file}: {e}")
 

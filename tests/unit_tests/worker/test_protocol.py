@@ -159,11 +159,11 @@ class TestPhaseCompleteNotification:
             records_processed=10,
             duration_ms=500.0,
             success=False,
-            error_message="Transform failed",
+            error="Transform failed",
         )
         notification = phase_complete.to_notification()
         assert notification.params["success"] is False
-        assert notification.params["error_message"] == "Transform failed"
+        assert notification.params["error"] == "Transform failed"
 
 
 class TestRecordFetchedNotification:

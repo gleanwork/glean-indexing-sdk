@@ -25,6 +25,10 @@ class ConnectorInfo:
     base_classes: List[str] = field(default_factory=list)
     methods: List[str] = field(default_factory=list)
     docstring: Optional[str] = None
+    # Category: "connector" or "data_client"
+    category: str = "connector"
+    # For connectors: list of data client class names that match by source_type
+    data_clients: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -72,8 +76,12 @@ class ProjectDiscovery:
         )
 
     def discover_connectors(self) -> List[ConnectorInfo]:
-        """Discover connector classes in the project."""
-        connectors: List[ConnectorInfo] = []
+        """Discover connector classes in the project.
+
+        Returns connectors with their associated data clients linked via source_type matching.
+        Data clients are included in each connector's `data_clients` list.
+        """
+        all_classes: List[ConnectorInfo] = []
         seen: set[tuple[str, str]] = set()  # (file_path, class_name)
 
         # Search common locations for connector files
@@ -108,10 +116,54 @@ class ProjectDiscovery:
                         key = (connector.file_path, connector.class_name)
                         if key not in seen:
                             seen.add(key)
-                            connectors.append(connector)
+                            all_classes.append(connector)
                 except Exception as e:
                     logger.debug(f"Error parsing {py_file}: {e}")
 
+        # Categorize and link: match connectors with data clients by source_type
+        return self._categorize_and_link(all_classes)
+
+    def _categorize_and_link(self, all_classes: List[ConnectorInfo]) -> List[ConnectorInfo]:
+        """Categorize classes and link connectors to their data clients."""
+        connectors: List[ConnectorInfo] = []
+        data_clients: List[ConnectorInfo] = []
+
+        # Categorize based on base classes
+        for info in all_classes:
+            is_data_client = any(
+                "DataClient" in bc for bc in info.base_classes
+            )
+            is_connector = any(
+                "Connector" in bc or "DataSource" in bc
+                for bc in info.base_classes
+            ) and not is_data_client
+
+            if is_data_client:
+                info.category = "data_client"
+                data_clients.append(info)
+            elif is_connector:
+                info.category = "connector"
+                connectors.append(info)
+            else:
+                # Default to connector if has connector methods
+                info.category = "connector"
+                connectors.append(info)
+
+        # Build a map of source_type -> data_client class names
+        source_type_to_clients: dict[str, List[str]] = {}
+        for dc in data_clients:
+            if dc.source_type:
+                if dc.source_type not in source_type_to_clients:
+                    source_type_to_clients[dc.source_type] = []
+                source_type_to_clients[dc.source_type].append(dc.class_name)
+
+        # Link connectors to their data clients by matching source_type
+        for conn in connectors:
+            if conn.source_type and conn.source_type in source_type_to_clients:
+                conn.data_clients = source_type_to_clients[conn.source_type]
+
+        # Return only connectors (with data_clients embedded)
+        # Data clients are not returned as top-level items
         return connectors
 
     def _parse_file_for_connectors(self, file_path: Path) -> List[ConnectorInfo]:

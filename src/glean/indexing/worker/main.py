@@ -109,6 +109,8 @@ class WorkerServer:
                         "base_classes": c.base_classes,
                         "methods": c.methods,
                         "docstring": c.docstring,
+                        "category": c.category,
+                        "data_clients": c.data_clients,
                     }
                     for c in connectors
                 ],
@@ -131,6 +133,8 @@ class WorkerServer:
                         "base_classes": c.base_classes,
                         "methods": c.methods,
                         "docstring": c.docstring,
+                        "category": c.category,
+                        "data_clients": c.data_clients,
                     }
                     for c in connectors
                 ]
@@ -300,6 +304,16 @@ def main() -> None:
 
     # Get project path from current directory
     project_path = Path.cwd()
+
+    # Load .env file from project directory if present
+    env_path = project_path / ".env"
+    if env_path.exists():
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(env_path)
+            logger.info(f"Loaded environment from {env_path}")
+        except ImportError:
+            logger.debug("python-dotenv not installed, skipping .env loading")
 
     # Create and run server
     server = WorkerServer(project_path)

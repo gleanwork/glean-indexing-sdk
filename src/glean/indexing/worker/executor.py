@@ -6,6 +6,7 @@ Executes connectors and emits events as JSON-RPC notifications.
 import asyncio
 import json
 import logging
+import sys
 import time
 import traceback
 import uuid
@@ -121,16 +122,31 @@ class ConnectorExecutor:
             if mock_data:
                 self.total_records = len(mock_data)
                 self.log("info", f"Loaded {self.total_records} mock records")
+                use_real_data = False
+            else:
+                # No mock data - try to use real data client
+                self.log("info", "No mock data found, attempting to use real data client")
+                use_real_data = True
 
-            # Phase 1: Fetch data
-            await self._run_fetch_phase(mock_data)
+            # Collect fetched records for transformation
+            fetched_records: List[Dict[str, Any]] = []
+
+            if use_real_data:
+                # Try to fetch real data from the data client
+                fetched_records = await self._run_real_fetch_phase(connector_class)
+                if not fetched_records:
+                    self.log("warning", "No records fetched from data client")
+            else:
+                # Phase 1: Fetch data (mock mode)
+                await self._run_fetch_phase(mock_data)
+                fetched_records = mock_data
 
             if self._abort_requested:
                 self.state = ExecutionState.ABORTED
                 return
 
             # Phase 2: Transform data
-            await self._run_transform_phase(connector_class, mock_data)
+            await self._run_transform_phase(connector_class, fetched_records)
 
             if self._abort_requested:
                 self.state = ExecutionState.ABORTED
@@ -230,6 +246,297 @@ class ConnectorExecutor:
                 duration_ms=phase_duration,
             ).to_notification()
         )
+
+    async def _run_real_fetch_phase(self, connector_class: Any) -> List[Dict[str, Any]]:
+        """Run the data fetching phase using the real data client."""
+        phase_name = "get_data"
+        phase_start = time.time()
+        fetched_records: List[Dict[str, Any]] = []
+
+        # Emit phase start (unknown total records)
+        self.emit(
+            PhaseStartNotification(
+                phase=phase_name, total_records=None
+            ).to_notification()
+        )
+
+        self.log("info", f"Starting {phase_name} phase with real data client")
+
+        try:
+            # Find and instantiate the data client
+            data_client = self._instantiate_data_client_for_connector(connector_class)
+
+            if data_client is None:
+                self.log("error", "Could not find or instantiate a data client for this connector")
+                phase_duration = (time.time() - phase_start) * 1000
+                self.emit(
+                    PhaseCompleteNotification(
+                        phase=phase_name,
+                        records_processed=0,
+                        duration_ms=phase_duration,
+                        success=False,
+                        error="No data client found",
+                    ).to_notification()
+                )
+                return []
+
+            self.log("info", f"Using data client: {type(data_client).__name__}")
+
+            # Check if this is an async streaming data client
+            if hasattr(data_client, "get_source_data"):
+                index = 0
+                get_source_data = data_client.get_source_data()
+
+                # Check if it's an async generator
+                if hasattr(get_source_data, "__anext__"):
+                    async for record in get_source_data:
+                        await self._wait_for_continue()
+                        if self._abort_requested:
+                            break
+
+                        # Convert record to dict if needed
+                        record_dict = self._record_to_dict(record)
+                        record_id = str(record_dict.get("id", f"record_{index}"))
+
+                        self.emit(
+                            RecordFetchedNotification(
+                                record_id=record_id, index=index, data=record_dict
+                            ).to_notification()
+                        )
+
+                        fetched_records.append(record_dict)
+                        index += 1
+                        await self._step_pause()
+                else:
+                    # Sync generator
+                    for record in get_source_data:
+                        await self._wait_for_continue()
+                        if self._abort_requested:
+                            break
+
+                        record_dict = self._record_to_dict(record)
+                        record_id = str(record_dict.get("id", f"record_{index}"))
+
+                        self.emit(
+                            RecordFetchedNotification(
+                                record_id=record_id, index=index, data=record_dict
+                            ).to_notification()
+                        )
+
+                        fetched_records.append(record_dict)
+                        index += 1
+                        await self._step_pause()
+
+                self.total_records = len(fetched_records)
+
+        except Exception as e:
+            self.log("error", f"Error fetching data: {e}")
+            logger.exception("Error in real fetch phase")
+
+        phase_duration = (time.time() - phase_start) * 1000
+        self.emit(
+            PhaseCompleteNotification(
+                phase=phase_name,
+                records_processed=len(fetched_records),
+                duration_ms=phase_duration,
+                success=len(fetched_records) > 0,
+            ).to_notification()
+        )
+
+        return fetched_records
+
+    def _record_to_dict(self, record: Any) -> Dict[str, Any]:
+        """Convert a record (TypedDict, dataclass, Pydantic, etc.) to a plain dict."""
+        if isinstance(record, dict):
+            return record
+        elif hasattr(record, "model_dump"):
+            return record.model_dump()
+        elif hasattr(record, "_asdict"):
+            return record._asdict()
+        elif hasattr(record, "__dict__"):
+            return dict(record.__dict__)
+        else:
+            return {"data": record}
+
+    def _instantiate_data_client_for_connector(self, connector_class: Any) -> Optional[Any]:
+        """Try to find and instantiate the data client for a connector."""
+        # Check if the connector has associated data clients
+        if self.connector_info and self.connector_info.data_clients:
+            for client_name in self.connector_info.data_clients:
+                self.log("info", f"Found data client: {client_name}")
+                try:
+                    client_class = self._load_data_client_class(client_name)
+                    if client_class:
+                        instance = self._try_instantiate_data_client(client_class)
+                        if instance is not None:
+                            return instance
+                except Exception as e:
+                    self.log("debug", f"Could not load/instantiate {client_name}: {e}")
+
+        # Fallback: scan all Python files for data client classes
+        self.log("debug", "Falling back to scanning for data clients")
+        return self._find_data_client_by_scan()
+
+    def _load_data_client_class(self, class_name: str) -> Optional[Any]:
+        """Load a data client class by name from the project."""
+        import ast
+        import importlib.util
+
+        # Search for the class in Python files
+        search_paths = [
+            self.project_path,
+            self.project_path / "src",
+        ]
+
+        for search_path in search_paths:
+            if not search_path.exists():
+                continue
+
+            for py_file in search_path.rglob("*.py"):
+                path_str = str(py_file)
+                if any(skip in path_str for skip in ["__pycache__", ".venv", "venv", "node_modules"]):
+                    continue
+
+                try:
+                    source = py_file.read_text()
+                    tree = ast.parse(source)
+
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.ClassDef) and node.name == class_name:
+                            # Found it - load the module
+                            rel_path = py_file.relative_to(self.project_path)
+                            module_path = str(rel_path.with_suffix("")).replace("/", ".")
+
+                            if str(self.project_path) not in sys.path:
+                                sys.path.insert(0, str(self.project_path))
+
+                            spec = importlib.util.spec_from_file_location(module_path, py_file)
+                            if spec and spec.loader:
+                                module = importlib.util.module_from_spec(spec)
+                                sys.modules[spec.name] = module
+                                spec.loader.exec_module(module)
+                                return getattr(module, class_name, None)
+                except Exception as e:
+                    self.log("debug", f"Error searching {py_file}: {e}")
+
+        return None
+
+    def _find_data_client_by_scan(self) -> Optional[Any]:
+        """Scan project for any data client class."""
+        import ast
+        import importlib.util
+
+        search_paths = [
+            self.project_path,
+            self.project_path / "src",
+        ]
+
+        for search_path in search_paths:
+            if not search_path.exists():
+                continue
+
+            for py_file in search_path.rglob("*.py"):
+                path_str = str(py_file)
+                if any(skip in path_str for skip in ["__pycache__", ".venv", "venv", "node_modules"]):
+                    continue
+
+                try:
+                    source = py_file.read_text()
+                    tree = ast.parse(source)
+
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.ClassDef):
+                            # Check if this looks like a data client
+                            base_names = []
+                            for base in node.bases:
+                                if isinstance(base, ast.Name):
+                                    base_names.append(base.id)
+                                elif isinstance(base, ast.Subscript) and isinstance(base.value, ast.Name):
+                                    base_names.append(base.value.id)
+                                elif isinstance(base, ast.Attribute):
+                                    base_names.append(base.attr)
+
+                            if any("DataClient" in name for name in base_names):
+                                self.log("info", f"Found data client class: {node.name}")
+
+                                rel_path = py_file.relative_to(self.project_path)
+                                module_path = str(rel_path.with_suffix("")).replace("/", ".")
+
+                                if str(self.project_path) not in sys.path:
+                                    sys.path.insert(0, str(self.project_path))
+
+                                spec = importlib.util.spec_from_file_location(module_path, py_file)
+                                if spec and spec.loader:
+                                    module = importlib.util.module_from_spec(spec)
+                                    sys.modules[spec.name] = module
+                                    spec.loader.exec_module(module)
+                                    client_class = getattr(module, node.name, None)
+                                    if client_class:
+                                        instance = self._try_instantiate_data_client(client_class)
+                                        if instance:
+                                            return instance
+                except Exception as e:
+                    self.log("debug", f"Error scanning {py_file}: {e}")
+
+        return None
+
+    def _try_instantiate_data_client(self, client_class: Any) -> Optional[Any]:
+        """Try various strategies to instantiate a data client."""
+        import inspect
+        import os
+
+        # Get constructor parameters
+        try:
+            sig = inspect.signature(client_class.__init__)
+            params = list(sig.parameters.keys())
+            params = [p for p in params if p != "self"]
+        except (ValueError, TypeError):
+            params = []
+
+        # Strategy 1: No required params
+        if not params:
+            try:
+                return client_class()
+            except Exception:
+                pass
+
+        # Strategy 2: Try with common parameter patterns from environment
+        kwargs = {}
+
+        for param in params:
+            param_lower = param.lower()
+
+            # Try to get from environment variables
+            env_key = param.upper()
+            if env_key in os.environ:
+                kwargs[param] = os.environ[env_key]
+                continue
+
+            # Try common patterns
+            if "url" in param_lower or "base_url" in param_lower:
+                # Check for common env vars
+                for env_var in ["BASE_URL", "DEV_DOCS_BASE_URL", "API_URL", "SITE_URL"]:
+                    if env_var in os.environ:
+                        kwargs[param] = os.environ[env_var]
+                        break
+            elif "logger" in param_lower:
+                kwargs[param] = None  # Optional loggers default to None
+
+        # Try instantiation with collected kwargs
+        if kwargs:
+            try:
+                return client_class(**kwargs)
+            except Exception as e:
+                self.log("debug", f"Could not instantiate with kwargs {kwargs}: {e}")
+
+        # Strategy 3: Try with all optional params set to None
+        try:
+            kwargs = {p: None for p in params}
+            return client_class(**kwargs)
+        except Exception:
+            pass
+
+        return None
 
     async def _run_transform_phase(
         self, connector_class: Any, mock_data: List[Dict[str, Any]]

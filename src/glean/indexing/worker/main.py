@@ -2,11 +2,18 @@
 
 Reads JSON-RPC requests from stdin, dispatches to handlers, and writes
 responses/notifications to stdout.
+
+The worker automatically exits when:
+- stdin is closed (parent process died)
+- SIGTERM or SIGINT is received
+- Parent process ID changes to 1 (orphaned on Unix)
 """
 
 import asyncio
 import json
 import logging
+import os
+import signal
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -31,6 +38,29 @@ class WorkerServer:
         self.discovery = ProjectDiscovery(project_path)
         self.executor: Optional[ConnectorExecutor] = None
         self._running = True
+        self._parent_pid = os.getppid()
+        self._setup_signal_handlers()
+
+    def _setup_signal_handlers(self) -> None:
+        """Set up signal handlers for graceful shutdown."""
+        def handle_signal(signum: int, frame: Any) -> None:
+            logger.info(f"Received signal {signum}, shutting down")
+            self._running = False
+
+        signal.signal(signal.SIGTERM, handle_signal)
+        signal.signal(signal.SIGINT, handle_signal)
+
+    def _check_parent_alive(self) -> bool:
+        """Check if parent process is still alive.
+
+        On Unix, when a parent process dies, the child is adopted by init (pid 1).
+        We detect this to know when to exit.
+        """
+        current_ppid = os.getppid()
+        if current_ppid != self._parent_pid:
+            logger.info(f"Parent process changed from {self._parent_pid} to {current_ppid}, exiting")
+            return False
+        return True
 
     def write_message(self, message: dict) -> None:
         """Write a JSON-RPC message to stdout."""
@@ -235,62 +265,89 @@ class WorkerServer:
 
     async def run(self) -> None:
         """Main loop: read from stdin, dispatch, write to stdout."""
-        logger.info(f"Worker started for project: {self.project_path}")
+        logger.info(f"Worker started for project: {self.project_path} (parent pid: {self._parent_pid})")
 
         loop = asyncio.get_event_loop()
 
-        while self._running:
-            try:
-                # Read line from stdin (blocking in executor)
-                line = await loop.run_in_executor(None, sys.stdin.readline)
+        # Start parent watchdog
+        watchdog_task = asyncio.create_task(self._parent_watchdog())
 
-                if not line:
-                    # EOF - parent closed stdin
-                    break
-
-                line = line.strip()
-                if not line:
-                    continue
-
-                # Parse JSON-RPC request
+        try:
+            while self._running:
                 try:
-                    data = json.loads(line)
-                except json.JSONDecodeError as e:
+                    # Read line from stdin with timeout to allow checking _running flag
+                    try:
+                        line = await asyncio.wait_for(
+                            loop.run_in_executor(None, sys.stdin.readline),
+                            timeout=1.0
+                        )
+                    except asyncio.TimeoutError:
+                        # No input, just loop to check _running flag
+                        continue
+
+                    if not line:
+                        # EOF - parent closed stdin
+                        logger.info("stdin closed, exiting")
+                        break
+
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    # Parse JSON-RPC request
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError as e:
+                        self.send_response(
+                            JsonRpcResponse.error_response(
+                                None,
+                                ErrorCode.PARSE_ERROR,
+                                f"Invalid JSON: {e}",
+                            )
+                        )
+                        continue
+
+                    # Check if it's a valid request
+                    if "method" not in data or "id" not in data:
+                        self.send_response(
+                            JsonRpcResponse.error_response(
+                                data.get("id"),
+                                ErrorCode.INVALID_REQUEST,
+                                "Missing 'method' or 'id'",
+                            )
+                        )
+                        continue
+
+                    request = JsonRpcRequest.from_dict(data)
+                    response = await self.handle_request(request)
+                    self.send_response(response)
+
+                except Exception as e:
+                    logger.exception("Error in main loop")
                     self.send_response(
                         JsonRpcResponse.error_response(
                             None,
-                            ErrorCode.PARSE_ERROR,
-                            f"Invalid JSON: {e}",
+                            ErrorCode.INTERNAL_ERROR,
+                            str(e),
                         )
                     )
-                    continue
-
-                # Check if it's a valid request
-                if "method" not in data or "id" not in data:
-                    self.send_response(
-                        JsonRpcResponse.error_response(
-                            data.get("id"),
-                            ErrorCode.INVALID_REQUEST,
-                            "Missing 'method' or 'id'",
-                        )
-                    )
-                    continue
-
-                request = JsonRpcRequest.from_dict(data)
-                response = await self.handle_request(request)
-                self.send_response(response)
-
-            except Exception as e:
-                logger.exception("Error in main loop")
-                self.send_response(
-                    JsonRpcResponse.error_response(
-                        None,
-                        ErrorCode.INTERNAL_ERROR,
-                        str(e),
-                    )
-                )
+        finally:
+            # Cancel the watchdog task
+            watchdog_task.cancel()
+            try:
+                await watchdog_task
+            except asyncio.CancelledError:
+                pass
 
         logger.info("Worker shutting down")
+
+    async def _parent_watchdog(self) -> None:
+        """Periodically check if parent process is still alive."""
+        while self._running:
+            await asyncio.sleep(2.0)  # Check every 2 seconds
+            if not self._check_parent_alive():
+                self._running = False
+                break
 
 
 def main() -> None:

@@ -35,9 +35,7 @@ class AsyncBaseStreamingDataClient(ABC, Generic[TSourceData]):
     """
 
     @abstractmethod
-    async def get_source_data(
-        self, **kwargs: Any
-    ) -> AsyncGenerator[TSourceData, None]:
+    async def get_source_data(self, **kwargs: Any) -> AsyncGenerator[TSourceData, None]:
         """
         Retrieves source data as an async generator.
 
@@ -50,8 +48,6 @@ class AsyncBaseStreamingDataClient(ABC, Generic[TSourceData]):
         Yields:
             Individual data items from the external source.
         """
-        # This is a workaround for abstract async generators
-        # The implementation will override this
         if False:
             yield  # type: ignore[misc]
 
@@ -92,7 +88,6 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
         name: str,
         async_data_client: AsyncBaseStreamingDataClient[TSourceData],
     ):
-        # Pass None for data_client since we use async_data_client instead
         super().__init__(name, None)  # type: ignore[arg-type]
         self.async_data_client = async_data_client
         self.batch_size = 1000
@@ -118,8 +113,7 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
             Individual data items from the source
         """
         logger.info(
-            f"Fetching async streaming data from source"
-            f"{' since ' + since if since else ''}"
+            f"Fetching async streaming data from source{' since ' + since if since else ''}"
         )
         async for item in self.async_data_client.get_source_data(since=since):
             yield item
@@ -135,8 +129,7 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
             force_restart: If True, forces a restart of the upload.
         """
         logger.info(
-            f"Starting {mode.name.lower()} async streaming indexing for "
-            f"datasource '{self.name}'"
+            f"Starting {mode.name.lower()} async streaming indexing for datasource '{self.name}'"
         )
 
         since = None
@@ -150,24 +143,36 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
         batch_count = 0
 
         try:
-            async for item in self.get_data_async(since=since):
-                batch.append(item)
+            data_iterator = self.get_data_async(since=since).__aiter__()
+            exhausted = False
 
-                if len(batch) >= self.batch_size:
-                    # Process full batch
-                    await self._process_batch_async(
-                        batch=batch,
-                        upload_id=upload_id,
-                        is_first_batch=is_first_batch,
-                        is_last_batch=False,
-                        batch_number=batch_count,
-                    )
+            while not exhausted:
+                try:
+                    item = await data_iterator.__anext__()
+                    batch.append(item)
 
-                    batch_count += 1
-                    batch = []
-                    is_first_batch = False
+                    if len(batch) == self.batch_size:
+                        try:
+                            next_item = await data_iterator.__anext__()
 
-            # Process remaining items
+                            await self._process_batch_async(
+                                batch=batch,
+                                upload_id=upload_id,
+                                is_first_batch=is_first_batch,
+                                is_last_batch=False,
+                                batch_number=batch_count,
+                            )
+
+                            batch_count += 1
+                            batch = [next_item]
+                            is_first_batch = False
+
+                        except StopAsyncIteration:
+                            exhausted = True
+
+                except StopAsyncIteration:
+                    exhausted = True
+
             if batch:
                 await self._process_batch_async(
                     batch=batch,
@@ -179,8 +184,7 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
                 batch_count += 1
 
             logger.info(
-                f"Async streaming indexing completed successfully. "
-                f"Processed {batch_count} batches."
+                f"Async streaming indexing completed successfully. Processed {batch_count} batches."
             )
 
         except Exception as e:
@@ -209,9 +213,7 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
 
         try:
             transformed_batch = self.transform(batch)
-            logger.info(
-                f"Transformed batch {batch_number}: {len(transformed_batch)} documents"
-            )
+            logger.info(f"Transformed batch {batch_number}: {len(transformed_batch)} documents")
 
             bulk_index_kwargs = {
                 "datasource": self.name,
@@ -223,12 +225,8 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
 
             if self._force_restart and is_first_batch:
                 bulk_index_kwargs["forceRestartUpload"] = True
-                logger.info(
-                    "Force restarting upload - discarding any previous upload progress"
-                )
+                logger.info("Force restarting upload - discarding any previous upload progress")
 
-            # Note: api_client is synchronous, so we run it in the default executor
-            # For true async, use an async http client
             with api_client() as client:
                 client.indexing.documents.bulk_index(**bulk_index_kwargs)
 
@@ -238,7 +236,6 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
             logger.error(f"Failed to process batch {batch_number}: {e}")
             raise
 
-    # Required by base class - sync fallback
     def get_data(self, since: Optional[str] = None) -> Sequence[TSourceData]:
         """
         Sync fallback - collects all data into memory.

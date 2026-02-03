@@ -1,6 +1,6 @@
 import pytest
-
 from glean.api_client.models.propertydefinition import PropertyDefinition, PropertyType, UIOptions
+
 from glean.indexing.common.property_definition_builder import PropertyDefinitionBuilder
 
 

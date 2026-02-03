@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from glean.api_client.models import DocumentDefinition, EmployeeInfoDefinition
+
 from glean.indexing.testing.response_validator import ResponseValidator
 
 logger = logging.getLogger(__name__)

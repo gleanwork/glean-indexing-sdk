@@ -1,12 +1,11 @@
 """Tests for async streaming base classes."""
 
-import asyncio
 from typing import AsyncGenerator, Sequence
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from glean.api_client.models import DocumentDefinition
+
 from glean.indexing.connectors.async_streaming import (
     AsyncBaseStreamingDataClient,
     AsyncBaseStreamingDatasourceConnector,
@@ -44,7 +43,7 @@ class DummyAsyncConnector(AsyncBaseStreamingDatasourceConnector[dict]):
                 title=item["title"],
                 container="test",
                 datasource="test_datasource",
-                viewURL=f"https://example.com/{item['id']}",
+                view_url=f"https://example.com/{item['id']}",
             )
             for item in data
         ]
@@ -122,9 +121,7 @@ class TestAsyncBaseStreamingDatasourceConnector:
         connector = DummyAsyncConnector("test", client)
         connector.batch_size = 2
 
-        with patch(
-            "glean.indexing.connectors.async_streaming.api_client"
-        ) as mock_api_client:
+        with patch("glean.indexing.connectors.async_streaming.api_client") as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async()
 
@@ -149,12 +146,36 @@ class TestAsyncBaseStreamingDatasourceConnector:
         client = DummyAsyncDataClient(items=[])
         connector = DummyAsyncConnector("test", client)
 
-        with patch(
-            "glean.indexing.connectors.async_streaming.api_client"
-        ) as mock_api_client:
+        with patch("glean.indexing.connectors.async_streaming.api_client") as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async()
             assert bulk_index.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_index_data_async_exact_batch_size_multiple(self):
+        """Test that exact batch_size multiple correctly sets is_last_page=True."""
+        items = [
+            {"id": f"doc-{i}", "title": f"Doc {i}", "content": f"Content {i}"} for i in range(4)
+        ]
+        client = DummyAsyncDataClient(items=items)
+        connector = DummyAsyncConnector("test", client)
+        connector.batch_size = 2
+
+        with patch("glean.indexing.connectors.async_streaming.api_client") as mock_api_client:
+            bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
+            await connector.index_data_async()
+
+            assert bulk_index.call_count == 2
+
+            first_call = bulk_index.call_args_list[0][1]
+            assert first_call["is_first_page"] is True
+            assert first_call["is_last_page"] is False
+            assert len(first_call["documents"]) == 2
+
+            last_call = bulk_index.call_args_list[1][1]
+            assert last_call["is_first_page"] is False
+            assert last_call["is_last_page"] is True
+            assert len(last_call["documents"]) == 2
 
     @pytest.mark.asyncio
     async def test_index_data_async_force_restart(self):
@@ -163,9 +184,7 @@ class TestAsyncBaseStreamingDatasourceConnector:
         connector = DummyAsyncConnector("test", client)
         connector.batch_size = 2
 
-        with patch(
-            "glean.indexing.connectors.async_streaming.api_client"
-        ) as mock_api_client:
+        with patch("glean.indexing.connectors.async_streaming.api_client") as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async(force_restart=True)
 
@@ -183,9 +202,7 @@ class TestAsyncBaseStreamingDatasourceConnector:
         client = DummyAsyncDataClient()
         connector = DummyAsyncConnector("test", client)
 
-        with patch(
-            "glean.indexing.connectors.async_streaming.api_client"
-        ) as mock_api_client:
+        with patch("glean.indexing.connectors.async_streaming.api_client") as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             bulk_index.side_effect = Exception("upload failed")
 
@@ -203,9 +220,7 @@ class TestAsyncBaseStreamingDatasourceConnector:
         connector = DummyAsyncConnector("test", DummyAsyncDataClient())
         connector.batch_size = 10
 
-        with patch(
-            "glean.indexing.connectors.async_streaming.api_client"
-        ) as mock_api_client:
+        with patch("glean.indexing.connectors.async_streaming.api_client") as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             connector.index_data()
             assert bulk_index.call_count == 1

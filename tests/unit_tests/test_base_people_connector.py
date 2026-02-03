@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from glean.api_client.models import EmployeeInfoDefinition
+
 from glean.indexing.connectors.base_people_connector import BasePeopleConnector
 from tests.unit_tests.common.mock_clients import MockPeopleClient
 

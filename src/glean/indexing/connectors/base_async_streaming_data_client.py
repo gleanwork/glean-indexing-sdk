@@ -6,7 +6,7 @@ from typing import Any, AsyncGenerator, Generic
 from glean.indexing.models import TSourceData
 
 
-class AsyncBaseStreamingDataClient(ABC, Generic[TSourceData]):
+class BaseAsyncStreamingDataClient(ABC, Generic[TSourceData]):
     """
     Base class for async streaming data clients that fetch data in chunks.
 
@@ -17,7 +17,7 @@ class AsyncBaseStreamingDataClient(ABC, Generic[TSourceData]):
         TSourceData: The type of data yielded from the external source
 
     Example:
-        class MyAsyncDataClient(AsyncBaseStreamingDataClient[MyDocData]):
+        class MyAsyncDataClient(BaseAsyncStreamingDataClient[MyDocData]):
             async def get_source_data(self, **kwargs) -> AsyncGenerator[MyDocData, None]:
                 async for page in self.fetch_pages():
                     for item in page:
@@ -42,4 +42,4 @@ class AsyncBaseStreamingDataClient(ABC, Generic[TSourceData]):
             yield  # type: ignore[misc]
 
 
-AsyncStreamingDataClient = AsyncBaseStreamingDataClient
+AsyncStreamingDataClient = BaseAsyncStreamingDataClient

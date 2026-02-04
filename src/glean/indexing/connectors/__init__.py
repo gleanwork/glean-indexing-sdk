@@ -7,11 +7,11 @@ from glean.indexing.connectors.base_people_connector import BasePeopleConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient, StreamingConnectorDataClient
 from glean.indexing.connectors.base_streaming_datasource_connector import BaseStreamingDatasourceConnector
 from glean.indexing.connectors.base_async_streaming_data_client import (
-    AsyncBaseStreamingDataClient,
+    BaseAsyncStreamingDataClient,
     AsyncStreamingDataClient,
 )
 from glean.indexing.connectors.base_async_streaming_datasource_connector import (
-    AsyncBaseStreamingDatasourceConnector,
+    BaseAsyncStreamingDatasourceConnector,
     AsyncStreamingDatasourceConnector,
 )
 from glean.indexing.testing.connector_test_harness import ConnectorTestHarness
@@ -25,8 +25,8 @@ __all__ = [
     "BaseStreamingDataClient",
     "StreamingConnectorDataClient",
     "BaseStreamingDatasourceConnector",
-    "AsyncBaseStreamingDataClient",
-    "AsyncBaseStreamingDatasourceConnector",
+    "BaseAsyncStreamingDataClient",
+    "BaseAsyncStreamingDatasourceConnector",
     "AsyncStreamingDataClient",
     "AsyncStreamingDatasourceConnector",
     "ConnectorTestHarness",

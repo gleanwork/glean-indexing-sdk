@@ -7,14 +7,14 @@ from abc import ABC
 from typing import AsyncGenerator, List, Optional, Sequence
 
 from glean.indexing.common import api_client
-from glean.indexing.connectors.base_async_streaming_data_client import AsyncBaseStreamingDataClient
+from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
 from glean.indexing.models import IndexingMode, TSourceData
 
 logger = logging.getLogger(__name__)
 
 
-class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC):
+class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC):
     """
     Base class for async streaming datasource connectors.
 
@@ -24,17 +24,17 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
 
     To implement a custom async streaming connector, inherit from this class and implement:
         - configuration: CustomDatasourceConfig (class or instance attribute)
-        - async_data_client: AsyncBaseStreamingDataClient (set in __init__)
+        - async_data_client: BaseAsyncStreamingDataClient (set in __init__)
         - transform(self, data: Sequence[TSourceData]) -> Sequence[DocumentDefinition]
 
     Attributes:
         name (str): The unique name of the connector (should be snake_case).
         configuration (CustomDatasourceConfig): The datasource configuration.
         batch_size (int): The batch size for uploads (default: 1000).
-        async_data_client (AsyncBaseStreamingDataClient): The async streaming data client.
+        async_data_client (BaseAsyncStreamingDataClient): The async streaming data client.
 
     Example:
-        class MyAsyncConnector(AsyncBaseStreamingDatasourceConnector[MyDocData]):
+        class MyAsyncConnector(BaseAsyncStreamingDatasourceConnector[MyDocData]):
             configuration = CustomDatasourceConfig(...)
 
             def __init__(self, name: str):
@@ -48,7 +48,7 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
     def __init__(
         self,
         name: str,
-        async_data_client: AsyncBaseStreamingDataClient[TSourceData],
+        async_data_client: BaseAsyncStreamingDataClient[TSourceData],
     ):
         super().__init__(name, None)  # type: ignore[arg-type]
         self.async_data_client = async_data_client
@@ -233,4 +233,4 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
         asyncio.run(self.index_data_async(mode=mode, force_restart=force_restart))
 
 
-AsyncStreamingDatasourceConnector = AsyncBaseStreamingDatasourceConnector
+AsyncStreamingDatasourceConnector = BaseAsyncStreamingDatasourceConnector

@@ -17,16 +17,15 @@ from glean.indexing.testing.connector_test_harness import ConnectorTestHarness
 __all__ = [
     "BaseConnector",
     "BaseDataClient",
-    "BaseConnectorDataClient",  # Backward compatibility alias
+    "BaseConnectorDataClient",
     "BaseDatasourceConnector",
     "BasePeopleConnector",
     "BaseStreamingDataClient",
-    "StreamingConnectorDataClient",  # Backward compatibility alias
+    "StreamingConnectorDataClient",
     "BaseStreamingDatasourceConnector",
-    # Async streaming classes
     "AsyncBaseStreamingDataClient",
     "AsyncBaseStreamingDatasourceConnector",
-    "AsyncStreamingDataClient",  # Convenience alias
-    "AsyncStreamingDatasourceConnector",  # Convenience alias
+    "AsyncStreamingDataClient",
+    "AsyncStreamingDatasourceConnector",
     "ConnectorTestHarness",
 ]

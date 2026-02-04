@@ -274,6 +274,5 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
         asyncio.run(self.index_data_async(mode=mode, force_restart=force_restart))
 
 
-# Convenience aliases
 AsyncStreamingDataClient = AsyncBaseStreamingDataClient
 AsyncStreamingDatasourceConnector = AsyncBaseStreamingDatasourceConnector

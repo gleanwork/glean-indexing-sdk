@@ -8,23 +8,23 @@ Python SDK for building custom Glean indexing connectors. Provides base classes 
 
 ## Commands
 
-Uses [Task](https://taskfile.dev/) (`brew install go-task`) with `uv` for Python environment management.
+Uses [mise](https://mise.jdx.dev/) (`brew install mise`) for toolchain and task management with `uv` for Python dependencies.
 
 ```bash
 # Setup
-task setup                    # Create venv and install all dependencies
+mise run setup                # Create venv and install all dependencies
 
 # Testing
-task test                     # Run all tests
-task test:watch               # Run tests in watch mode
-task test:cov                 # Run tests with coverage
+mise run test                 # Run all tests
+mise run test:watch           # Run tests in watch mode
+mise run test:cov             # Run tests with coverage
 
 # Linting
-task lint                     # Run all linters (ruff, pyright, readme)
-task lint:fix                 # Auto-fix lint issues and format code
+mise run lint                 # Run all linters (ruff, pyright, readme)
+mise run lint:fix             # Auto-fix lint issues and format code
 
 # Building
-task build                    # Build the package
+mise run build                # Build the package
 ```
 
 Run a single test:
@@ -45,14 +45,14 @@ uv run pytest tests/unit_tests/test_base_connector.py::TestClassName::test_metho
 - `BasePeopleConnector` - For employee/identity indexing
 
 **Data clients** (`src/glean/indexing/connectors/`):
-- `BaseConnectorDataClient[T]` - Fetches all data at once, returns `Sequence[T]`
-- `StreamingConnectorDataClient[T]` - Yields data incrementally via `Generator[T]`
+- `BaseDataClient[T]` - Fetches all data at once, returns `Sequence[T]`
+- `BaseStreamingDataClient[T]` - Yields data incrementally via `Generator[T]`
 - `BaseAsyncStreamingDataClient[T]` - Yields data incrementally via `AsyncGenerator[T]`
 
 ### Pattern: Implementing a Connector
 
 1. Define data type as `TypedDict`
-2. Create data client extending `BaseConnectorDataClient[YourType]`
+2. Create data client extending `BaseDataClient[YourType]`
 3. Create connector extending `BaseDatasourceConnector[YourType]`
 4. Set `configuration: CustomDatasourceConfig` class attribute
 5. Implement `transform()` to convert source data to `DocumentDefinition`

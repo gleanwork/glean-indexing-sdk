@@ -2,6 +2,10 @@
 
 This document describes the release process for the Glean Connector SDK.
 
+## Quick Start
+
+Run the `/release` command in Claude Code for a guided release process.
+
 ## Dependencies
 
 - [`mise`](https://mise.jdx.dev/) - Tool and task management
@@ -16,72 +20,65 @@ We follow [Semantic Versioning](https://semver.org/).
 - **MINOR** version for new functionality in a backward compatible manner
 - **PATCH** version for backward compatible bug fixes
 
+Version bumps are determined automatically by commit message prefixes:
+- `feat:` → MINOR bump
+- `fix:` → PATCH bump
+- `feat!:` or `BREAKING CHANGE:` → MAJOR bump
+
 ## Process
 
 ### 1. Ensure everything is ready for release
 
-- All tests are passing
-- Documentation is up to date
-- Changelog has been updated
-
-### 2. Create a release branch
-
 ```bash
-git checkout -b release/vX.Y.Z
+git checkout main
+git pull origin main
+mise run test
+mise run lint
 ```
 
-### 3. Run the release task
-
-First, perform a dry run to verify the release:
+### 2. Preview the release
 
 ```bash
 DRY_RUN=true mise run release
 ```
 
-This will show you what changes will be made without applying them.
+This will show you:
+- The version bump (e.g., 0.2.0 → 0.2.1)
+- The changelog entries that will be generated
 
-Then, run the actual release:
+### 3. Run the release
 
 ```bash
 mise run release
 ```
 
 This will:
+- Bump the version in `pyproject.toml`
+- Update `CHANGELOG.md`
+- Create a git commit
+- Create a git tag (e.g., `v0.2.1`)
 
-- Bump the version based on commit messages
-- Generate/update the changelog
-- Create a git tag
-- Commit the changes
-
-### 4. Push the changes
-
-```bash
-git push origin release/vX.Y.Z
-git push origin vX.Y.Z
-```
-
-### 5. Create a pull request
-
-- Create a PR from the release branch to main
-- Have it reviewed and approved
-- Merge the PR
-
-### 6. Build and publish
-
-After the PR is merged:
+### 4. Push to trigger automated release
 
 ```bash
-git checkout main
-git pull
-mise run build
-mise run publish
+git push origin main --follow-tags
 ```
 
-This will build the package and upload it to PyPI.
+**That's it!** Pushing the tag triggers the GitHub Actions workflow which automatically:
+- Builds the package
+- Creates a GitHub Release with changelog
+- Publishes to PyPI
 
-### 7. Create a GitHub release
+### 5. Verify the release
 
-- Go to the GitHub releases page
-- Create a new release using the tag
-- Copy the relevant section from CHANGELOG.md as the release description
-- Publish the release
+```bash
+# Watch the workflow
+gh run watch
+
+# Verify the release was created
+gh release view v0.2.1
+```
+
+Check:
+- [GitHub Releases](https://github.com/gleanwork/glean-indexing-sdk/releases)
+- [PyPI Package](https://pypi.org/project/glean-indexing-sdk/)

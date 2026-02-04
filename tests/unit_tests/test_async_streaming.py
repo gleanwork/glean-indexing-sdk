@@ -7,14 +7,14 @@ import pytest
 from glean.api_client.models import DocumentDefinition
 
 from glean.indexing.connectors import (
-    AsyncBaseStreamingDataClient,
-    AsyncBaseStreamingDatasourceConnector,
+    BaseAsyncStreamingDataClient,
+    BaseAsyncStreamingDatasourceConnector,
     AsyncStreamingDataClient,
     AsyncStreamingDatasourceConnector,
 )
 
 
-class DummyAsyncDataClient(AsyncBaseStreamingDataClient[dict]):
+class DummyAsyncDataClient(BaseAsyncStreamingDataClient[dict]):
     """Test implementation of async data client."""
 
     def __init__(self, items: list[dict] | None = None):
@@ -31,7 +31,7 @@ class DummyAsyncDataClient(AsyncBaseStreamingDataClient[dict]):
             yield item
 
 
-class DummyAsyncConnector(AsyncBaseStreamingDatasourceConnector[dict]):
+class DummyAsyncConnector(BaseAsyncStreamingDatasourceConnector[dict]):
     """Test implementation of async connector."""
 
     configuration = MagicMock()
@@ -49,13 +49,13 @@ class DummyAsyncConnector(AsyncBaseStreamingDatasourceConnector[dict]):
         ]
 
 
-class TestAsyncBaseStreamingDataClient:
-    """Tests for AsyncBaseStreamingDataClient."""
+class TestBaseAsyncStreamingDataClient:
+    """Tests for BaseAsyncStreamingDataClient."""
 
     def test_abstract_cannot_instantiate(self):
         """Test that base class cannot be instantiated directly."""
         with pytest.raises(TypeError):
-            AsyncBaseStreamingDataClient()  # type: ignore
+            BaseAsyncStreamingDataClient()  # type: ignore
 
     def test_concrete_implementation_works(self):
         """Test that concrete implementation can be instantiated."""
@@ -79,8 +79,8 @@ class TestAsyncBaseStreamingDataClient:
         assert len(items) == 0
 
 
-class TestAsyncBaseStreamingDatasourceConnector:
-    """Tests for AsyncBaseStreamingDatasourceConnector."""
+class TestBaseAsyncStreamingDatasourceConnector:
+    """Tests for BaseAsyncStreamingDatasourceConnector."""
 
     def test_init_sets_async_client(self):
         """Test that init properly sets the async data client."""
@@ -242,9 +242,9 @@ class TestAliases:
     """Test that convenience aliases work."""
 
     def test_async_streaming_data_client_alias(self):
-        """Test AsyncStreamingDataClient is alias for AsyncBaseStreamingDataClient."""
-        assert AsyncStreamingDataClient is AsyncBaseStreamingDataClient
+        """Test AsyncStreamingDataClient is alias for BaseAsyncStreamingDataClient."""
+        assert AsyncStreamingDataClient is BaseAsyncStreamingDataClient
 
     def test_async_streaming_datasource_connector_alias(self):
-        """Test AsyncStreamingDatasourceConnector is alias for AsyncBaseStreamingDatasourceConnector."""
-        assert AsyncStreamingDatasourceConnector is AsyncBaseStreamingDatasourceConnector
+        """Test AsyncStreamingDatasourceConnector is alias for BaseAsyncStreamingDatasourceConnector."""
+        assert AsyncStreamingDatasourceConnector is BaseAsyncStreamingDatasourceConnector

@@ -33,7 +33,3 @@ class BaseStreamingDataClient(ABC, Generic[TSourceData]):
             A generator of data items.
         """
         pass
-
-
-# Alias for backward compatibility during transition
-StreamingConnectorDataClient = BaseStreamingDataClient

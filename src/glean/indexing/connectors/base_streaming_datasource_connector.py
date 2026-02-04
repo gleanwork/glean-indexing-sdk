@@ -6,7 +6,8 @@ from abc import ABC
 from typing import Generator, List, Optional, Sequence
 
 from glean.indexing.common import api_client
-from glean.indexing.connectors import BaseDatasourceConnector, StreamingConnectorDataClient
+from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
+from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
 from glean.indexing.models import IndexingMode, TSourceData
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
         name (str): The unique name of the connector (should be snake_case).
         configuration (CustomDatasourceConfig): The datasource configuration for Glean registration.
         batch_size (int): The batch size for uploads (default: 1000).
-        data_client (StreamingConnectorDataClient): The streaming data client for fetching source data.
+        data_client (BaseStreamingDataClient): The streaming data client for fetching source data.
         observability (ConnectorObservability): Observability and metrics for this connector.
 
     Notes:
@@ -41,7 +42,7 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
             ...
     """
 
-    def __init__(self, name: str, data_client: StreamingConnectorDataClient[TSourceData]):
+    def __init__(self, name: str, data_client: BaseStreamingDataClient[TSourceData]):
         # Note: We pass the streaming client as-is since it's a specialized version
         # The type checker may warn about this, but it's intentional for streaming
         super().__init__(name, data_client)  # type: ignore[arg-type]
@@ -83,7 +84,8 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
 
         since = None
         if mode == IndexingMode.INCREMENTAL:
-            since = "2023-01-01T00:00:00Z"
+            since = self._get_last_crawl_timestamp()
+            logger.info(f"Incremental crawl since: {since}")
 
         upload_id = self.generate_upload_id()
         self._force_restart = force_restart

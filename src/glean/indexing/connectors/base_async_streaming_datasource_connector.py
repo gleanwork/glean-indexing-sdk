@@ -1,55 +1,17 @@
-"""Async streaming base classes for Glean connectors.
+"""Base async streaming datasource connector for memory-efficient processing of large datasets."""
 
-These classes provide proper async/await support for streaming data from external
-sources, enabling efficient non-blocking I/O operations.
-"""
-
+import asyncio
 import logging
 import uuid
-from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Generic, List, Optional, Sequence
+from abc import ABC
+from typing import AsyncGenerator, List, Optional, Sequence
 
 from glean.indexing.common import api_client
-from glean.indexing.connectors import BaseDatasourceConnector
+from glean.indexing.connectors.base_async_streaming_data_client import AsyncBaseStreamingDataClient
+from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
 from glean.indexing.models import IndexingMode, TSourceData
 
 logger = logging.getLogger(__name__)
-
-
-class AsyncBaseStreamingDataClient(ABC, Generic[TSourceData]):
-    """
-    Base class for async streaming data clients that fetch data in chunks.
-
-    Use this for large datasets with async APIs to minimize memory usage
-    and maximize I/O throughput.
-
-    Type Parameters:
-        TSourceData: The type of data yielded from the external source
-
-    Example:
-        class MyAsyncDataClient(AsyncBaseStreamingDataClient[MyDocData]):
-            async def get_source_data(self, **kwargs) -> AsyncGenerator[MyDocData, None]:
-                async for page in self.fetch_pages():
-                    for item in page:
-                        yield item
-    """
-
-    @abstractmethod
-    async def get_source_data(self, **kwargs: Any) -> AsyncGenerator[TSourceData, None]:
-        """
-        Retrieves source data as an async generator.
-
-        This method should be implemented to return an async generator
-        that yields data items one at a time or in small batches.
-
-        Args:
-            **kwargs: Additional keyword arguments for customizing data retrieval.
-
-        Yields:
-            Individual data items from the external source.
-        """
-        if False:
-            yield  # type: ignore[misc]
 
 
 class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC):
@@ -243,7 +205,6 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
 
         Warning: This defeats the purpose of streaming. Use get_data_async() instead.
         """
-        import asyncio
 
         async def collect() -> List[TSourceData]:
             result: List[TSourceData] = []
@@ -265,8 +226,6 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
 
         Warning: This blocks the current thread. Use index_data_async() instead.
         """
-        import asyncio
-
         logger.warning(
             "Sync index_data() called on async connector - using asyncio.run(). "
             "Consider using index_data_async() for better performance."
@@ -274,5 +233,4 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
         asyncio.run(self.index_data_async(mode=mode, force_restart=force_restart))
 
 
-AsyncStreamingDataClient = AsyncBaseStreamingDataClient
 AsyncStreamingDatasourceConnector = AsyncBaseStreamingDatasourceConnector

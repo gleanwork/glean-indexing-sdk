@@ -6,10 +6,12 @@ from glean.indexing.connectors.base_datasource_connector import BaseDatasourceCo
 from glean.indexing.connectors.base_people_connector import BasePeopleConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient, StreamingConnectorDataClient
 from glean.indexing.connectors.base_streaming_datasource_connector import BaseStreamingDatasourceConnector
-from glean.indexing.connectors.async_streaming import (
+from glean.indexing.connectors.base_async_streaming_data_client import (
     AsyncBaseStreamingDataClient,
-    AsyncBaseStreamingDatasourceConnector,
     AsyncStreamingDataClient,
+)
+from glean.indexing.connectors.base_async_streaming_datasource_connector import (
+    AsyncBaseStreamingDatasourceConnector,
     AsyncStreamingDatasourceConnector,
 )
 from glean.indexing.testing.connector_test_harness import ConnectorTestHarness

@@ -1,60 +1,52 @@
 """Glean Indexing SDK.
 
-A Python SDK for building custom Glean indexing solutions. This package provides 
+A Python SDK for building custom Glean indexing solutions. This package provides
 the base classes and utilities to create custom connectors for Glean's indexing APIs.
 """
 
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
+
+from glean.indexing import models
+from glean.indexing.common import BatchProcessor, ConnectorMetrics, ContentFormatter, MockGleanClient, api_client
 from glean.indexing.connectors import (
-    BaseConnector,
-    BaseDatasourceConnector,
-    BaseStreamingDatasourceConnector,
-    BasePeopleConnector,
-    BaseConnectorDataClient,
-    StreamingConnectorDataClient,
     BaseAsyncStreamingDataClient,
     BaseAsyncStreamingDatasourceConnector,
-    AsyncStreamingDataClient,
-    AsyncStreamingDatasourceConnector,
+    BaseConnector,
+    BaseDataClient,
+    BaseDatasourceConnector,
+    BasePeopleConnector,
+    BaseStreamingDataClient,
+    BaseStreamingDatasourceConnector,
 )
-from glean.indexing.common import BatchProcessor, ContentFormatter, ConnectorMetrics, api_client, MockGleanClient
-from glean.indexing.observability.observability import ConnectorObservability
-from glean.indexing.testing import ConnectorTestHarness
 from glean.indexing.models import (
     DatasourceIdentityDefinitions,
     IndexingMode,
-    TSourceData,
     TIndexableEntityDefinition,
+    TSourceData,
 )
-from glean.indexing import models
+from glean.indexing.observability.observability import ConnectorObservability
+from glean.indexing.testing import ConnectorTestHarness
 
 __all__ = [
     "BaseConnector",
+    "BaseDataClient",
     "BaseDatasourceConnector",
     "BasePeopleConnector",
+    "BaseStreamingDataClient",
     "BaseStreamingDatasourceConnector",
-    "BaseAsyncStreamingDatasourceConnector",
-    "AsyncStreamingDatasourceConnector",
-
-    "BaseConnectorDataClient",
-    "StreamingConnectorDataClient",
     "BaseAsyncStreamingDataClient",
-    "AsyncStreamingDataClient",
-    
+    "BaseAsyncStreamingDatasourceConnector",
     "BatchProcessor",
     "ContentFormatter",
     "ConnectorMetrics",
     "ConnectorObservability",
     "ConnectorTestHarness",
-    
     "DatasourceIdentityDefinitions",
     "IndexingMode",
     "TSourceData",
     "TIndexableEntityDefinition",
-    
     "MockGleanClient",
     "api_client",
-
     "models",
 ]
 

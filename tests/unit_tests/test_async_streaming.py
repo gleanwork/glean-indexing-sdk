@@ -9,8 +9,6 @@ from glean.api_client.models import DocumentDefinition
 from glean.indexing.connectors import (
     BaseAsyncStreamingDataClient,
     BaseAsyncStreamingDatasourceConnector,
-    AsyncStreamingDataClient,
-    AsyncStreamingDatasourceConnector,
 )
 
 
@@ -236,15 +234,3 @@ class TestBaseAsyncStreamingDatasourceConnector:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             connector.index_data()
             assert bulk_index.call_count == 1
-
-
-class TestAliases:
-    """Test that convenience aliases work."""
-
-    def test_async_streaming_data_client_alias(self):
-        """Test AsyncStreamingDataClient is alias for BaseAsyncStreamingDataClient."""
-        assert AsyncStreamingDataClient is BaseAsyncStreamingDataClient
-
-    def test_async_streaming_datasource_connector_alias(self):
-        """Test AsyncStreamingDatasourceConnector is alias for BaseAsyncStreamingDatasourceConnector."""
-        assert AsyncStreamingDatasourceConnector is BaseAsyncStreamingDatasourceConnector

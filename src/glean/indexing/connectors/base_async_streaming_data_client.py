@@ -40,6 +40,3 @@ class BaseAsyncStreamingDataClient(ABC, Generic[TSourceData]):
         """
         if False:
             yield  # type: ignore[misc]
-
-
-AsyncStreamingDataClient = BaseAsyncStreamingDataClient

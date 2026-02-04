@@ -9,7 +9,7 @@ from glean.api_client.models import EmployeeInfoDefinition
 
 from glean.indexing.common import BatchProcessor, api_client
 from glean.indexing.connectors.base_connector import BaseConnector
-from glean.indexing.connectors.base_data_client import BaseConnectorDataClient
+from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.models import IndexingMode, TSourceData
 from glean.indexing.observability.observability import ConnectorObservability
 
@@ -32,7 +32,7 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
         name (str): The unique name of the connector (should be snake_case).
         configuration (CustomDatasourceConfig): The people source configuration for Glean registration.
         batch_size (int): The batch size for uploads (default: 1000).
-        data_client (BaseConnectorDataClient): The data client for fetching source data.
+        data_client (BaseDataClient): The data client for fetching source data.
         observability (ConnectorObservability): Observability and metrics for this connector.
 
     Example:
@@ -41,7 +41,7 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
             ...
     """
 
-    def __init__(self, name: str, data_client: BaseConnectorDataClient[TSourceData]):
+    def __init__(self, name: str, data_client: BaseDataClient[TSourceData]):
         """
         Initialize the people connector.
 

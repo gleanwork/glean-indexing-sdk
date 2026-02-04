@@ -41,13 +41,13 @@ uv run pytest tests/unit_tests/test_base_connector.py::TestClassName::test_metho
 - `BaseConnector` - Abstract base defining `get_data()`, `transform()`, `index_data()`
 - `BaseDatasourceConnector` - For document/content indexing (fits in memory)
 - `BaseStreamingDatasourceConnector` - For large/paginated datasets (yields data via sync generator)
-- `AsyncBaseStreamingDatasourceConnector` - For large datasets with async APIs (yields data via async generator)
+- `BaseAsyncStreamingDatasourceConnector` - For large datasets with async APIs (yields data via async generator)
 - `BasePeopleConnector` - For employee/identity indexing
 
 **Data clients** (`src/glean/indexing/connectors/`):
 - `BaseConnectorDataClient[T]` - Fetches all data at once, returns `Sequence[T]`
 - `StreamingConnectorDataClient[T]` - Yields data incrementally via `Generator[T]`
-- `AsyncBaseStreamingDataClient[T]` - Yields data incrementally via `AsyncGenerator[T]`
+- `BaseAsyncStreamingDataClient[T]` - Yields data incrementally via `AsyncGenerator[T]`
 
 ### Pattern: Implementing a Connector
 

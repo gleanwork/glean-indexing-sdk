@@ -12,8 +12,8 @@ from glean.indexing.connectors import (
     BasePeopleConnector,
     BaseConnectorDataClient,
     StreamingConnectorDataClient,
-    AsyncBaseStreamingDataClient,
-    AsyncBaseStreamingDatasourceConnector,
+    BaseAsyncStreamingDataClient,
+    BaseAsyncStreamingDatasourceConnector,
     AsyncStreamingDataClient,
     AsyncStreamingDatasourceConnector,
 )
@@ -33,12 +33,12 @@ __all__ = [
     "BaseDatasourceConnector",
     "BasePeopleConnector",
     "BaseStreamingDatasourceConnector",
-    "AsyncBaseStreamingDatasourceConnector",
+    "BaseAsyncStreamingDatasourceConnector",
     "AsyncStreamingDatasourceConnector",
 
     "BaseConnectorDataClient",
     "StreamingConnectorDataClient",
-    "AsyncBaseStreamingDataClient",
+    "BaseAsyncStreamingDataClient",
     "AsyncStreamingDataClient",
     
     "BatchProcessor",

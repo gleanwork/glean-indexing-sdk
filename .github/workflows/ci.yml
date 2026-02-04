@@ -44,14 +44,11 @@ jobs:
         uses: jdx/mise-action@v2
         with:
           cache: true
-          mise_toml: |
-            [tools]
-            python = "${{ matrix.python-version }}"
-            uv = "latest"
-            node = "22"
-
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Python version for matrix
+        run: mise use python@${{ matrix.python-version }}
 
       - name: Setup development environment
         run: mise run setup

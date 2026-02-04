@@ -7,11 +7,11 @@ Thank you for your interest in contributing to the Glean Connector SDK! This doc
 1. Clone the repository
 2. Set up your environment:
    ```bash
-   # Install go-task if not already installed
-   brew install go-task
+   # Install mise if not already installed
+   brew install mise
 
    # Set up development environment
-   task setup
+   mise run setup
    ```
 
 ## Development Workflow
@@ -27,8 +27,8 @@ We use the following workflow for development:
 
 3. Run linting and tests:
    ```bash
-   task lint:fix
-   task test:all
+   mise run lint:fix
+   mise run test:all
    ```
 
 4. Commit your changes using commitizen:
@@ -43,7 +43,7 @@ We use the following workflow for development:
 We follow standard Python code styles:
 
 - Use [Ruff](https://github.com/astral-sh/ruff) for linting and formatting
-- Use [MyPy](https://mypy.readthedocs.io) for type checking
+- Use [Pyright](https://github.com/microsoft/pyright) for type checking
 - Follow [type hints](https://docs.python.org/3/library/typing.html) in all code
 
 ## Testing
@@ -57,10 +57,10 @@ We use [commitizen](https://commitizen-tools.github.io/commitizen/) for versioni
 
 ```bash
 # Perform a dry run
-task release DRY_RUN=true
+DRY_RUN=true mise run release
 
 # Create a new release
-task release
+mise run release
 ```
 
 ## Documentation

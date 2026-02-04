@@ -4,9 +4,9 @@ This document describes the release process for the Glean Connector SDK.
 
 ## Dependencies
 
-- [`commitizen`](https://github.com/commitizen-tools/commitizen)
-- [`uv`](https://github.com/astral-sh/uv)
-- [`go-task`](https://taskfile.dev/)
+- [`mise`](https://mise.jdx.dev/) - Tool and task management
+- [`commitizen`](https://github.com/commitizen-tools/commitizen) - Conventional commits and versioning
+- [`uv`](https://github.com/astral-sh/uv) - Python package management
 
 ## Versioning
 
@@ -35,7 +35,7 @@ git checkout -b release/vX.Y.Z
 First, perform a dry run to verify the release:
 
 ```bash
-task release DRY_RUN=true
+DRY_RUN=true mise run release
 ```
 
 This will show you what changes will be made without applying them.
@@ -43,7 +43,7 @@ This will show you what changes will be made without applying them.
 Then, run the actual release:
 
 ```bash
-task release
+mise run release
 ```
 
 This will:
@@ -73,8 +73,8 @@ After the PR is merged:
 ```bash
 git checkout main
 git pull
-task build
-task publish
+mise run build
+mise run publish
 ```
 
 This will build the package and upload it to PyPI.

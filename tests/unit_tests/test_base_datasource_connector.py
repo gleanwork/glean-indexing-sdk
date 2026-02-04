@@ -5,11 +5,11 @@ from unittest.mock import Mock, patch
 
 from glean.api_client.models import ContentDefinition, DocumentDefinition
 
-from glean.indexing.connectors import BaseConnectorDataClient, BaseDatasourceConnector
+from glean.indexing.connectors import BaseDataClient, BaseDatasourceConnector
 from glean.indexing.models import CustomDatasourceConfig
 
 
-class MockDataClient(BaseConnectorDataClient[dict]):
+class MockDataClient(BaseDataClient[dict]):
     """Mock data client for testing."""
 
     def __init__(self, data: List[dict]):

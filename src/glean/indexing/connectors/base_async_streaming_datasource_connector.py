@@ -231,6 +231,3 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
             "Consider using index_data_async() for better performance."
         )
         asyncio.run(self.index_data_async(mode=mode, force_restart=force_restart))
-
-
-AsyncStreamingDatasourceConnector = BaseAsyncStreamingDatasourceConnector

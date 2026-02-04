@@ -134,7 +134,8 @@ class AsyncBaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
 
         since = None
         if mode == IndexingMode.INCREMENTAL:
-            since = "2023-01-01T00:00:00Z"
+            since = self._get_last_crawl_timestamp()
+            logger.info(f"Incremental crawl since: {since}")
 
         upload_id = self.generate_upload_id()
         self._force_restart = force_restart

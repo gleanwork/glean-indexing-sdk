@@ -12,6 +12,10 @@ from glean.indexing.connectors import (
     BasePeopleConnector,
     BaseConnectorDataClient,
     StreamingConnectorDataClient,
+    AsyncBaseStreamingDataClient,
+    AsyncBaseStreamingDatasourceConnector,
+    AsyncStreamingDataClient,
+    AsyncStreamingDatasourceConnector,
 )
 from glean.indexing.common import BatchProcessor, ContentFormatter, ConnectorMetrics, api_client, MockGleanClient
 from glean.indexing.observability.observability import ConnectorObservability
@@ -29,9 +33,13 @@ __all__ = [
     "BaseDatasourceConnector",
     "BasePeopleConnector",
     "BaseStreamingDatasourceConnector",
-    
+    "AsyncBaseStreamingDatasourceConnector",
+    "AsyncStreamingDatasourceConnector",
+
     "BaseConnectorDataClient",
     "StreamingConnectorDataClient",
+    "AsyncBaseStreamingDataClient",
+    "AsyncStreamingDataClient",
     
     "BatchProcessor",
     "ContentFormatter",

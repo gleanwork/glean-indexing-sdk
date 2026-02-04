@@ -29,7 +29,3 @@ class BaseDataClient(ABC, Generic[TSourceData]):
             A sequence of data items from the source
         """
         pass
-
-
-# Alias for backward compatibility during transition
-BaseConnectorDataClient = BaseDataClient

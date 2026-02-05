@@ -155,5 +155,27 @@ run = "uv run python -m build"
 [tasks.release]
 description = "Bump version and create a new tag (use DRY_RUN=true for preview)"
 run = [
-  "bash -lc 'if [ \"$DRY_RUN\" = \"true\" ]; then uv run python -m commitizen bump --dry-run && uv run python -m commitizen changelog --dry-run; else uv run python -m commitizen bump --yes && uv run python -m commitizen changelog; fi'",
+  """bash -lc '
+if [ "$DRY_RUN" = "true" ]; then
+  uv run python -m commitizen bump --dry-run
+  uv run python -m commitizen changelog --dry-run
+else
+  # Bump version (includes changelog update via update_changelog_on_bump)
+  uv run python -m commitizen bump --yes
+
+  # Get the tag that was just created
+  TAG=$(git describe --tags --abbrev=0)
+
+  # Regenerate uv.lock with new version
+  uv lock
+
+  # Amend the commit to include uv.lock
+  git add uv.lock
+  git commit --amend --no-edit
+
+  # Update the tag to point to the amended commit
+  git tag -d "$TAG"
+  git tag "$TAG"
+fi
+'""",
 ]

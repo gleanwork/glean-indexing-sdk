@@ -1,3 +1,9 @@
+## v0.3.1 (2026-02-04)
+
+### Fix
+
+- **release**: include CHANGELOG.md and uv.lock in release commit
+
 ## v0.3.0 (2026-02-04)
 
 ### Feat

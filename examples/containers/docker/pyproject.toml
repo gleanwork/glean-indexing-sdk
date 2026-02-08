@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling>=1.18.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "glean-connector-docker-example"
+version = "0.1.0"
+description = "Docker containerized Glean connector example"
+requires-python = ">=3.10,<4.0"
+dependencies = [
+    "glean-indexing-sdk>=0.2.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/connector"]

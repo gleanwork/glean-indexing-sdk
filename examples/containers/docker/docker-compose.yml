@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  connector:
+    build: .
+    environment:
+      # Glean configuration
+      GLEAN_INSTANCE: ${GLEAN_INSTANCE}
+      GLEAN_INDEXING_API_TOKEN: ${GLEAN_INDEXING_API_TOKEN}
+      # Source configuration
+      SOURCE_API_URL: ${SOURCE_API_URL:-https://docs.company.com}
+      SOURCE_API_KEY: ${SOURCE_API_KEY:-}
+    # Override default command for different modes
+    # command: ["--mode", "INCREMENTAL"]
+
+  # Example: Run connector on a schedule with cron
+  # Uncomment and adjust as needed
+  # connector-cron:
+  #   build: .
+  #   entrypoint: ["sh", "-c"]
+  #   command:
+  #     - |
+  #       echo "0 2 * * * python -m connector.main --mode FULL" >> /etc/crontabs/appuser
+  #       echo "0 * * * * python -m connector.main --mode INCREMENTAL" >> /etc/crontabs/appuser
+  #       crond -f
+  #   environment:
+  #     GLEAN_INSTANCE: ${GLEAN_INSTANCE}
+  #     GLEAN_INDEXING_API_TOKEN: ${GLEAN_INDEXING_API_TOKEN}

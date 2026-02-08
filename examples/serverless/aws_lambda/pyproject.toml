@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling>=1.18.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "glean-connector-lambda-example"
+version = "0.1.0"
+description = "AWS Lambda example for Glean connectors"
+requires-python = ">=3.10,<4.0"
+dependencies = [
+    "glean-indexing-sdk>=0.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "aws-sam-cli>=1.100.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lambda_handler"]

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: connector-config
+  namespace: glean-connectors
+  labels:
+    app.kubernetes.io/name: glean-connector
+    app.kubernetes.io/component: config
+data:
+  # Source system configuration
+  SOURCE_API_URL: "https://docs.company.com"
+
+  # Connector settings
+  LOG_LEVEL: "INFO"

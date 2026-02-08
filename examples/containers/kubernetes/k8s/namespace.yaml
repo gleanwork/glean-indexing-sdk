@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: glean-connectors
+  labels:
+    app.kubernetes.io/name: glean-connectors
+    app.kubernetes.io/component: indexing

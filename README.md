@@ -463,3 +463,41 @@ connector = KnowledgeBaseConnector(name="knowledge_base", data_client=data_clien
 connector.configure_datasource()
 connector.index_data(mode=IndexingMode.FULL)
 ```
+
+---
+
+## Deployment Examples
+
+The SDK provides connector abstractions, but you'll need to run them in a production environment. The `examples/` directory contains comprehensive examples for various deployment targets:
+
+### Temporal Workflows (Recommended for Production)
+
+Durable execution with automatic retries, scheduling, and observability. See the [Temporal examples](./examples/temporal/) for details.
+
+```bash
+cd examples/temporal/basic_workflow
+pip install -e .
+python -m basic_workflow.worker  # Start worker
+python -m basic_workflow.starter sample_docs  # Trigger workflow
+```
+
+### AWS Lambda
+
+Serverless deployment with EventBridge scheduling. See the [AWS Lambda example](./examples/serverless/aws_lambda/) for details.
+
+```bash
+cd examples/serverless/aws_lambda
+sam build && sam deploy --guided
+```
+
+### Docker and Kubernetes
+
+Containerized deployment with CronJob scheduling. See the [Docker](./examples/containers/docker/) and [Kubernetes](./examples/containers/kubernetes/) examples for details.
+
+```bash
+cd examples/containers/docker
+docker build -t glean-connector .
+docker run --env-file .env glean-connector --mode FULL
+```
+
+See the [examples README](./examples/README.md) for the full list of deployment options.

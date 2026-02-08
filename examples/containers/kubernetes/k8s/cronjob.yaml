@@ -1,0 +1,116 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: glean-connector-full-sync
+  namespace: glean-connectors
+  labels:
+    app.kubernetes.io/name: glean-connector
+    app.kubernetes.io/component: full-sync
+spec:
+  # Daily at 2 AM UTC
+  schedule: "0 2 * * *"
+
+  # Timezone (requires K8s 1.27+)
+  # timeZone: "America/Los_Angeles"
+
+  # Job settings
+  concurrencyPolicy: Forbid  # Don't run if previous job is still running
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 300  # 5 minutes grace period
+
+  jobTemplate:
+    spec:
+      # Job will be retried once on failure
+      backoffLimit: 1
+
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: glean-connector
+            app.kubernetes.io/component: full-sync
+        spec:
+          restartPolicy: OnFailure
+
+          containers:
+            - name: connector
+              image: your-registry/glean-connector:latest
+              imagePullPolicy: Always
+
+              args:
+                - "--mode"
+                - "FULL"
+                - "--configure"
+
+              envFrom:
+                - configMapRef:
+                    name: connector-config
+                - secretRef:
+                    name: connector-secrets
+
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "500m"
+
+          # Optional: Use a service account with specific permissions
+          # serviceAccountName: glean-connector
+
+          # Optional: Node selection
+          # nodeSelector:
+          #   node-type: batch
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: glean-connector-incremental-sync
+  namespace: glean-connectors
+  labels:
+    app.kubernetes.io/name: glean-connector
+    app.kubernetes.io/component: incremental-sync
+spec:
+  # Hourly during business hours (9 AM - 6 PM UTC, weekdays)
+  schedule: "0 9-18 * * 1-5"
+
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: glean-connector
+            app.kubernetes.io/component: incremental-sync
+        spec:
+          restartPolicy: OnFailure
+
+          containers:
+            - name: connector
+              image: your-registry/glean-connector:latest
+              imagePullPolicy: Always
+
+              args:
+                - "--mode"
+                - "INCREMENTAL"
+
+              envFrom:
+                - configMapRef:
+                    name: connector-config
+                - secretRef:
+                    name: connector-secrets
+
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "250m"

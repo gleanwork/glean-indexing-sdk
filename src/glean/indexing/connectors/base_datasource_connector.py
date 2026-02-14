@@ -10,6 +10,7 @@ from glean.api_client.models import DocumentDefinition
 from glean.indexing.common import BatchProcessor, api_client
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
+from glean.indexing.exceptions import InconsistentDataError, InvalidDatasourceConfigError
 from glean.indexing.models import (
     CustomDatasourceConfig,
     DatasourceIdentityDefinitions,
@@ -101,10 +102,10 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         config = self.configuration
 
         if not config.name:
-            raise ValueError("Missing required field: name in Configuration")
+            raise InvalidDatasourceConfigError("name")
 
         if not config.display_name:
-            raise ValueError("Missing required field: display_name in Configuration")
+            raise InvalidDatasourceConfigError("display_name")
 
         logger.info(f"Configuring datasource: {config.name}")
 
@@ -146,7 +147,12 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
 
                 memberships = identities.get("memberships")
                 if not memberships:
-                    raise ValueError("Groups were provided, but no memberships were provided.")
+                    raise InconsistentDataError(
+                        "identity data",
+                        "Groups were provided, but no memberships were provided",
+                        "Implement get_identities() to return both 'groups' and 'memberships' keys, "
+                        "or remove groups if memberships are not available",
+                    )
 
                 logger.info(f"Indexing {len(memberships)} memberships")
                 self._batch_index_memberships(memberships)

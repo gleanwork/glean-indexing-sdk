@@ -1,6 +1,5 @@
 {
   "snippetRoot": "./snippets",
-  "markdownGlob": "README.md",
+  "markdownGlob": "{README.md,docs/**/*.md}",
   "includeExtensions": [".ts", ".js", ".py"]
 }
-

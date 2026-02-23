@@ -71,4 +71,4 @@ __all__ = [
 try:
     __version__ = version("glean-indexing-sdk")
 except PackageNotFoundError:
-    __version__ = "0.3.1"
+    __version__ = "1.0.0b0"

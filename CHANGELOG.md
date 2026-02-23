@@ -1,3 +1,13 @@
+## v1.0.0b0 (2026-02-23)
+
+### Feat
+
+- add custom exception hierarchy for improved error handling
+
+### Fix
+
+- replace broken documentation URLs with valid ones
+
 ## v0.3.1 (2026-02-04)
 
 ### Fix

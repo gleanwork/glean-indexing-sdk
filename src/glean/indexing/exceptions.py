@@ -68,7 +68,7 @@ class MissingEnvironmentVariableError(GleanConfigurationError):
         missing_vars: List of missing environment variable names.
     """
 
-    DOCS_URL = "https://developers.glean.com/docs/indexing_api/indexing_api_overview#authentication"
+    DOCS_URL = "https://developers.glean.com/api-info/indexing/authentication/overview"
 
     def __init__(self, missing_vars: Sequence[str]) -> None:
         self.missing_vars = list(missing_vars)
@@ -88,9 +88,7 @@ class InvalidDatasourceConfigError(GleanConfigurationError):
         field_name: The name of the missing or invalid field.
     """
 
-    DOCS_URL = (
-        "https://developers.glean.com/docs/indexing_api/custom_datasources/build_custom_datasource"
-    )
+    DOCS_URL = "https://developers.glean.com/api-info/indexing/getting-started/setup-datasource"
 
     def __init__(self, field_name: str) -> None:
         self.field_name = field_name

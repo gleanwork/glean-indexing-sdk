@@ -2,6 +2,8 @@ from typing import List, Optional
 
 from glean.api_client.models.propertydefinition import PropertyDefinition, PropertyType, UIOptions
 
+from glean.indexing.exceptions import InvalidPropertyError
+
 
 class PropertyDefinitionBuilder:
     """
@@ -49,12 +51,12 @@ class PropertyDefinitionBuilder:
             Self for method chaining
 
         Raises:
-            ValueError: If name or display_label is empty
+            InvalidPropertyError: If name or display_label is empty
         """
         if not name or not name.strip():
-            raise ValueError("Property name cannot be empty")
+            raise InvalidPropertyError("name", "cannot be empty")
         if not display_label or not display_label.strip():
-            raise ValueError("Display label cannot be empty")
+            raise InvalidPropertyError("display_label", "cannot be empty")
 
         base_params = {
             "name": name.strip(),
@@ -82,7 +84,7 @@ class PropertyDefinitionBuilder:
             prop = PropertyDefinition(**params)
             self.properties.append(prop)
         except Exception as e:
-            raise ValueError(f"Failed to create PropertyDefinition: {e}") from e
+            raise InvalidPropertyError("PropertyDefinition", str(e)) from e
 
         return self
 

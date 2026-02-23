@@ -2,6 +2,7 @@ import pytest
 from glean.api_client.models.propertydefinition import PropertyDefinition, PropertyType, UIOptions
 
 from glean.indexing.common.property_definition_builder import PropertyDefinitionBuilder
+from glean.indexing.exceptions import InvalidPropertyError
 
 
 class TestPropertyDefinitionBuilder:
@@ -109,30 +110,34 @@ class TestPropertyDefinitionBuilder:
         assert prop.group == "trimmed_group"
 
     def test_empty_name_validation(self):
-        """Test that empty or whitespace-only names raise ValueError."""
+        """Test that empty or whitespace-only names raise InvalidPropertyError."""
         builder = PropertyDefinitionBuilder()
 
-        with pytest.raises(ValueError, match="Property name cannot be empty"):
+        with pytest.raises(InvalidPropertyError, match="Invalid property 'name': cannot be empty"):
             builder.add_property("", "Valid Label")
 
-        with pytest.raises(ValueError, match="Property name cannot be empty"):
+        with pytest.raises(InvalidPropertyError, match="Invalid property 'name': cannot be empty"):
             builder.add_property("   ", "Valid Label")
 
     def test_empty_display_label_validation(self):
-        """Test that empty or whitespace-only display labels raise ValueError."""
+        """Test that empty or whitespace-only display labels raise InvalidPropertyError."""
         builder = PropertyDefinitionBuilder()
 
-        with pytest.raises(ValueError, match="Display label cannot be empty"):
+        with pytest.raises(
+            InvalidPropertyError, match="Invalid property 'display_label': cannot be empty"
+        ):
             builder.add_property("valid_name", "")
 
-        with pytest.raises(ValueError, match="Display label cannot be empty"):
+        with pytest.raises(
+            InvalidPropertyError, match="Invalid property 'display_label': cannot be empty"
+        ):
             builder.add_property("valid_name", "   ")
 
     def test_property_definition_creation_error_handling(self):
         """Test error handling when PropertyDefinition creation fails."""
         builder = PropertyDefinitionBuilder()
 
-        with pytest.raises(ValueError, match="Property name cannot be empty"):
+        with pytest.raises(InvalidPropertyError, match="Invalid property 'name': cannot be empty"):
             builder.add_property(None, "Test Label")  # type: ignore
 
     def test_clear_method(self):

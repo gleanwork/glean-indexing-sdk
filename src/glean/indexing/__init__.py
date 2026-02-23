@@ -7,6 +7,16 @@ the base classes and utilities to create custom connectors for Glean's indexing 
 from importlib.metadata import PackageNotFoundError, version
 
 from glean.indexing import models
+from glean.indexing.exceptions import (
+    GleanConfigurationError,
+    GleanError,
+    GleanValidationError,
+    InconsistentDataError,
+    InvalidDatasourceConfigError,
+    InvalidPropertyError,
+    MissingEnvironmentVariableError,
+    UnsupportedConnectorTypeError,
+)
 from glean.indexing.common import BatchProcessor, ConnectorMetrics, ContentFormatter, MockGleanClient, api_client
 from glean.indexing.connectors import (
     BaseAsyncStreamingDataClient,
@@ -48,6 +58,14 @@ __all__ = [
     "MockGleanClient",
     "api_client",
     "models",
+    "GleanError",
+    "GleanConfigurationError",
+    "GleanValidationError",
+    "MissingEnvironmentVariableError",
+    "InvalidDatasourceConfigError",
+    "InvalidPropertyError",
+    "InconsistentDataError",
+    "UnsupportedConnectorTypeError",
 ]
 
 try:

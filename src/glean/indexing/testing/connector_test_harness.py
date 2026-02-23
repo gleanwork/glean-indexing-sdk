@@ -4,6 +4,7 @@ import logging
 from unittest.mock import patch
 
 from glean.indexing.connectors import BaseConnector, BaseDatasourceConnector, BasePeopleConnector
+from glean.indexing.exceptions import UnsupportedConnectorTypeError
 from glean.indexing.testing.mock_glean_client import MockGleanClient
 from glean.indexing.testing.response_validator import ResponseValidator
 
@@ -46,7 +47,10 @@ class ConnectorTestHarness:
             if isinstance(self.connector, (BaseDatasourceConnector, BasePeopleConnector)):
                 self.connector.index_data()
             else:
-                raise ValueError(f"Unsupported connector type: {type(self.connector)}")
+                raise UnsupportedConnectorTypeError(
+                    type(self.connector),
+                    [BaseDatasourceConnector, BasePeopleConnector],
+                )
 
     def get_validator(self) -> ResponseValidator:
         """Get the response validator for checking results."""

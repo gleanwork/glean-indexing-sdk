@@ -190,3 +190,4 @@ mise run lint:fix           # auto-fix lint issues and format code
 - [Architecture overview](docs/architecture.md) — data flow diagram and component hierarchy
 - [Streaming connectors](docs/streaming-connectors.md) — sync and async streaming walkthroughs
 - [Advanced usage](docs/advanced.md) — connector selection guide, forced restart uploads
+- [Worker](docs/worker.md) — subprocess for executing connectors via JSON-RPC (used by the Glean MCP server)

@@ -689,7 +689,7 @@ class ConnectorExecutor:
         if data_client is not None:
             try:
                 # Get datasource name from connector's configuration if available
-                name = "studio_test"
+                name = "worker_test"
                 if hasattr(connector_class, "configuration"):
                     config = connector_class.configuration
                     if hasattr(config, "name"):
@@ -701,7 +701,7 @@ class ConnectorExecutor:
 
         # Strategy 3: Create a mock data client wrapper
         try:
-            name = "studio_test"
+            name = "worker_test"
             if hasattr(connector_class, "configuration"):
                 config = connector_class.configuration
                 if hasattr(config, "name"):

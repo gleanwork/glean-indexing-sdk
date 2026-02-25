@@ -1,6 +1,6 @@
 """JSON-RPC 2.0 protocol types for worker communication.
 
-The worker uses JSON-RPC over stdin/stdout to communicate with Studio.
+The worker uses JSON-RPC over stdin/stdout to communicate with its parent process.
 This follows similar patterns to LSP (Language Server Protocol).
 """
 

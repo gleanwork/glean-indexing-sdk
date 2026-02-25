@@ -1,13 +1,14 @@
-"""Worker module for Glean Connector Studio.
+"""Worker module for executing Glean indexing connectors.
 
-This module provides a minimal worker that can be spawned as a subprocess
-by Studio to execute connectors in their project's virtual environment.
+This module provides a subprocess-based worker that can be spawned by an
+orchestrator (such as the Glean MCP server) to discover and execute
+connectors in their project's virtual environment.
 
 Usage:
     cd /path/to/connector/project
     uv run python -m glean.indexing.worker
 
-The worker communicates with Studio via JSON-RPC over stdin/stdout.
+The worker communicates with its parent process via JSON-RPC over stdin/stdout.
 """
 
 from glean.indexing.worker.discovery import ConnectorInfo, ProjectDiscovery, ProjectInfo

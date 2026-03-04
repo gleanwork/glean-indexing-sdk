@@ -10,7 +10,7 @@ from glean.indexing.exceptions import MissingEnvironmentVariableError
 def api_client() -> Glean:
     """Get the Glean API client."""
     server_url = os.getenv("GLEAN_SERVER_URL")
-    instance = os.getenv("GLEAN_INSTANCE")
+    instance = os.getenv("GLEAN_INSTANCE")  # Deprecated: use GLEAN_SERVER_URL instead
     api_token = os.getenv("GLEAN_INDEXING_API_TOKEN")
 
     missing = []

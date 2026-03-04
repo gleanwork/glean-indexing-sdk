@@ -32,10 +32,10 @@ See [Architecture overview](docs/architecture.md) for a data flow diagram and th
 ### 1. Set up credentials
 
 ```bash
-export GLEAN_SERVER_URL="https://acme-be.glean.com"
+export GLEAN_SERVER_URL="https://your-company-be.glean.com"
 export GLEAN_INDEXING_API_TOKEN="your-indexing-api-token"
 
-# Alternative: use GLEAN_INSTANCE instead of GLEAN_SERVER_URL
+# Deprecated alternative: use GLEAN_INSTANCE as legacy fallback
 # export GLEAN_INSTANCE="acme"
 ```
 

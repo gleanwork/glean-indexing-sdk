@@ -32,8 +32,11 @@ See [Architecture overview](docs/architecture.md) for a data flow diagram and th
 ### 1. Set up credentials
 
 ```bash
-export GLEAN_INSTANCE="acme"
+export GLEAN_SERVER_URL="https://acme-be.glean.com"
 export GLEAN_INDEXING_API_TOKEN="your-indexing-api-token"
+
+# Alternative: use GLEAN_INSTANCE instead of GLEAN_SERVER_URL
+# export GLEAN_INSTANCE="acme"
 ```
 
 ### 2. Build a connector

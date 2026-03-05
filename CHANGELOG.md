@@ -1,3 +1,9 @@
+## v1.0.0b1 (2026-03-05)
+
+### Feat
+
+- support GLEAN_SERVER_URL with GLEAN_INSTANCE fallback (#14)
+
 ## v1.0.0b0 (2026-02-23)
 
 ### Feat

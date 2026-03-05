@@ -75,18 +75,18 @@ class TestMissingEnvironmentVariableError:
 
     def test_single_missing_variable(self):
         """Test error message with a single missing variable."""
-        error = MissingEnvironmentVariableError(["GLEAN_INSTANCE"])
-        assert error.missing_vars == ["GLEAN_INSTANCE"]
-        assert "GLEAN_INSTANCE" in str(error)
-        assert "export GLEAN_INSTANCE=<value>" in str(error)
+        error = MissingEnvironmentVariableError(["GLEAN_SERVER_URL"])
+        assert error.missing_vars == ["GLEAN_SERVER_URL"]
+        assert "GLEAN_SERVER_URL" in str(error)
+        assert "export GLEAN_SERVER_URL=<value>" in str(error)
         assert error.docs_url == MissingEnvironmentVariableError.DOCS_URL
 
     def test_multiple_missing_variables(self):
         """Test error message with multiple missing variables."""
-        error = MissingEnvironmentVariableError(["GLEAN_INSTANCE", "GLEAN_INDEXING_API_TOKEN"])
-        assert error.missing_vars == ["GLEAN_INSTANCE", "GLEAN_INDEXING_API_TOKEN"]
+        error = MissingEnvironmentVariableError(["GLEAN_SERVER_URL", "GLEAN_INDEXING_API_TOKEN"])
+        assert error.missing_vars == ["GLEAN_SERVER_URL", "GLEAN_INDEXING_API_TOKEN"]
         message = str(error)
-        assert "GLEAN_INSTANCE" in message
+        assert "GLEAN_SERVER_URL" in message
         assert "GLEAN_INDEXING_API_TOKEN" in message
         assert "export" in message
 

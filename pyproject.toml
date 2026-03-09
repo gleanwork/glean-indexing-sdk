@@ -24,6 +24,7 @@ dev = [
     "pip-audit>=2.6.0",
 ]
 test = [
+    "jsonschema>=4.26.0",
     "pytest>=7.4.3",
     "pytest-asyncio>=0.23.2",
     "pytest-cov>=4.1.0",
@@ -130,9 +131,3 @@ filterwarnings = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/glean"] 
 
-[dependency-groups]
-dev = [
-    "jsonschema>=4.26.0",
-    "pytest>=8.3.5",
-    "pytest-asyncio>=0.26.0",
-]

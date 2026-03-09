@@ -466,6 +466,7 @@ lint = [
     { name = "ruff" },
 ]
 test = [
+    { name = "jsonschema" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -478,19 +479,13 @@ typing = [
     { name = "pyright" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "jsonschema" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "commitizen", marker = "extra == 'dev'", specifier = ">=4.4.1" },
     { name = "glean-api-client", specifier = ">=0.6.3" },
     { name = "jinja2", specifier = ">=3.1.2" },
+    { name = "jsonschema", marker = "extra == 'test'", specifier = ">=4.26.0" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.6.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pyright", marker = "extra == 'typing'", specifier = ">=1.1.370" },
@@ -505,13 +500,6 @@ requires-dist = [
     { name = "twine", marker = "extra == 'dev'", specifier = ">=4.0.0" },
 ]
 provides-extras = ["dev", "test", "lint", "typing"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "pytest", specifier = ">=8.3.5" },
-    { name = "pytest-asyncio", specifier = ">=0.26.0" },
-]
 
 [[package]]
 name = "h11"

@@ -113,7 +113,15 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             config.is_test_datasource = True
 
         with api_client() as client:
-            client.indexing.datasources.add(**config.dict(exclude_unset=True))
+            # Use attribute access instead of model_dump() because certain
+            # pydantic/api-client version combinations return camelCase aliases
+            # even with by_alias=False, and datasources.add() expects snake_case.
+            kwargs = {
+                name: getattr(config, name)
+                for name in type(config).model_fields
+                if name in config.model_fields_set
+            }
+            client.indexing.datasources.add(**kwargs)
             logger.info(f"Successfully configured datasource: {config.name}")
 
     def index_data(

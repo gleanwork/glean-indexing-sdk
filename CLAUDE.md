@@ -25,7 +25,16 @@ mise run lint:fix             # Auto-fix lint issues and format code
 
 # Building
 mise run build                # Build the package
+
+# Releasing
+DRY_RUN=true mise run release        # Preview the next version bump and changelog
+mise run release                     # Bump version, update changelog, regenerate uv.lock, create tag
+PRERELEASE=beta mise run release     # Stay on the beta track (e.g. 1.0.0b1 -> 1.0.0b2)
 ```
+
+**Always use `mise run release` for releases.** Do not invoke `cz bump` / `commitizen` directly or hand-edit version files. The mise task does more than commitizen alone: it regenerates `uv.lock` after the version bump, amends the bump commit to include the lockfile, and re-points the tag at the amended commit. Calling `cz bump` directly skips the lockfile sync and produces a tag that doesn't match what gets published.
+
+When bumping from a prerelease (e.g. `1.0.0b1`), commitizen would normally promote to GA on the next `feat:`/`fix:` commit. Use `PRERELEASE=beta` (or `alpha`/`rc`) to stay on the prerelease track instead.
 
 Run a single test:
 ```bash

@@ -1,9 +1,10 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from glean.api_client.models import DocumentDefinition
 
+from glean.api_client.models import DocumentDefinition
 from glean.indexing.connectors import BaseStreamingDataClient, BaseStreamingDatasourceConnector
+from glean.indexing.models import ConnectorOptions
 
 
 class DummyStreamingDataClient(BaseStreamingDataClient[dict]):
@@ -106,7 +107,7 @@ def test_index_data_error_handling():
 
 
 def test_force_restart_upload():
-    """Test that force_restart parameter sets forceRestartUpload on first batch."""
+    """Test that force_restart option sets force_restart_upload on first batch."""
     client = DummyStreamingDataClient()
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 2
@@ -115,30 +116,30 @@ def test_force_restart_upload():
         "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
     ) as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
-        connector.index_data(force_restart=True)
+        connector.index_data(options=ConnectorOptions(force_restart=True))
 
         assert bulk_index.call_count == 3
 
-        # First call should have forceRestartUpload=True
+        # First call should have force_restart_upload=True
         first_call_kwargs = bulk_index.call_args_list[0][1]
-        assert first_call_kwargs["forceRestartUpload"] is True
+        assert first_call_kwargs["force_restart_upload"] is True
         assert first_call_kwargs["is_first_page"] is True
         assert first_call_kwargs["is_last_page"] is False
 
-        # Subsequent calls should NOT have forceRestartUpload
+        # Subsequent calls should have force_restart_upload=None
         second_call_kwargs = bulk_index.call_args_list[1][1]
-        assert "forceRestartUpload" not in second_call_kwargs
+        assert second_call_kwargs["force_restart_upload"] is None
         assert second_call_kwargs["is_first_page"] is False
         assert second_call_kwargs["is_last_page"] is False
 
         third_call_kwargs = bulk_index.call_args_list[2][1]
-        assert "forceRestartUpload" not in third_call_kwargs
+        assert third_call_kwargs["force_restart_upload"] is None
         assert third_call_kwargs["is_first_page"] is False
         assert third_call_kwargs["is_last_page"] is True
 
 
 def test_normal_upload_no_force_restart():
-    """Test that normal upload does not include forceRestartUpload parameter."""
+    """Test that normal upload does not set force_restart_upload."""
     client = DummyStreamingDataClient()
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 5
@@ -147,12 +148,35 @@ def test_normal_upload_no_force_restart():
         "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
     ) as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
-        connector.index_data(force_restart=False)
+        connector.index_data()
 
         assert bulk_index.call_count == 1
 
-        # Should NOT have forceRestartUpload parameter
         call_kwargs = bulk_index.call_args[1]
-        assert "forceRestartUpload" not in call_kwargs
+        assert call_kwargs["force_restart_upload"] is None
         assert call_kwargs["is_first_page"] is True
         assert call_kwargs["is_last_page"] is True
+
+
+def test_disable_stale_deletion_check_on_last_page_only():
+    """Test that disable_stale_document_deletion_check is set only on the last batch."""
+    client = DummyStreamingDataClient()
+    connector = DummyStreamingConnector("test_stream", client)
+    connector.batch_size = 2
+
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
+        bulk_index = api_client().__enter__().indexing.documents.bulk_index
+        connector.index_data(options=ConnectorOptions(disable_stale_deletion_check=True))
+
+        assert bulk_index.call_count == 3
+
+        first_call_kwargs = bulk_index.call_args_list[0][1]
+        assert first_call_kwargs["disable_stale_document_deletion_check"] is None
+
+        second_call_kwargs = bulk_index.call_args_list[1][1]
+        assert second_call_kwargs["disable_stale_document_deletion_check"] is None
+
+        last_call_kwargs = bulk_index.call_args_list[2][1]
+        assert last_call_kwargs["disable_stale_document_deletion_check"] is True

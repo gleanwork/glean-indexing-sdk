@@ -9,7 +9,7 @@ from typing import AsyncGenerator, List, Optional, Sequence
 from glean.indexing.common import api_client
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
-from glean.indexing.models import IndexingMode, TSourceData
+from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
 
 logger = logging.getLogger(__name__)
 
@@ -81,14 +81,16 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
             yield item
 
     async def index_data_async(
-        self, mode: IndexingMode = IndexingMode.FULL, force_restart: bool = False
+        self,
+        mode: IndexingMode = IndexingMode.FULL,
+        options: Optional[ConnectorOptions] = None,
     ) -> None:
         """
         Index data from the datasource to Glean using async streaming.
 
         Args:
             mode: The indexing mode to use (FULL or INCREMENTAL).
-            force_restart: If True, forces a restart of the upload.
+            options: Optional connector options for controlling indexing behavior.
         """
         logger.info(
             f"Starting {mode.name.lower()} async streaming indexing for datasource '{self.name}'"
@@ -100,7 +102,8 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
             logger.info(f"Incremental crawl since: {since}")
 
         upload_id = self.generate_upload_id()
-        self._force_restart = force_restart
+        self._force_restart = options.force_restart if options else False
+        self._options = options
         is_first_batch = True
         batch: List[TSourceData] = []
         batch_count = 0
@@ -178,20 +181,23 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
             transformed_batch = self.transform(batch)
             logger.info(f"Transformed batch {batch_number}: {len(transformed_batch)} documents")
 
-            bulk_index_kwargs = {
-                "datasource": self.name,
-                "documents": list(transformed_batch),
-                "upload_id": upload_id,
-                "is_first_page": is_first_batch,
-                "is_last_page": is_last_batch,
-            }
-
             if self._force_restart and is_first_batch:
-                bulk_index_kwargs["forceRestartUpload"] = True
                 logger.info("Force restarting upload - discarding any previous upload progress")
 
+            options = self._options
+
             with api_client() as client:
-                client.indexing.documents.bulk_index(**bulk_index_kwargs)
+                client.indexing.documents.bulk_index(
+                    datasource=self.name,
+                    documents=list(transformed_batch),
+                    upload_id=upload_id,
+                    is_first_page=is_first_batch,
+                    is_last_page=is_last_batch,
+                    force_restart_upload=True if (self._force_restart and is_first_batch) else None,
+                    disable_stale_document_deletion_check=True
+                    if (options and is_last_batch and options.disable_stale_deletion_check)
+                    else None,
+                )
 
             logger.info(f"Batch {batch_number} indexed successfully")
 
@@ -219,7 +225,9 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
         return asyncio.run(collect())
 
     def index_data(
-        self, mode: IndexingMode = IndexingMode.FULL, force_restart: bool = False
+        self,
+        mode: IndexingMode = IndexingMode.FULL,
+        options: Optional[ConnectorOptions] = None,
     ) -> None:
         """
         Sync fallback for index_data.
@@ -230,4 +238,4 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
             "Sync index_data() called on async connector - using asyncio.run(). "
             "Consider using index_data_async() for better performance."
         )
-        asyncio.run(self.index_data_async(mode=mode, force_restart=force_restart))
+        asyncio.run(self.index_data_async(mode=mode, options=options))

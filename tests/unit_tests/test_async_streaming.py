@@ -4,12 +4,13 @@ from typing import AsyncGenerator, Sequence
 from unittest.mock import MagicMock, patch
 
 import pytest
-from glean.api_client.models import DocumentDefinition
 
+from glean.api_client.models import DocumentDefinition
 from glean.indexing.connectors import (
     BaseAsyncStreamingDataClient,
     BaseAsyncStreamingDatasourceConnector,
 )
+from glean.indexing.models import ConnectorOptions
 
 
 class DummyAsyncDataClient(BaseAsyncStreamingDataClient[dict]):
@@ -183,7 +184,7 @@ class TestBaseAsyncStreamingDatasourceConnector:
 
     @pytest.mark.asyncio
     async def test_index_data_async_force_restart(self):
-        """Test that force_restart sets forceRestartUpload on first batch."""
+        """Test that force_restart option sets force_restart_upload on first batch."""
         client = DummyAsyncDataClient()
         connector = DummyAsyncConnector("test", client)
         connector.batch_size = 2
@@ -192,15 +193,15 @@ class TestBaseAsyncStreamingDatasourceConnector:
             "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
         ) as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
-            await connector.index_data_async(force_restart=True)
+            await connector.index_data_async(options=ConnectorOptions(force_restart=True))
 
-            # First batch should have forceRestartUpload
+            # First batch should have force_restart_upload=True
             first_call = bulk_index.call_args_list[0][1]
-            assert first_call["forceRestartUpload"] is True
+            assert first_call["force_restart_upload"] is True
 
-            # Subsequent batches should not
+            # Subsequent batches should have force_restart_upload=None
             second_call = bulk_index.call_args_list[1][1]
-            assert "forceRestartUpload" not in second_call
+            assert second_call["force_restart_upload"] is None
 
     @pytest.mark.asyncio
     async def test_index_data_async_error_handling(self):
@@ -216,6 +217,33 @@ class TestBaseAsyncStreamingDatasourceConnector:
 
             with pytest.raises(Exception, match="upload failed"):
                 await connector.index_data_async()
+
+    @pytest.mark.asyncio
+    async def test_disable_stale_deletion_check_on_last_page_only(self):
+        """Test that disable_stale_document_deletion_check is set only on the last batch."""
+        client = DummyAsyncDataClient()
+        connector = DummyAsyncConnector("test", client)
+        connector.batch_size = 2
+
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
+            bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
+            await connector.index_data_async(
+                options=ConnectorOptions(disable_stale_deletion_check=True)
+            )
+
+            # 5 items with batch_size=2 = 3 batches
+            assert bulk_index.call_count == 3
+
+            first_call = bulk_index.call_args_list[0][1]
+            assert first_call["disable_stale_document_deletion_check"] is None
+
+            second_call = bulk_index.call_args_list[1][1]
+            assert second_call["disable_stale_document_deletion_check"] is None
+
+            last_call = bulk_index.call_args_list[2][1]
+            assert last_call["disable_stale_document_deletion_check"] is True
 
     def test_sync_fallback_get_data(self):
         """Test that sync get_data() works as fallback."""

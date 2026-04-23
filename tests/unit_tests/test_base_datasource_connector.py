@@ -4,9 +4,8 @@ from typing import List, Sequence
 from unittest.mock import Mock, patch
 
 from glean.api_client.models import ContentDefinition, DocumentDefinition
-
 from glean.indexing.connectors import BaseDataClient, BaseDatasourceConnector
-from glean.indexing.models import CustomDatasourceConfig
+from glean.indexing.models import ConnectorOptions, CustomDatasourceConfig
 
 
 class MockDataClient(BaseDataClient[dict]):
@@ -132,7 +131,7 @@ class TestBaseDatasourceConnector:
 
     @patch("glean.indexing.connectors.base_datasource_connector.api_client")
     def test_force_restart_upload(self, mock_api_client):
-        """Test that force_restart parameter sets forceRestartUpload on first batch."""
+        """Test that force_restart option sets force_restart_upload on first batch."""
         mock_client = Mock()
         mock_api_client.return_value.__enter__.return_value = mock_client
 
@@ -154,26 +153,26 @@ class TestBaseDatasourceConnector:
         connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
         connector.batch_size = 1
 
-        connector.index_data(force_restart=True)
+        connector.index_data(options=ConnectorOptions(force_restart=True))
 
         # Should be called twice (one batch per document)
         assert mock_client.indexing.documents.bulk_index.call_count == 2
 
-        # First call should have forceRestartUpload=True
+        # First call should have force_restart_upload=True
         first_call_kwargs = mock_client.indexing.documents.bulk_index.call_args_list[0][1]
-        assert first_call_kwargs["forceRestartUpload"] is True
+        assert first_call_kwargs["force_restart_upload"] is True
         assert first_call_kwargs["is_first_page"] is True
         assert first_call_kwargs["is_last_page"] is False
 
-        # Second call should NOT have forceRestartUpload
+        # Second call should have force_restart_upload=None
         second_call_kwargs = mock_client.indexing.documents.bulk_index.call_args_list[1][1]
-        assert "forceRestartUpload" not in second_call_kwargs
+        assert second_call_kwargs["force_restart_upload"] is None
         assert second_call_kwargs["is_first_page"] is False
         assert second_call_kwargs["is_last_page"] is True
 
     @patch("glean.indexing.connectors.base_datasource_connector.api_client")
     def test_normal_upload_no_force_restart(self, mock_api_client):
-        """Test that normal upload does not include forceRestartUpload parameter."""
+        """Test that normal upload does not set force_restart_upload."""
         mock_client = Mock()
         mock_api_client.return_value.__enter__.return_value = mock_client
 
@@ -188,13 +187,63 @@ class TestBaseDatasourceConnector:
         data_client = MockDataClient(test_data)
         connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
 
-        connector.index_data(force_restart=False)
+        connector.index_data()
 
         # Should be called once
         assert mock_client.indexing.documents.bulk_index.call_count == 1
 
-        # Should NOT have forceRestartUpload parameter
         call_kwargs = mock_client.indexing.documents.bulk_index.call_args[1]
-        assert "forceRestartUpload" not in call_kwargs
+        assert call_kwargs["force_restart_upload"] is None
         assert call_kwargs["is_first_page"] is True
         assert call_kwargs["is_last_page"] is True
+
+    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    def test_disable_stale_deletion_check_on_last_page_only(self, mock_api_client):
+        """Test that disable_stale_document_deletion_check is set only on the last batch."""
+        mock_client = Mock()
+        mock_api_client.return_value.__enter__.return_value = mock_client
+
+        test_data = [
+            {
+                "id": "1",
+                "title": "Doc 1",
+                "content": "Content 1",
+                "url": "https://test.example.com/1",
+            },
+            {
+                "id": "2",
+                "title": "Doc 2",
+                "content": "Content 2",
+                "url": "https://test.example.com/2",
+            },
+        ]
+        data_client = MockDataClient(test_data)
+        connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
+        connector.batch_size = 1
+
+        connector.index_data(options=ConnectorOptions(disable_stale_deletion_check=True))
+
+        assert mock_client.indexing.documents.bulk_index.call_count == 2
+
+        first_call_kwargs = mock_client.indexing.documents.bulk_index.call_args_list[0][1]
+        assert first_call_kwargs["disable_stale_document_deletion_check"] is None
+
+        last_call_kwargs = mock_client.indexing.documents.bulk_index.call_args_list[1][1]
+        assert last_call_kwargs["disable_stale_document_deletion_check"] is True
+
+    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    def test_disable_stale_deletion_check_not_set_without_options(self, mock_api_client):
+        """Test that disable_stale_document_deletion_check is not set when options are not provided."""
+        mock_client = Mock()
+        mock_api_client.return_value.__enter__.return_value = mock_client
+
+        test_data = [
+            {"id": "1", "title": "Doc", "content": "Content", "url": "https://test.example.com/1"},
+        ]
+        data_client = MockDataClient(test_data)
+        connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
+
+        connector.index_data()
+
+        call_kwargs = mock_client.indexing.documents.bulk_index.call_args[1]
+        assert call_kwargs["disable_stale_document_deletion_check"] is None

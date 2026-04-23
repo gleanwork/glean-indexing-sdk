@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Sequence, TypedDict, TypeVar
 
@@ -24,6 +25,14 @@ TIndexableEntityDefinition = TypeVar("TIndexableEntityDefinition")
 """Type variable for the Glean API entity definition produced by the connector (e.g., DocumentDefinition, EmployeeInfoDefinition)."""
 
 
+@dataclass
+class ConnectorOptions:
+    """Options for controlling connector indexing behavior."""
+
+    force_restart: bool = False
+    disable_stale_deletion_check: bool = False
+
+
 class DatasourceIdentityDefinitions(TypedDict, total=False):
     """Defines user, group, and membership identity data for a datasource."""
 
@@ -33,6 +42,7 @@ class DatasourceIdentityDefinitions(TypedDict, total=False):
 
 
 __all__ = [
+    "ConnectorOptions",
     "CustomDatasourceConfig",
     "DocumentDefinition",
     "EmployeeInfoDefinition",

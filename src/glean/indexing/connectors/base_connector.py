@@ -4,7 +4,12 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Generic, Optional, Sequence
 
-from glean.indexing.models import IndexingMode, TIndexableEntityDefinition, TSourceData
+from glean.indexing.models import (
+    ConnectorOptions,
+    IndexingMode,
+    TIndexableEntityDefinition,
+    TSourceData,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +61,14 @@ class BaseConnector(ABC, Generic[TSourceData, TIndexableEntityDefinition]):
 
     @abstractmethod
     def index_data(
-        self, mode: IndexingMode = IndexingMode.FULL, force_restart: bool = False
+        self,
+        mode: IndexingMode = IndexingMode.FULL,
+        options: Optional[ConnectorOptions] = None,
     ) -> None:
         """Index data from the connector to Glean.
 
         Args:
             mode: The indexing mode to use (FULL or INCREMENTAL).
-            force_restart: If True, forces a restart of the upload, discarding any previous upload progress.
+            options: Optional connector options for controlling indexing behavior.
         """
         pass

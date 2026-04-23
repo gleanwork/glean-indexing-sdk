@@ -3,7 +3,6 @@
 import os
 
 from glean.api_client import Glean
-
 from glean.indexing.exceptions import MissingEnvironmentVariableError
 
 

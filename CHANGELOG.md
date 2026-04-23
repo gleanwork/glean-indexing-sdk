@@ -1,3 +1,14 @@
+## v1.0.0b2 (2026-04-23)
+
+### Feat
+
+- add ConnectorOptions for bulk indexing configuration
+
+### Fix
+
+- sync markdown doc with reformatted snippet import order
+- use attribute access in configure_datasource() to avoid camelCase kwargs
+
 ## v1.0.0b1 (2026-03-05)
 
 ### Feat

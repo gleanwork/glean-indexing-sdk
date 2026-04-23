@@ -29,6 +29,7 @@ from glean.indexing.connectors import (
     BaseStreamingDatasourceConnector,
 )
 from glean.indexing.models import (
+    ConnectorOptions,
     DatasourceIdentityDefinitions,
     IndexingMode,
     TIndexableEntityDefinition,
@@ -39,6 +40,7 @@ from glean.indexing.testing import ConnectorTestHarness
 
 __all__ = [
     "BaseConnector",
+    "ConnectorOptions",
     "BaseDataClient",
     "BaseDatasourceConnector",
     "BasePeopleConnector",

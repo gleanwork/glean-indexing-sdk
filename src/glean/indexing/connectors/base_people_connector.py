@@ -6,11 +6,10 @@ from abc import ABC
 from typing import Optional, Sequence
 
 from glean.api_client.models import EmployeeInfoDefinition
-
 from glean.indexing.common import BatchProcessor, api_client
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
-from glean.indexing.models import IndexingMode, TSourceData
+from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
 from glean.indexing.observability.observability import ConnectorObservability
 
 logger = logging.getLogger(__name__)
@@ -60,14 +59,15 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
         return self._observability
 
     def index_data(
-        self, mode: IndexingMode = IndexingMode.FULL, force_restart: bool = False
+        self,
+        mode: IndexingMode = IndexingMode.FULL,
+        options: Optional[ConnectorOptions] = None,
     ) -> None:
         """Index people data to Glean.
 
         Args:
             mode: The indexing mode to use (FULL or INCREMENTAL).
-            force_restart: If True, forces a restart of the upload, discarding any previous upload progress.
-                          This sets forceRestartUpload=True on the first batch and generates a new upload ID.
+            options: Optional connector options for controlling indexing behavior.
         """
         self._observability.start_execution()
 
@@ -94,7 +94,7 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
             self._observability.record_metric("employees_transformed", len(employees))
 
             self._observability.start_timer("data_upload")
-            self._batch_index_employees(employees, force_restart=force_restart)
+            self._batch_index_employees(employees, options=options)
             self._observability.end_timer("data_upload")
 
             logger.info(f"Successfully indexed {len(employees)} employees to Glean")
@@ -119,19 +119,22 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
         return self.data_client.get_source_data(since=since)
 
     def _batch_index_employees(
-        self, employees: Sequence[EmployeeInfoDefinition], force_restart: bool = False
+        self,
+        employees: Sequence[EmployeeInfoDefinition],
+        options: Optional[ConnectorOptions] = None,
     ) -> None:
         """Index employees to Glean in batches.
 
         Args:
             employees: The employees to index
-            force_restart: If True, forces a restart by generating a new upload ID and setting forceRestartUpload=True on the first batch
+            options: Optional connector options for controlling indexing behavior
         """
         if not employees:
             return
 
         batches = list(BatchProcessor(list(employees), batch_size=self.batch_size))
         total_batches = len(batches)
+        force_restart = options.force_restart if options else False
 
         logger.info(f"Uploading {len(employees)} employees in {total_batches} batches")
 
@@ -139,19 +142,22 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
         for i, batch in enumerate(batches):
             try:
                 is_first_page = i == 0
-                bulk_index_kwargs = {
-                    "employees": list(batch),
-                    "upload_id": upload_id,
-                    "is_first_page": is_first_page,
-                    "is_last_page": (i == total_batches - 1),
-                }
+                is_last_page = i == total_batches - 1
 
                 if force_restart and is_first_page:
-                    bulk_index_kwargs["forceRestartUpload"] = True
                     logger.info("Force restarting upload - discarding any previous upload progress")
 
                 with api_client() as client:
-                    client.indexing.people.bulk_index(**bulk_index_kwargs)
+                    client.indexing.people.bulk_index(
+                        employees=list(batch),
+                        upload_id=upload_id,
+                        is_first_page=is_first_page,
+                        is_last_page=is_last_page,
+                        force_restart_upload=True if (force_restart and is_first_page) else None,
+                        disable_stale_data_deletion_check=True
+                        if (options and is_last_page and options.disable_stale_deletion_check)
+                        else None,
+                    )
 
                 logger.info(f"Employee batch {i + 1}/{total_batches} uploaded successfully")
                 self._observability.increment_counter("batches_uploaded")

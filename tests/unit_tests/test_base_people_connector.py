@@ -1,9 +1,10 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from glean.api_client.models import EmployeeInfoDefinition
 
+from glean.api_client.models import EmployeeInfoDefinition
 from glean.indexing.connectors.base_people_connector import BasePeopleConnector
+from glean.indexing.models import ConnectorOptions
 from tests.unit_tests.common.mock_clients import MockPeopleClient
 
 
@@ -78,3 +79,52 @@ def test_index_data_error_handling():
         bulk_index.side_effect = Exception("upload failed")
         with pytest.raises(Exception):
             connector.index_data()
+
+
+def test_force_restart_upload():
+    """Test that force_restart option sets force_restart_upload on first batch."""
+    client = MagicMock()
+    people_data = MockPeopleClient().get_all_people()
+    client.get_source_data.return_value = people_data
+    connector = DummyPeopleConnector("test_people", client)
+    connector.batch_size = 2
+
+    with patch("glean.indexing.connectors.base_people_connector.api_client") as api_client:
+        bulk_index = api_client().__enter__().indexing.people.bulk_index
+        connector.index_data(options=ConnectorOptions(force_restart=True))
+
+        # 5 people with batch_size=2 = 3 batches
+        assert bulk_index.call_count == 3
+
+        first_call_kwargs = bulk_index.call_args_list[0][1]
+        assert first_call_kwargs["force_restart_upload"] is True
+        assert first_call_kwargs["is_first_page"] is True
+
+        second_call_kwargs = bulk_index.call_args_list[1][1]
+        assert second_call_kwargs["force_restart_upload"] is None
+        assert second_call_kwargs["is_first_page"] is False
+
+
+def test_disable_stale_deletion_check_on_last_page_only():
+    """Test that disable_stale_data_deletion_check is set only on the last batch."""
+    client = MagicMock()
+    people_data = MockPeopleClient().get_all_people()
+    client.get_source_data.return_value = people_data
+    connector = DummyPeopleConnector("test_people", client)
+    connector.batch_size = 2
+
+    with patch("glean.indexing.connectors.base_people_connector.api_client") as api_client:
+        bulk_index = api_client().__enter__().indexing.people.bulk_index
+        connector.index_data(options=ConnectorOptions(disable_stale_deletion_check=True))
+
+        # 5 people with batch_size=2 = 3 batches
+        assert bulk_index.call_count == 3
+
+        first_call_kwargs = bulk_index.call_args_list[0][1]
+        assert first_call_kwargs["disable_stale_data_deletion_check"] is None
+
+        second_call_kwargs = bulk_index.call_args_list[1][1]
+        assert second_call_kwargs["disable_stale_data_deletion_check"] is None
+
+        last_call_kwargs = bulk_index.call_args_list[2][1]
+        assert last_call_kwargs["disable_stale_data_deletion_check"] is True

@@ -245,6 +245,37 @@ class TestBaseAsyncStreamingDatasourceConnector:
             last_call = bulk_index.call_args_list[2][1]
             assert last_call["disable_stale_document_deletion_check"] is True
 
+    @pytest.mark.asyncio
+    async def test_upload_timeout_ms_passed_to_bulk_index(self):
+        """Test that upload_timeout_ms is forwarded to every bulk_index call."""
+        client = DummyAsyncDataClient()
+        connector = DummyAsyncConnector("test", client)
+        connector.batch_size = 2
+
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
+            bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
+            await connector.index_data_async(options=ConnectorOptions(upload_timeout_ms=120_000))
+
+            assert bulk_index.call_count == 3
+            for call in bulk_index.call_args_list:
+                assert call[1]["timeout_ms"] == 120_000
+
+    @pytest.mark.asyncio
+    async def test_upload_timeout_ms_defaults_to_none(self):
+        """Test that timeout_ms is None when no options are provided (SDK default applies)."""
+        client = DummyAsyncDataClient()
+        connector = DummyAsyncConnector("test", client)
+
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
+            bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
+            await connector.index_data_async()
+
+            assert bulk_index.call_args[1]["timeout_ms"] is None
+
     def test_sync_fallback_get_data(self):
         """Test that sync get_data() works as fallback."""
         connector = DummyAsyncConnector("test", DummyAsyncDataClient())

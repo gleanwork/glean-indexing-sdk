@@ -5,6 +5,8 @@ import os
 from glean.api_client import Glean
 from glean.indexing.exceptions import MissingEnvironmentVariableError
 
+DEFAULT_TIMEOUT_MS = 60_000
+
 
 def api_client() -> Glean:
     """Get the Glean API client."""
@@ -21,5 +23,5 @@ def api_client() -> Glean:
         raise MissingEnvironmentVariableError(missing)
 
     if server_url:
-        return Glean(api_token=api_token, server_url=server_url)
-    return Glean(api_token=api_token, instance=instance)
+        return Glean(api_token=api_token, server_url=server_url, timeout_ms=DEFAULT_TIMEOUT_MS)
+    return Glean(api_token=api_token, instance=instance, timeout_ms=DEFAULT_TIMEOUT_MS)

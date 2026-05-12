@@ -128,3 +128,34 @@ def test_disable_stale_deletion_check_on_last_page_only():
 
         last_call_kwargs = bulk_index.call_args_list[2][1]
         assert last_call_kwargs["disable_stale_data_deletion_check"] is True
+
+
+def test_upload_timeout_ms_passed_to_bulk_index():
+    """Test that upload_timeout_ms is forwarded to every bulk_index call."""
+    client = MagicMock()
+    people_data = MockPeopleClient().get_all_people()
+    client.get_source_data.return_value = people_data
+    connector = DummyPeopleConnector("test_people", client)
+    connector.batch_size = 2
+
+    with patch("glean.indexing.connectors.base_people_connector.api_client") as api_client:
+        bulk_index = api_client().__enter__().indexing.people.bulk_index
+        connector.index_data(options=ConnectorOptions(upload_timeout_ms=120_000))
+
+        # 5 people with batch_size=2 = 3 batches
+        assert bulk_index.call_count == 3
+        for call in bulk_index.call_args_list:
+            assert call[1]["timeout_ms"] == 120_000
+
+
+def test_upload_timeout_ms_defaults_to_none():
+    """Test that timeout_ms is None when no options are provided (SDK default applies)."""
+    client = MagicMock()
+    client.get_source_data.return_value = MockPeopleClient().get_all_people()
+    connector = DummyPeopleConnector("test_people", client)
+
+    with patch("glean.indexing.connectors.base_people_connector.api_client") as api_client:
+        bulk_index = api_client().__enter__().indexing.people.bulk_index
+        connector.index_data()
+
+        assert bulk_index.call_args[1]["timeout_ms"] is None

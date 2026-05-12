@@ -247,3 +247,50 @@ class TestBaseDatasourceConnector:
 
         call_kwargs = mock_client.indexing.documents.bulk_index.call_args[1]
         assert call_kwargs["disable_stale_document_deletion_check"] is None
+
+    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    def test_upload_timeout_ms_passed_to_bulk_index(self, mock_api_client):
+        """Test that upload_timeout_ms is forwarded to every bulk_index call."""
+        mock_client = Mock()
+        mock_api_client.return_value.__enter__.return_value = mock_client
+
+        test_data = [
+            {
+                "id": "1",
+                "title": "Doc 1",
+                "content": "Content 1",
+                "url": "https://test.example.com/1",
+            },
+            {
+                "id": "2",
+                "title": "Doc 2",
+                "content": "Content 2",
+                "url": "https://test.example.com/2",
+            },
+        ]
+        data_client = MockDataClient(test_data)
+        connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
+        connector.batch_size = 1
+
+        connector.index_data(options=ConnectorOptions(upload_timeout_ms=120_000))
+
+        assert mock_client.indexing.documents.bulk_index.call_count == 2
+        for call in mock_client.indexing.documents.bulk_index.call_args_list:
+            assert call[1]["timeout_ms"] == 120_000
+
+    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    def test_upload_timeout_ms_defaults_to_none(self, mock_api_client):
+        """Test that timeout_ms is None when no options are provided (SDK default applies)."""
+        mock_client = Mock()
+        mock_api_client.return_value.__enter__.return_value = mock_client
+
+        test_data = [
+            {"id": "1", "title": "Doc", "content": "Content", "url": "https://test.example.com/1"},
+        ]
+        data_client = MockDataClient(test_data)
+        connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
+
+        connector.index_data()
+
+        call_kwargs = mock_client.indexing.documents.bulk_index.call_args[1]
+        assert call_kwargs["timeout_ms"] is None

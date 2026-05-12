@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Sequence, TypedDict, TypeVar
+from typing import Any, Optional, Sequence, TypedDict, TypeVar
 
 from glean.api_client.models import (
     ContentDefinition,
@@ -27,10 +27,21 @@ TIndexableEntityDefinition = TypeVar("TIndexableEntityDefinition")
 
 @dataclass
 class ConnectorOptions:
-    """Options for controlling connector indexing behavior."""
+    """Options for controlling connector indexing behavior.
+
+    Attributes:
+        force_restart: If True, discards any previous upload progress and
+            starts a new upload. Sets force_restart_upload=True on the first batch.
+        disable_stale_deletion_check: If True, forces synchronous deletion of
+            stale documents after the upload completes. Applied only to the last batch.
+        upload_timeout_ms: Per-call timeout (in milliseconds) for bulk upload
+            requests. Overrides the SDK-level default for bulk_index calls only.
+            Use this when uploading large batches that may exceed the default timeout.
+    """
 
     force_restart: bool = False
     disable_stale_deletion_check: bool = False
+    upload_timeout_ms: Optional[int] = None
 
 
 class DatasourceIdentityDefinitions(TypedDict, total=False):

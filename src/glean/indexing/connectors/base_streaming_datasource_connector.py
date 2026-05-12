@@ -176,6 +176,7 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
                     disable_stale_document_deletion_check=True
                     if (options and is_last_batch and options.disable_stale_deletion_check)
                     else None,
+                    timeout_ms=options.upload_timeout_ms if options else None,
                 )
 
             logger.info(f"Batch {batch_number} indexed successfully")

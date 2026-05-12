@@ -180,3 +180,34 @@ def test_disable_stale_deletion_check_on_last_page_only():
 
         last_call_kwargs = bulk_index.call_args_list[2][1]
         assert last_call_kwargs["disable_stale_document_deletion_check"] is True
+
+
+def test_upload_timeout_ms_passed_to_bulk_index():
+    """Test that upload_timeout_ms is forwarded to every bulk_index call."""
+    client = DummyStreamingDataClient()
+    connector = DummyStreamingConnector("test_stream", client)
+    connector.batch_size = 2
+
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
+        bulk_index = api_client().__enter__().indexing.documents.bulk_index
+        connector.index_data(options=ConnectorOptions(upload_timeout_ms=120_000))
+
+        assert bulk_index.call_count == 3
+        for call in bulk_index.call_args_list:
+            assert call[1]["timeout_ms"] == 120_000
+
+
+def test_upload_timeout_ms_defaults_to_none():
+    """Test that timeout_ms is None when no options are provided (SDK default applies)."""
+    client = DummyStreamingDataClient()
+    connector = DummyStreamingConnector("test_stream", client)
+
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
+        bulk_index = api_client().__enter__().indexing.documents.bulk_index
+        connector.index_data()
+
+        assert bulk_index.call_args[1]["timeout_ms"] is None

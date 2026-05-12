@@ -157,6 +157,7 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
                         disable_stale_data_deletion_check=True
                         if (options and is_last_page and options.disable_stale_deletion_check)
                         else None,
+                        timeout_ms=options.upload_timeout_ms if options else None,
                     )
 
                 logger.info(f"Employee batch {i + 1}/{total_batches} uploaded successfully")

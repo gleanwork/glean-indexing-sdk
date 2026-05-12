@@ -17,7 +17,7 @@ from glean.indexing.exceptions import (
     MissingEnvironmentVariableError,
     UnsupportedConnectorTypeError,
 )
-from glean.indexing.common import BatchProcessor, ConnectorMetrics, ContentFormatter, MockGleanClient, api_client
+from glean.indexing.common import BatchProcessor, ConnectorMetrics, ContentFormatter, api_client
 from glean.indexing.connectors import (
     BaseAsyncStreamingDataClient,
     BaseAsyncStreamingDatasourceConnector,
@@ -36,7 +36,16 @@ from glean.indexing.models import (
     TSourceData,
 )
 from glean.indexing.observability.observability import ConnectorObservability
-from glean.indexing.testing import ConnectorTestHarness
+from glean.indexing.testing import (
+    MockGleanClient,
+    StaticAsyncStreamingDataClient,
+    StaticDataClient,
+    StaticStreamingDataClient,
+    mock_glean_client,
+    run_connector,
+    run_connector_async,
+    with_mock_glean_client,
+)
 
 __all__ = [
     "BaseConnector",
@@ -52,13 +61,19 @@ __all__ = [
     "ContentFormatter",
     "ConnectorMetrics",
     "ConnectorObservability",
-    "ConnectorTestHarness",
     "DatasourceIdentityDefinitions",
     "IndexingMode",
     "TSourceData",
     "TIndexableEntityDefinition",
     "MockGleanClient",
+    "StaticAsyncStreamingDataClient",
+    "StaticDataClient",
+    "StaticStreamingDataClient",
     "api_client",
+    "mock_glean_client",
+    "run_connector",
+    "run_connector_async",
+    "with_mock_glean_client",
     "models",
     "GleanError",
     "GleanConfigurationError",

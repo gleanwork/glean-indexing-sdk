@@ -72,7 +72,7 @@ uv run pytest tests/unit_tests/test_base_connector.py::TestClassName::test_metho
 - `common/glean_client.py` - API client wrapper (uses env vars `GLEAN_SERVER_URL` or `GLEAN_INSTANCE` (deprecated), plus `GLEAN_INDEXING_API_TOKEN`)
 - `common/batch_processor.py` - Batches data for upload
 - `observability/` - Logging decorators and metrics tracking
-- `testing/` - `ConnectorTestHarness`, `MockGleanClient` for testing without API calls
+- `testing/` - `run_connector`, `mock_glean_client`, `MockGleanClient`, `StaticDataClient` family for testing without API calls
 
 ## Code Style
 

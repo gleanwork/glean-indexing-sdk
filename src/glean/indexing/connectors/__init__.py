@@ -8,7 +8,6 @@ from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDa
 from glean.indexing.connectors.base_streaming_datasource_connector import BaseStreamingDatasourceConnector
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_async_streaming_datasource_connector import BaseAsyncStreamingDatasourceConnector
-from glean.indexing.testing.connector_test_harness import ConnectorTestHarness
 
 __all__ = [
     "BaseConnector",
@@ -19,5 +18,4 @@ __all__ = [
     "BaseStreamingDatasourceConnector",
     "BaseAsyncStreamingDataClient",
     "BaseAsyncStreamingDatasourceConnector",
-    "ConnectorTestHarness",
 ]

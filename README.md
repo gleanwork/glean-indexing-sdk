@@ -161,21 +161,62 @@ connector.index_data(mode=IndexingMode.INCREMENTAL)   # only changes since last 
 
 ## Testing
 
-The SDK includes a `ConnectorTestHarness` that lets you validate your connector without making real API calls. It intercepts uploads and captures the documents your connector produces so you can assert on them.
+The SDK ships two ways to test connectors without making real API calls. Both record everything the connector posts so you can assert on the result.
+
+### Quick path: `run_connector`
+
+For most tests, pair `run_connector` with one of the static data clients:
 
 ```python
-from glean.indexing.connectors import ConnectorTestHarness
+from glean.indexing.testing import StaticDataClient, run_connector
 
-harness = ConnectorTestHarness(connector)
-harness.run()
+result = run_connector(MyConnector("my_ds", StaticDataClient([
+    {"id": "1", "title": "Doc 1", "url": "https://example.com/1"},
+    {"id": "2", "title": "Doc 2", "url": "https://example.com/2"},
+])))
 
-validator = harness.get_validator()
-validator.assert_documents_posted(count=2)
-
-# Inspect individual documents
-for doc in validator.documents_posted:
+result.assert_documents_posted(count=2, datasource="my_ds")
+for doc in result.documents_posted:
     print(doc.title)
 ```
+
+For people connectors, use `assert_employees_posted`. For async streaming connectors, use the async runner:
+
+```python
+import pytest
+from glean.indexing.testing import StaticAsyncStreamingDataClient, run_connector_async
+
+@pytest.mark.asyncio
+async def test_async_connector():
+    result = await run_connector_async(MyAsyncConnector(
+        "my_ds", StaticAsyncStreamingDataClient([...])
+    ))
+    result.assert_documents_posted(count=10)
+```
+
+### Advanced: `mock_glean_client`
+
+When you need to drive `connector.index_data()` yourself — to pass custom modes, options, or interleave multiple calls — use the context manager directly:
+
+```python
+from glean.indexing.models import IndexingMode
+from glean.indexing.testing import mock_glean_client
+
+with mock_glean_client() as client:
+    connector.configure_datasource()
+    connector.index_data(mode=IndexingMode.INCREMENTAL)
+    client.assert_datasource_configured(name="my_ds")
+    client.assert_documents_posted(count=2)
+```
+
+The yielded `client` is also a thin facade over a `MagicMock(spec=Glean)`, so any access through `client.indexing.*` works exactly like the real Speakeasy client — typos at any level fail loudly:
+
+```python
+client.indexing.documents.bulk_index.assert_called_once()       # real method
+client.indexing.documents.bluk_index                            # AttributeError
+```
+
+If you'd rather use a decorator, `@with_mock_glean_client` injects the client as the first positional argument.
 
 ## Contributing
 

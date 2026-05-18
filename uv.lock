@@ -433,6 +433,7 @@ version = "1.0.0b2"
 source = { editable = "." }
 dependencies = [
     { name = "glean-api-client" },
+    { name = "httpx" },
     { name = "jinja2" },
     { name = "pydantic" },
 ]
@@ -471,6 +472,7 @@ requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "commitizen", marker = "extra == 'dev'", specifier = ">=4.4.1" },
     { name = "glean-api-client", specifier = ">=0.6.3" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.2" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.6.0" },
     { name = "pydantic", specifier = ">=2.0" },

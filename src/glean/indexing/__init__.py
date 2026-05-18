@@ -36,6 +36,16 @@ from glean.indexing.models import (
     TSourceData,
 )
 from glean.indexing.observability.observability import ConnectorObservability
+from glean.indexing.pull import (
+    ApiKeyAuth,
+    BearerTokenAuth,
+    LinkHeaderPaginator,
+    PullHttpClient,
+    PullHttpError,
+    PullOptions,
+    PullRetryOptions,
+    RateLimitConfig,
+)
 from glean.indexing.testing import (
     MockGleanClient,
     StaticAsyncStreamingDataClient,
@@ -70,6 +80,14 @@ __all__ = [
     "StaticDataClient",
     "StaticStreamingDataClient",
     "api_client",
+    "ApiKeyAuth",
+    "BearerTokenAuth",
+    "LinkHeaderPaginator",
+    "PullHttpClient",
+    "PullHttpError",
+    "PullOptions",
+    "PullRetryOptions",
+    "RateLimitConfig",
     "mock_glean_client",
     "run_connector",
     "run_connector_async",

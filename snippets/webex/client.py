@@ -4,7 +4,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from time import time
 
-from glean.indexing.pull import LinkHeaderPaginator, PullHttpClient
+from glean.indexing.pull import LinkHeaderPaginator, PullHttpClient, PullHttpError
 from glean.indexing.pull.options import AuthProvider
 
 from snippets.webex.models import WebexMembership, WebexMessage, WebexPerson, WebexRoom, WebexTeam
@@ -68,7 +68,13 @@ class WebexClient:
 
     def list_people(self) -> list[WebexPerson]:
         """Fetch people visible to the token."""
-        return [WebexPerson.from_api(item) for item in self._items("/people", {"max": 1000})]
+        try:
+            return [WebexPerson.from_api(item) for item in self._items("/people", {"max": 1000})]
+        except PullHttpError as error:
+            if error.status_code not in {400, 403}:
+                raise
+            response = self.http_client.get("/people/me")
+            return [WebexPerson.from_api(response.json_dict())]
 
     def list_teams(self) -> list[WebexTeam]:
         """Fetch teams visible to the token."""

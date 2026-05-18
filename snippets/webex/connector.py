@@ -7,12 +7,15 @@ from typing import Sequence
 from glean.api_client.models import (
     ContentDefinition,
     DatasourceBulkMembershipDefinition,
+    DatasourceCategory,
     DatasourceGroupDefinition,
     DatasourceUserDefinition,
     DocumentDefinition,
     DocumentPermissionsDefinition,
+    ObjectDefinition,
     UserReferenceDefinition,
 )
+from glean.api_client.models.objectdefinition import DocCategory
 from glean.indexing.connectors import BaseDatasourceConnector
 from glean.indexing.models import (
     ConnectorOptions,
@@ -39,6 +42,19 @@ class WebexConnector(BaseDatasourceConnector[WebexCrawlData]):
     configuration = CustomDatasourceConfig(
         name="webex",
         display_name="Webex",
+        datasource_category=DatasourceCategory.MESSAGING,
+        object_definitions=[
+            ObjectDefinition(
+                name=WEBEX_OBJECT_TYPE_ROOM,
+                display_label="Room",
+                doc_category=DocCategory.MESSAGING,
+            ),
+            ObjectDefinition(
+                name=WEBEX_OBJECT_TYPE_MESSAGE,
+                display_label="Message",
+                doc_category=DocCategory.MESSAGING,
+            ),
+        ],
         url_regex=r"https://web\.webex\.com/.*",
         trust_url_regex_for_view_activity=True,
         is_user_referenced_by_email=False,
@@ -52,6 +68,9 @@ class WebexConnector(BaseDatasourceConnector[WebexCrawlData]):
     ):
         """Initialize the Webex connector."""
         super().__init__(name=name, data_client=data_client)
+        self.configuration = self.configuration.model_copy(
+            update={"name": name, "display_name": name.title()}
+        )
         self.webex_data_client = data_client
         self.checkpoint_store = checkpoint_store
 

@@ -171,6 +171,30 @@ def test_webex_connector_writes_file_checkpoint_after_successful_push(httpx_mock
     assert checkpoint_store.read_last_activity_cursor() == "2026-05-18T00:20:00Z"
 
 
+def test_webex_people_falls_back_to_me_for_personal_pat(httpx_mock):
+    httpx_mock.add_response(
+        url="https://webexapis.com/v1/people?max=1000",
+        status_code=400,
+        json={"message": "query parameter required"},
+        headers={"Content-Type": "application/json"},
+    )
+    httpx_mock.add_response(
+        url="https://webexapis.com/v1/people/me",
+        json={
+            "id": "person-me",
+            "emails": ["me@example.com"],
+            "displayName": "Me",
+        },
+        headers={"Content-Type": "application/json"},
+    )
+
+    people = WebexClient(_client()).list_people()
+
+    assert len(people) == 1
+    assert people[0].id == "person-me"
+    assert people[0].emails == ["me@example.com"]
+
+
 def test_webex_incremental_room_fetch_stops_at_last_activity_cursor(httpx_mock, monkeypatch):
     monkeypatch.setenv("WEBEX_LAST_ACTIVITY_CURSOR", "2026-05-18T00:00:00Z")
     httpx_mock.add_response(

@@ -24,6 +24,7 @@ from glean.indexing.push.options import push_options_from_connector_options
 from glean.indexing.push.uploader import PushUploader
 from glean.indexing.common import api_client
 
+from snippets.webex.checkpoint import FileCheckpointStore
 from snippets.webex.data_client import WebexDataClient
 from snippets.webex.models import WebexCrawlData, WebexMessage, WebexRoom
 from snippets.webex.urls import message_view_url, room_view_url
@@ -43,10 +44,16 @@ class WebexConnector(BaseDatasourceConnector[WebexCrawlData]):
         is_user_referenced_by_email=False,
     )
 
-    def __init__(self, name: str, data_client: WebexDataClient):
+    def __init__(
+        self,
+        name: str,
+        data_client: WebexDataClient,
+        checkpoint_store: FileCheckpointStore | None = None,
+    ):
         """Initialize the Webex connector."""
         super().__init__(name=name, data_client=data_client)
         self.webex_data_client = data_client
+        self.checkpoint_store = checkpoint_store
 
     def get_identities(self) -> DatasourceIdentityDefinitions:
         """Fetch Webex users, rooms/teams as groups, and memberships."""
@@ -118,14 +125,21 @@ class WebexConnector(BaseDatasourceConnector[WebexCrawlData]):
                 batch_size=self.batch_size,
                 options=push_options,
             )
+        self._save_last_crawl_timestamp(crawl)
 
     def _get_last_crawl_timestamp(self) -> str | None:
-        """Return an optional Webex incremental cursor.
-
-        Real connectors should wire this to the persistence layer. For this MVP
-        snippet, an env var is enough to test Webex's lastActivity filtering.
-        """
+        """Return an optional Webex incremental cursor."""
+        if self.checkpoint_store:
+            return self.checkpoint_store.read_last_activity_cursor()
         return os.getenv("WEBEX_LAST_ACTIVITY_CURSOR")
+
+    def _save_last_crawl_timestamp(self, crawl: WebexCrawlData) -> None:
+        """Persist the high-water mark after a successful push."""
+        if not self.checkpoint_store:
+            return
+        cursor = _latest_room_activity(crawl.rooms)
+        if cursor:
+            self.checkpoint_store.write_last_activity_cursor(cursor)
 
 
 def _primary_email(emails: Sequence[str]) -> str | None:
@@ -169,6 +183,11 @@ def _bulk_memberships(members: Sequence[object]) -> list[DatasourceBulkMembershi
         if person_id:
             out.append(DatasourceBulkMembershipDefinition(member_user_id=str(person_id)))
     return out
+
+
+def _latest_room_activity(rooms: Sequence[WebexRoom]) -> str | None:
+    values = [room.last_activity for room in rooms if room.last_activity]
+    return max(values) if values else None
 
 
 def _room_document(room: WebexRoom, datasource: str) -> DocumentDefinition:

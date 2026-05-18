@@ -1,12 +1,61 @@
 """Webex source client built on the SDK pull layer."""
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from time import time
 
 from glean.indexing.pull import LinkHeaderPaginator, PullHttpClient
+from glean.indexing.pull.options import AuthProvider
 
 from snippets.webex.models import WebexMembership, WebexMessage, WebexPerson, WebexRoom, WebexTeam
 
 WEBEX_API_BASE_URL = "https://webexapis.com/v1"
+WEBEX_TOKEN_URL = "https://webexapis.com/v1/access_token"
+
+
+@dataclass
+class WebexOAuthTokenManager(AuthProvider):
+    """On-demand OAuth token refresh for Webex.
+
+    This intentionally refreshes only when request headers are needed and the
+    current access token is missing or expired. It avoids background scheduling
+    while still supporting long-running connector processes.
+    """
+
+    client_id: str
+    client_secret: str
+    refresh_token: str
+    token_client: PullHttpClient
+    access_token: str | None = None
+    expires_at: float = 0
+    expiry_buffer_seconds: int = 300
+
+    def headers(self) -> Mapping[str, str]:
+        """Return a valid authorization header, refreshing on demand."""
+        if not self.access_token or time() >= self.expires_at:
+            self.refresh()
+        return {"Authorization": f"Bearer {self.access_token}"}
+
+    def refresh(self) -> str:
+        """Exchange the refresh token for a new access token."""
+        response = self.token_client.post(
+            WEBEX_TOKEN_URL,
+            data={
+                "grant_type": "refresh_token",
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "refresh_token": self.refresh_token,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        payload = response.json_dict()
+        self.access_token = str(payload["access_token"])
+        expires_in = int(payload.get("expires_in", 43200))
+        self.expires_at = time() + max(0, expires_in - self.expiry_buffer_seconds)
+        rotated_refresh_token = payload.get("refresh_token")
+        if rotated_refresh_token:
+            self.refresh_token = str(rotated_refresh_token)
+        return self.access_token
 
 
 class WebexClient:

@@ -104,39 +104,67 @@ class MockGleanClient:
 
     @property
     def documents_posted(self) -> List[DocumentDefinition]:
-        """All documents passed to `client.indexing.documents.bulk_index` so far.
+        """All documents passed to document upload methods so far.
 
         Flattened across batches: a connector with `batch_size=2` and 5 docs
         produces a single 5-element list here, not 3 batched lists.
         """
-        return _flatten_kwarg(self._mock.indexing.documents.bulk_index.call_args_list, "documents")
+        return [
+            *_flatten_kwarg(self._mock.indexing.documents.bulk_index.call_args_list, "documents"),
+            *_flatten_kwarg(self._mock.indexing.documents.index.call_args_list, "documents"),
+        ]
 
     @property
     def employees_posted(self) -> List[EmployeeInfoDefinition]:
-        """All employees passed to `client.indexing.people.bulk_index` so far."""
-        return _flatten_kwarg(self._mock.indexing.people.bulk_index.call_args_list, "employees")
+        """All employees passed to people upload methods so far."""
+        return [
+            *_flatten_kwarg(self._mock.indexing.people.bulk_index.call_args_list, "employees"),
+            *(
+                call.kwargs["employee"]
+                for call in self._mock.indexing.people.index.call_args_list
+                if "employee" in call.kwargs
+            ),
+        ]
 
     @property
     def users_posted(self) -> List[Any]:
-        """All users passed to `client.indexing.permissions.bulk_index_users` so far."""
-        return _flatten_kwarg(
-            self._mock.indexing.permissions.bulk_index_users.call_args_list, "users"
-        )
+        """All users passed to user upload methods so far."""
+        return [
+            *_flatten_kwarg(
+                self._mock.indexing.permissions.bulk_index_users.call_args_list, "users"
+            ),
+            *(
+                call.kwargs["user"]
+                for call in self._mock.indexing.permissions.index_user.call_args_list
+                if "user" in call.kwargs
+            ),
+        ]
 
     @property
     def groups_posted(self) -> List[Any]:
-        """All groups passed to `client.indexing.permissions.bulk_index_groups` so far."""
-        return _flatten_kwarg(
-            self._mock.indexing.permissions.bulk_index_groups.call_args_list, "groups"
-        )
+        """All groups passed to group upload methods so far."""
+        return [
+            *_flatten_kwarg(
+                self._mock.indexing.permissions.bulk_index_groups.call_args_list, "groups"
+            ),
+            *(
+                call.kwargs["group"]
+                for call in self._mock.indexing.permissions.index_group.call_args_list
+                if "group" in call.kwargs
+            ),
+        ]
 
     @property
     def memberships_posted(self) -> List[Any]:
-        """All memberships passed to `client.indexing.permissions.bulk_index_memberships`."""
+        """All memberships passed to membership upload methods."""
         return _flatten_kwarg(
             self._mock.indexing.permissions.bulk_index_memberships.call_args_list,
             "memberships",
-        )
+        ) + [
+            call.kwargs["membership"]
+            for call in self._mock.indexing.permissions.index_membership.call_args_list
+            if "membership" in call.kwargs
+        ]
 
     def _filtered_count(self, calls: Any, datasource: Optional[str], items_key: str) -> int:
         if datasource is None:
@@ -160,6 +188,8 @@ class MockGleanClient:
         """
         actual = self._filtered_count(
             self._mock.indexing.documents.bulk_index.call_args_list, datasource, "documents"
+        ) + self._filtered_count(
+            self._mock.indexing.documents.index.call_args_list, datasource, "documents"
         )
         _assert_count(actual, count, label="documents", datasource=datasource)
 
@@ -169,9 +199,12 @@ class MockGleanClient:
         Args:
             count: Expected number of employees. If `None`, asserts at least one.
         """
-        actual = sum(
-            len(call.kwargs.get("employees", []))
-            for call in self._mock.indexing.people.bulk_index.call_args_list
+        actual = (
+            sum(
+                len(call.kwargs.get("employees", []))
+                for call in self._mock.indexing.people.bulk_index.call_args_list
+            )
+            + self._mock.indexing.people.index.call_count
         )
         _assert_count(actual, count, label="employees", datasource=None)
 
@@ -188,6 +221,10 @@ class MockGleanClient:
         """
         actual = self._filtered_count(
             self._mock.indexing.permissions.bulk_index_users.call_args_list, datasource, "users"
+        ) + sum(
+            1
+            for call in self._mock.indexing.permissions.index_user.call_args_list
+            if datasource is None or call.kwargs.get("datasource") == datasource
         )
         _assert_count(actual, count, label="users", datasource=datasource)
 
@@ -204,6 +241,10 @@ class MockGleanClient:
         """
         actual = self._filtered_count(
             self._mock.indexing.permissions.bulk_index_groups.call_args_list, datasource, "groups"
+        ) + sum(
+            1
+            for call in self._mock.indexing.permissions.index_group.call_args_list
+            if datasource is None or call.kwargs.get("datasource") == datasource
         )
         _assert_count(actual, count, label="groups", datasource=datasource)
 
@@ -222,6 +263,10 @@ class MockGleanClient:
             self._mock.indexing.permissions.bulk_index_memberships.call_args_list,
             datasource,
             "memberships",
+        ) + sum(
+            1
+            for call in self._mock.indexing.permissions.index_membership.call_args_list
+            if datasource is None or call.kwargs.get("datasource") == datasource
         )
         _assert_count(actual, count, label="memberships", datasource=datasource)
 

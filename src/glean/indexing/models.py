@@ -37,11 +37,21 @@ class ConnectorOptions:
         upload_timeout_ms: Per-call timeout (in milliseconds) for bulk upload
             requests. Overrides the SDK-level default for bulk_index calls only.
             Use this when uploading large batches that may exceed the default timeout.
+        upload_concurrency: Maximum number of worker threads for concurrent
+            uploadable batches. The v1 bulk upload flow keeps first and last
+            pages blocking, so this applies to middle document batches.
+        document_batch_max_bytes: Optional serialized JSON byte target for
+            document batches. Set to None to batch by item count only.
+        retries: Optional generated-client RetryConfig to pass through to
+            indexing API calls.
     """
 
     force_restart: bool = False
     disable_stale_deletion_check: bool = False
     upload_timeout_ms: Optional[int] = None
+    upload_concurrency: int = 5
+    document_batch_max_bytes: Optional[int] = 5 * 1024 * 1024
+    retries: Optional[Any] = None
 
 
 class DatasourceIdentityDefinitions(TypedDict, total=False):

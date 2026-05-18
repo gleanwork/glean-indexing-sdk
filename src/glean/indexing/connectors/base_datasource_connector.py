@@ -1,12 +1,11 @@
 """Base datasource connector for the Glean Connector SDK."""
 
 import logging
-import uuid
 from abc import ABC
 from typing import Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
-from glean.indexing.common import BatchProcessor, api_client
+from glean.indexing.common import api_client
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.exceptions import InconsistentDataError, InvalidDatasourceConfigError
@@ -18,6 +17,8 @@ from glean.indexing.models import (
     TSourceData,
 )
 from glean.indexing.observability.observability import ConnectorObservability
+from glean.indexing.push.options import push_options_from_connector_options
+from glean.indexing.push.uploader import PushUploader
 
 logger = logging.getLogger(__name__)
 
@@ -147,12 +148,12 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             users = identities.get("users")
             if users:
                 logger.info(f"Indexing {len(users)} users")
-                self._batch_index_users(users)
+                self._batch_index_users(users, options=options)
 
             groups = identities.get("groups")
             if groups:
                 logger.info(f"Indexing {len(groups)} groups")
-                self._batch_index_groups(groups)
+                self._batch_index_groups(groups, options=options)
 
                 memberships = identities.get("memberships")
                 if not memberships:
@@ -164,7 +165,7 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                     )
 
                 logger.info(f"Indexing {len(memberships)} memberships")
-                self._batch_index_memberships(memberships)
+                self._batch_index_memberships(memberships, options=options)
 
             since = None
             if mode == IndexingMode.INCREMENTAL:
@@ -202,95 +203,61 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         finally:
             self._observability.end_execution()
 
-    def _batch_index_users(self, users) -> None:
+    def _batch_index_users(self, users, options: Optional[ConnectorOptions] = None) -> None:
         """Index users in batches with proper page signaling."""
         if not users:
             return
 
-        batches = list(BatchProcessor(users, batch_size=self.batch_size))
-        total_batches = len(batches)
+        try:
+            result = PushUploader(api_client).upload_users(
+                datasource=self.name,
+                users=users,
+                batch_size=self.batch_size,
+                options=push_options_from_connector_options(options),
+            )
+            self._observability.increment_counter("batches_uploaded", result.batch_count)
+        except Exception as e:
+            logger.error(f"Failed to upload users: {e}")
+            self._observability.increment_counter("batch_upload_errors")
+            raise
 
-        logger.info(f"Uploading {len(users)} users in {total_batches} batches")
-
-        upload_id = str(uuid.uuid4())
-        for i, batch in enumerate(batches):
-            try:
-                with api_client() as client:
-                    client.indexing.permissions.bulk_index_users(
-                        datasource=self.name,
-                        users=list(batch),
-                        upload_id=upload_id,
-                        is_first_page=(i == 0),
-                        is_last_page=(i == total_batches - 1),
-                    )
-
-                logger.info(f"User batch {i + 1}/{total_batches} uploaded successfully")
-                self._observability.increment_counter("batches_uploaded")
-
-            except Exception as e:
-                logger.error(f"Failed to upload user batch {i + 1}/{total_batches}: {e}")
-                self._observability.increment_counter("batch_upload_errors")
-                raise
-
-    def _batch_index_groups(self, groups) -> None:
+    def _batch_index_groups(self, groups, options: Optional[ConnectorOptions] = None) -> None:
         """Index groups in batches with proper page signaling."""
         if not groups:
             return
 
-        batches = list(BatchProcessor(groups, batch_size=self.batch_size))
-        total_batches = len(batches)
+        try:
+            result = PushUploader(api_client).upload_groups(
+                datasource=self.name,
+                groups=groups,
+                batch_size=self.batch_size,
+                options=push_options_from_connector_options(options),
+            )
+            self._observability.increment_counter("batches_uploaded", result.batch_count)
+        except Exception as e:
+            logger.error(f"Failed to upload groups: {e}")
+            self._observability.increment_counter("batch_upload_errors")
+            raise
 
-        logger.info(f"Uploading {len(groups)} groups in {total_batches} batches")
-
-        upload_id = str(uuid.uuid4())
-        for i, batch in enumerate(batches):
-            try:
-                with api_client() as client:
-                    client.indexing.permissions.bulk_index_groups(
-                        datasource=self.name,
-                        groups=list(batch),
-                        upload_id=upload_id,
-                        is_first_page=(i == 0),
-                        is_last_page=(i == total_batches - 1),
-                    )
-
-                logger.info(f"Group batch {i + 1}/{total_batches} uploaded successfully")
-                self._observability.increment_counter("batches_uploaded")
-
-            except Exception as e:
-                logger.error(f"Failed to upload group batch {i + 1}/{total_batches}: {e}")
-                self._observability.increment_counter("batch_upload_errors")
-                raise
-
-    def _batch_index_memberships(self, memberships) -> None:
+    def _batch_index_memberships(
+        self, memberships, options: Optional[ConnectorOptions] = None
+    ) -> None:
         """Index memberships in batches with proper page signaling."""
         if not memberships:
             return
 
-        batches = list(BatchProcessor(memberships, batch_size=self.batch_size))
-        total_batches = len(batches)
-
-        logger.info(f"Uploading {len(memberships)} memberships in {total_batches} batches")
-
-        upload_id = str(uuid.uuid4())
-        for i, batch in enumerate(batches):
-            try:
-                with api_client() as client:
-                    client.indexing.permissions.bulk_index_memberships(
-                        datasource=self.name,
-                        memberships=list(batch),
-                        upload_id=upload_id,
-                        is_first_page=(i == 0),
-                        is_last_page=(i == total_batches - 1),
-                    )
-
-                logger.info(f"Membership batch {i + 1}/{total_batches} uploaded successfully")
-                self._observability.increment_counter("batches_uploaded")
-
-            except Exception as e:
-                logger.error(f"Failed to upload membership batch {i + 1}/{total_batches}: {e}")
-                self._observability.increment_counter("batch_upload_errors")
-                raise
+        try:
+            result = PushUploader(api_client).upload_memberships(
+                datasource=self.name,
+                memberships=memberships,
+                batch_size=self.batch_size,
+                options=push_options_from_connector_options(options),
+            )
+            self._observability.increment_counter("batches_uploaded", result.batch_count)
+        except Exception as e:
+            logger.error(f"Failed to upload memberships: {e}")
+            self._observability.increment_counter("batch_upload_errors")
+            raise
 
     def _batch_index_documents(
         self,
@@ -306,42 +273,137 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         if not documents:
             return
 
-        batches = list(BatchProcessor(list(documents), batch_size=self.batch_size))
-        total_batches = len(batches)
-        force_restart = options.force_restart if options else False
+        try:
+            push_options = push_options_from_connector_options(options)
+            result = PushUploader(api_client).upload_documents(
+                datasource=self.name,
+                documents=documents,
+                batch_size=self.batch_size,
+                options=push_options,
+            )
+            self._observability.increment_counter("batches_uploaded", result.batch_count)
+        except Exception as e:
+            logger.error(f"Failed to upload documents: {e}")
+            self._observability.increment_counter("batch_upload_errors")
+            raise
 
-        logger.info(f"Uploading {len(documents)} documents in {total_batches} batches")
+    def index_documents(
+        self,
+        documents: Sequence[DocumentDefinition],
+        options: Optional[ConnectorOptions] = None,
+    ) -> None:
+        """Incrementally upsert one or more documents through `indexdocuments`."""
+        PushUploader(api_client).index_documents(
+            datasource=self.name,
+            documents=documents,
+            batch_size=self.batch_size,
+            options=push_options_from_connector_options(options),
+        )
 
-        upload_id = str(uuid.uuid4())
-        for i, batch in enumerate(batches):
-            try:
-                is_first_page = i == 0
-                is_last_page = i == total_batches - 1
+    def index_users(self, users, options: Optional[ConnectorOptions] = None) -> None:
+        """Incrementally index datasource users through `indexuser`."""
+        PushUploader(api_client).index_users(
+            datasource=self.name,
+            users=users,
+            options=push_options_from_connector_options(options),
+        )
 
-                if force_restart and is_first_page:
-                    logger.info("Force restarting upload - discarding any previous upload progress")
+    def index_groups(self, groups, options: Optional[ConnectorOptions] = None) -> None:
+        """Incrementally index datasource groups through `indexgroup`."""
+        PushUploader(api_client).index_groups(
+            datasource=self.name,
+            groups=groups,
+            options=push_options_from_connector_options(options),
+        )
 
-                with api_client() as client:
-                    client.indexing.documents.bulk_index(
-                        datasource=self.name,
-                        documents=list(batch),
-                        upload_id=upload_id,
-                        is_first_page=is_first_page,
-                        is_last_page=is_last_page,
-                        force_restart_upload=True if (force_restart and is_first_page) else None,
-                        disable_stale_document_deletion_check=True
-                        if (options and is_last_page and options.disable_stale_deletion_check)
-                        else None,
-                        timeout_ms=options.upload_timeout_ms if options else None,
-                    )
+    def index_memberships(self, memberships, options: Optional[ConnectorOptions] = None) -> None:
+        """Incrementally index datasource memberships through `indexmembership`."""
+        PushUploader(api_client).index_memberships(
+            datasource=self.name,
+            memberships=memberships,
+            options=push_options_from_connector_options(options),
+        )
 
-                logger.info(f"Document batch {i + 1}/{total_batches} uploaded successfully")
-                self._observability.increment_counter("batches_uploaded")
+    def delete_document(
+        self,
+        *,
+        object_type: str,
+        id: str,
+        options: Optional[ConnectorOptions] = None,
+        version: Optional[int] = None,
+    ) -> None:
+        """Delete a document from this datasource."""
+        PushUploader(api_client).delete_document(
+            datasource=self.name,
+            object_type=object_type,
+            id=id,
+            version=version,
+            options=push_options_from_connector_options(options),
+        )
 
-            except Exception as e:
-                logger.error(f"Failed to upload document batch {i + 1}/{total_batches}: {e}")
-                self._observability.increment_counter("batch_upload_errors")
-                raise
+    def delete_user(
+        self,
+        *,
+        email: str,
+        options: Optional[ConnectorOptions] = None,
+        version: Optional[int] = None,
+    ) -> None:
+        """Delete a datasource user by email."""
+        PushUploader(api_client).delete_user(
+            datasource=self.name,
+            email=email,
+            version=version,
+            options=push_options_from_connector_options(options),
+        )
+
+    def delete_group(
+        self,
+        *,
+        group_name: str,
+        options: Optional[ConnectorOptions] = None,
+        version: Optional[int] = None,
+    ) -> None:
+        """Delete a datasource group by name."""
+        PushUploader(api_client).delete_group(
+            datasource=self.name,
+            group_name=group_name,
+            version=version,
+            options=push_options_from_connector_options(options),
+        )
+
+    def delete_membership(
+        self,
+        *,
+        membership,
+        options: Optional[ConnectorOptions] = None,
+        version: Optional[int] = None,
+    ) -> None:
+        """Delete a datasource membership."""
+        PushUploader(api_client).delete_membership(
+            datasource=self.name,
+            membership=membership,
+            version=version,
+            options=push_options_from_connector_options(options),
+        )
+
+    def update_permissions(
+        self,
+        *,
+        permissions,
+        object_type: Optional[str] = None,
+        id: Optional[str] = None,
+        view_url: Optional[str] = None,
+        options: Optional[ConnectorOptions] = None,
+    ) -> None:
+        """Update document permissions by document ID or view URL."""
+        PushUploader(api_client).update_permissions(
+            datasource=self.name,
+            permissions=permissions,
+            object_type=object_type,
+            id=id,
+            view_url=view_url,
+            options=push_options_from_connector_options(options),
+        )
 
     def _get_last_crawl_timestamp(self) -> Optional[str]:
         """

@@ -76,6 +76,16 @@ class TestDocumentsAssertions:
         with pytest.raises(AssertionError, match="at least one"):
             client.assert_documents_posted()
 
+    def test_documents_posted_includes_incremental_indexdocuments(self):
+        connector = DatasourceFake(name="incremental", data_client=StaticDataClient([]))
+        docs = connector.transform([{"id": "a", "title": "A"}])
+
+        with mock_glean_client() as client:
+            connector.index_documents(docs)
+
+        assert len(client.documents_posted) == 1
+        client.assert_documents_posted(count=1, datasource="incremental")
+
 
 class TestEmployeesAssertions:
     def test_employees_posted_populated(self):
@@ -84,6 +94,16 @@ class TestEmployeesAssertions:
             PeopleFake(name="p", data_client=StaticDataClient(emps)).index_data()
         assert len(client.employees_posted) == 1
         assert client.employees_posted[0].email == "a@b.com"
+        client.assert_employees_posted(count=1)
+
+    def test_employees_posted_includes_incremental_index(self):
+        connector = PeopleFake(name="p", data_client=StaticDataClient([]))
+        employees = connector.transform([{"email": "a@b.com", "first_name": "A", "last_name": "B"}])
+
+        with mock_glean_client() as client:
+            connector.index_employees(employees)
+
+        assert len(client.employees_posted) == 1
         client.assert_employees_posted(count=1)
 
     def test_assert_employees_posted_mismatch(self):

@@ -1,16 +1,17 @@
 """Base people connector for the Glean Connector SDK."""
 
 import logging
-import uuid
 from abc import ABC
 from typing import Optional, Sequence
 
 from glean.api_client.models import EmployeeInfoDefinition
-from glean.indexing.common import BatchProcessor, api_client
+from glean.indexing.common import api_client
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
 from glean.indexing.observability.observability import ConnectorObservability
+from glean.indexing.push.options import push_options_from_connector_options
+from glean.indexing.push.uploader import PushUploader
 
 logger = logging.getLogger(__name__)
 
@@ -132,41 +133,42 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
         if not employees:
             return
 
-        batches = list(BatchProcessor(list(employees), batch_size=self.batch_size))
-        total_batches = len(batches)
-        force_restart = options.force_restart if options else False
+        try:
+            result = PushUploader(api_client).upload_employees(
+                employees=employees,
+                batch_size=self.batch_size,
+                options=push_options_from_connector_options(options),
+            )
+            self._observability.increment_counter("batches_uploaded", result.batch_count)
+        except Exception as e:
+            logger.error(f"Failed to upload employees: {e}")
+            self._observability.increment_counter("batch_upload_errors")
+            raise
 
-        logger.info(f"Uploading {len(employees)} employees in {total_batches} batches")
+    def index_employees(
+        self,
+        employees: Sequence[EmployeeInfoDefinition],
+        options: Optional[ConnectorOptions] = None,
+    ) -> None:
+        """Incrementally index employees through the people `index` endpoint."""
+        PushUploader(api_client).index_employees(
+            employees=employees,
+            options=push_options_from_connector_options(options),
+        )
 
-        upload_id = str(uuid.uuid4())
-        for i, batch in enumerate(batches):
-            try:
-                is_first_page = i == 0
-                is_last_page = i == total_batches - 1
-
-                if force_restart and is_first_page:
-                    logger.info("Force restarting upload - discarding any previous upload progress")
-
-                with api_client() as client:
-                    client.indexing.people.bulk_index(
-                        employees=list(batch),
-                        upload_id=upload_id,
-                        is_first_page=is_first_page,
-                        is_last_page=is_last_page,
-                        force_restart_upload=True if (force_restart and is_first_page) else None,
-                        disable_stale_data_deletion_check=True
-                        if (options and is_last_page and options.disable_stale_deletion_check)
-                        else None,
-                        timeout_ms=options.upload_timeout_ms if options else None,
-                    )
-
-                logger.info(f"Employee batch {i + 1}/{total_batches} uploaded successfully")
-                self._observability.increment_counter("batches_uploaded")
-
-            except Exception as e:
-                logger.error(f"Failed to upload employee batch {i + 1}/{total_batches}: {e}")
-                self._observability.increment_counter("batch_upload_errors")
-                raise
+    def delete_employee(
+        self,
+        *,
+        employee_email: str,
+        options: Optional[ConnectorOptions] = None,
+        version: Optional[int] = None,
+    ) -> None:
+        """Delete an employee by email."""
+        PushUploader(api_client).delete_employee(
+            employee_email=employee_email,
+            version=version,
+            options=push_options_from_connector_options(options),
+        )
 
     def _get_last_crawl_timestamp(self) -> Optional[str]:
         """

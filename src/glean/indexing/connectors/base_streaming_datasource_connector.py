@@ -9,6 +9,8 @@ from glean.indexing.common import api_client
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
 from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
+from glean.indexing.push.options import push_options_from_connector_options
+from glean.indexing.push.uploader import PushUploader
 
 logger = logging.getLogger(__name__)
 
@@ -163,21 +165,16 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
             if self._force_restart and is_first_batch:
                 logger.info("Force restarting upload - discarding any previous upload progress")
 
-            options = self._options
-
-            with api_client() as client:
-                client.indexing.documents.bulk_index(
-                    datasource=self.name,
-                    documents=list(transformed_batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_batch,
-                    is_last_page=is_last_batch,
-                    force_restart_upload=True if (self._force_restart and is_first_batch) else None,
-                    disable_stale_document_deletion_check=True
-                    if (options and is_last_batch and options.disable_stale_deletion_check)
-                    else None,
-                    timeout_ms=options.upload_timeout_ms if options else None,
-                )
+            options = push_options_from_connector_options(self._options)
+            options.force_restart = self._force_restart
+            PushUploader(api_client).upload_document_batch(
+                datasource=self.name,
+                documents=list(transformed_batch),
+                upload_id=upload_id,
+                is_first_page=is_first_batch,
+                is_last_page=is_last_batch,
+                options=options,
+            )
 
             logger.info(f"Batch {batch_number} indexed successfully")
 

@@ -1,0 +1,34 @@
+---
+description: AI connector builder workflow for SDK connectors
+alwaysApply: false
+---
+
+# AI Connector Builder
+
+When helping build a new connector with AI, follow this workflow before calling connector generation tools.
+
+## Required Gates
+
+Do not call `connector-mcp` `build_connector` until:
+
+- the user has confirmed the source documentation, or explicitly asked to proceed without docs
+- `.glean/source_docs.json` exists
+- `.glean/source_investigation.md` exists
+- `.glean/connector_plan.md` exists
+
+## Workflow
+
+1. Search for official datasource docs first. Include internal examples only as supporting evidence.
+2. Present 2-5 candidate docs with short summaries and confidence signals.
+3. Ask the user which docs are the source of truth.
+4. Persist confirmed docs to `.glean/source_docs.json`.
+5. Investigate auth, endpoints, pagination, rate limits, permissions, sync strategy, and unknowns.
+6. Write `.glean/source_investigation.md`, `.glean/api_endpoints.json`, and `.glean/connector_plan.md`.
+7. Use `connector-mcp` for scaffolding, schema, mappings, build, run, and inspect.
+8. Prefer SDK primitives in generated/edited code: `PullHttpClient`, auth providers, rate limiters, checkpoints, connector base classes, and push-layer uploads.
+
+If docs cannot be found, ask the user for an API docs link or sample API responses before generating code.
+
+## Clean Webex Demo Constraint
+
+For the Webex connector generation demo in this worktree, do not use prior Webex connector GitHub PRs, the previous `snippets/webex` implementation, or Conduit Webex code as implementation sources unless the user explicitly asks. Use official Webex docs plus generic SDK pull/push docs so the generated connector proves the AI workflow rather than copying the previous implementation.

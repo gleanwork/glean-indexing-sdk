@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Connector API Endpoints",
+  "type": "object",
+  "required": ["datasource", "base_url", "auth", "endpoints"],
+  "properties": {
+    "datasource": { "type": "string" },
+    "base_url": { "type": "string" },
+    "auth": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["bearer", "api_key", "oauth_refresh", "client_credentials", "unknown"]
+        },
+        "env_vars": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "rate_limits": {
+      "type": "object",
+      "properties": {
+        "calls": { "type": "integer" },
+        "period_seconds": { "type": "integer" },
+        "notes": { "type": "string" }
+      }
+    },
+    "endpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "method", "path", "purpose"],
+        "properties": {
+          "name": { "type": "string" },
+          "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+          "path": { "type": "string" },
+          "purpose": { "type": "string" },
+          "pagination": {
+            "type": "string",
+            "enum": ["none", "link_header", "cursor", "offset_limit", "page_token", "unknown"]
+          },
+          "params": { "type": "object" },
+          "incremental_field": { "type": "string" },
+          "response_items_path": { "type": "string" }
+        }
+      }
+    }
+  }
+}

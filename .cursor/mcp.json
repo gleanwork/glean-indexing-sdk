@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "glean-connector": {
+      "command": "npx",
+      "args": ["-y", "@gleanwork/connector-mcp"],
+      "type": "stdio"
+    }
+  }
+}

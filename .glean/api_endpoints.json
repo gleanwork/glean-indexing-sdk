@@ -1,0 +1,93 @@
+{
+  "datasource": "webex",
+  "base_url": "https://webexapis.com/v1",
+  "auth": {
+    "type": "bearer",
+    "env_vars": ["WEBEX_ACCESS_TOKEN"],
+    "scopes": [
+      "spark:people_read",
+      "spark:rooms_read",
+      "spark:memberships_read",
+      "spark:messages_read",
+      "spark:teams_read"
+    ]
+  },
+  "rate_limits": {
+    "calls": 240,
+    "period_seconds": 60,
+    "notes": "Webex documents most REST APIs as roughly 300 requests per minute, with /people and /messages dynamically adjusted. Use a conservative rolling limiter and respect Retry-After for 429 and 423 responses."
+  },
+  "endpoints": [
+    {
+      "name": "people",
+      "method": "GET",
+      "path": "/people",
+      "purpose": "List Webex users for datasource identity indexing.",
+      "pagination": "link_header",
+      "params": {
+        "max": 1000
+      },
+      "response_items_path": "items"
+    },
+    {
+      "name": "teams",
+      "method": "GET",
+      "path": "/teams",
+      "purpose": "List teams to index as datasource groups.",
+      "pagination": "link_header",
+      "params": {
+        "max": 1000
+      },
+      "response_items_path": "items"
+    },
+    {
+      "name": "team_memberships",
+      "method": "GET",
+      "path": "/team/memberships",
+      "purpose": "List team members to index team group memberships.",
+      "pagination": "link_header",
+      "params": {
+        "teamId": "<team id>",
+        "max": 1000
+      },
+      "response_items_path": "items"
+    },
+    {
+      "name": "rooms",
+      "method": "GET",
+      "path": "/rooms",
+      "purpose": "List rooms to index room documents and discover room-scoped messages and memberships.",
+      "pagination": "link_header",
+      "params": {
+        "max": 1000
+      },
+      "incremental_field": "lastActivity",
+      "response_items_path": "items"
+    },
+    {
+      "name": "memberships",
+      "method": "GET",
+      "path": "/memberships",
+      "purpose": "List room members for room/message document ACLs.",
+      "pagination": "link_header",
+      "params": {
+        "roomId": "<room id>",
+        "max": 1000
+      },
+      "response_items_path": "items"
+    },
+    {
+      "name": "messages",
+      "method": "GET",
+      "path": "/messages",
+      "purpose": "List room messages to build searchable thread documents.",
+      "pagination": "link_header",
+      "params": {
+        "roomId": "<room id>",
+        "max": 1000
+      },
+      "incremental_field": "created",
+      "response_items_path": "items"
+    }
+  ]
+}

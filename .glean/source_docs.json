@@ -1,0 +1,74 @@
+{
+  "datasource": "webex",
+  "confirmed_docs": [
+    {
+      "url": "https://developer.webex.com/messaging/docs/api/guides/integrations-and-authorization",
+      "title": "Webex Messaging - Integrations and Authorization",
+      "source_type": "official",
+      "summary": "OAuth and integration guidance for Webex Messaging, including authorization flows and token handling.",
+      "confirmed_by_user": true
+    },
+    {
+      "url": "https://developer.webex.com/docs/integrations#scopes",
+      "title": "Webex Integrations - Scopes",
+      "source_type": "official",
+      "summary": "Official scope inventory, including user, admin, and compliance scopes for people, rooms, teams, memberships, and messages.",
+      "confirmed_by_user": true
+    },
+    {
+      "url": "https://developer.webex.com/docs/basics#pagination",
+      "title": "Webex Basics - Pagination, Rate Limits, and API Errors",
+      "source_type": "official",
+      "summary": "Documents RFC5988 Link header pagination, Retry-After handling, 429 behavior, and common API error codes.",
+      "confirmed_by_user": true
+    },
+    {
+      "url": "https://developer.webex.com/messaging/docs/api/v1/rooms",
+      "title": "Webex API Reference - Rooms",
+      "source_type": "official",
+      "summary": "Rooms are collaboration spaces. The connector uses rooms as both documents and containers for room memberships and messages.",
+      "confirmed_by_user": true
+    },
+    {
+      "url": "https://developer.webex.com/docs/api/v1/messages",
+      "title": "Webex API Reference - Messages",
+      "source_type": "official",
+      "summary": "Messages are room content. The connector indexes root messages and replies as searchable message-thread documents.",
+      "confirmed_by_user": true
+    },
+    {
+      "url": "https://developer.webex.com/messaging/docs/api/v1/memberships",
+      "title": "Webex API Reference - Memberships",
+      "source_type": "official",
+      "summary": "Memberships represent a person's relationship to a room and drive document ACLs for room and message-thread documents.",
+      "confirmed_by_user": true
+    },
+    {
+      "url": "https://developer.webex.com/messaging/docs/api/v1/teams",
+      "title": "Webex API Reference - Teams",
+      "source_type": "official",
+      "summary": "Teams group rooms and users. The connector can index teams as groups and use team membership data for permissions.",
+      "confirmed_by_user": true
+    },
+    {
+      "url": "https://developer.webex.com/docs/api/v1/team-memberships",
+      "title": "Webex API Reference - Team Memberships",
+      "source_type": "official",
+      "summary": "Team memberships connect people to teams and support group membership indexing.",
+      "confirmed_by_user": true
+    },
+    {
+      "url": "https://developer.webex.com/docs/api/v1/people",
+      "title": "Webex API Reference - People",
+      "source_type": "official",
+      "summary": "People are Webex users. The connector uses people data to index datasource users and resolve ACLs.",
+      "confirmed_by_user": true
+    }
+  ],
+  "rejected_docs": [
+    {
+      "url": "https://developer.webex.com/meeting/docs/basics",
+      "reason": "User selected Webex Messaging content rather than Webex Meetings content for the first connector version."
+    }
+  ]
+}

@@ -26,6 +26,7 @@ from unittest.mock import MagicMock, create_autospec, patch
 
 from glean.api_client import Glean
 from glean.api_client.models import DocumentDefinition, EmployeeInfoDefinition
+
 from glean.indexing.testing._patch_targets import _PATCH_TARGETS, validate_patch_targets
 
 _P = ParamSpec("_P")

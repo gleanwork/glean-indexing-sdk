@@ -4,8 +4,8 @@ from typing import AsyncGenerator, Sequence
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from glean.api_client.models import DocumentDefinition
+
 from glean.indexing.connectors import (
     BaseAsyncStreamingDataClient,
     BaseAsyncStreamingDatasourceConnector,

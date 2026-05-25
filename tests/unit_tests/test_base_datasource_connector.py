@@ -4,6 +4,7 @@ from typing import List, Sequence
 from unittest.mock import Mock, patch
 
 from glean.api_client.models import ContentDefinition, DocumentDefinition
+
 from glean.indexing.connectors import BaseDataClient, BaseDatasourceConnector
 from glean.indexing.models import ConnectorOptions, CustomDatasourceConfig
 

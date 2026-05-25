@@ -7,6 +7,7 @@ from glean.api_client.models import (
     DocumentDefinition,
     EmployeeInfoDefinition,
 )
+
 from glean.indexing.connectors import (
     BaseAsyncStreamingDatasourceConnector,
     BaseDatasourceConnector,

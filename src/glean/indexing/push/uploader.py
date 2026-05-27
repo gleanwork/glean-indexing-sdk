@@ -1,4 +1,4 @@
-"""First-class wrappers for incremental push indexing APIs."""
+"""First-class wrappers for push indexing APIs."""
 
 from typing import Any, Mapping, Optional, Sequence
 
@@ -13,7 +13,7 @@ from glean.indexing.common import api_client
 
 
 class PushUploader:
-    """Thin uploader for incremental, non-bulk push APIs.
+    """Thin uploader for push indexing APIs.
 
     Existing connector bulk flows intentionally do not use this class yet.
     """

@@ -53,8 +53,7 @@ class TestStructuredFormatter:
 
         timestamp = log_data["timestamp"]
         assert timestamp.endswith("Z")
-        # Verify it's a valid ISO format
-        datetime.fromisoformat(timestamp[:-1])  # Remove Z for parsing
+        datetime.fromisoformat(timestamp[:-1])
 
     def test_disable_timestamp(self):
         """Test timestamp can be disabled."""
@@ -107,17 +106,14 @@ class TestStructuredFormatter:
         """Test extra fields passed via logger.info(extra={}) are included."""
         formatter = StructuredFormatter()
 
-        # Create a logger and capture output
         logger = logging.getLogger("test.extra")
         handler = logging.StreamHandler(StringIO())
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
 
-        # Log with extra fields
         logger.info("Processing batch", extra={"batch_id": "123", "item_count": 50})
 
-        # Get the formatted output
         handler.stream.seek(0)
         output = handler.stream.read()
         log_data = json.loads(output)
@@ -210,7 +206,6 @@ class TestStructuredFormatter:
         output = formatter.format(record)
         log_data = json.loads(output)
 
-        # These should not appear in output
         assert "args" not in log_data
         assert "pathname" not in log_data
         assert "lineno" not in log_data
@@ -223,7 +218,6 @@ class TestStructuredFormatter:
         """Test that complex objects are serialized using str()."""
         formatter = StructuredFormatter()
 
-        # Create a record with a complex object
         class CustomObject:
             def __str__(self):
                 return "custom_value"
@@ -237,10 +231,8 @@ class TestStructuredFormatter:
             args=(),
             exc_info=None,
         )
-        # Add custom attribute
         record.custom_obj = CustomObject()
 
-        # Should serialize using str()
         output = formatter.format(record)
         log_data = json.loads(output)
 
@@ -281,7 +273,6 @@ class TestCompactStructuredFormatter:
         """Test that empty/null values are omitted from output."""
         formatter = CompactStructuredFormatter()
 
-        # Create logger with extra fields, some empty
         logger = logging.getLogger("test.compact")
         handler = logging.StreamHandler(StringIO())
         handler.setFormatter(formatter)
@@ -304,11 +295,9 @@ class TestCompactStructuredFormatter:
         output = handler.stream.read()
         log_data = json.loads(output)
 
-        # Should have valid fields
         assert log_data["batch_id"] == "123"
         assert log_data["valid_count"] == 50
 
-        # Should NOT have empty fields
         assert "empty_string" not in log_data
         assert "none_value" not in log_data
         assert "empty_list" not in log_data
@@ -330,7 +319,6 @@ class TestCompactStructuredFormatter:
         output = handler.stream.read()
         log_data = json.loads(output)
 
-        # 0 and False should be preserved
         assert log_data["count"] == 0
         assert log_data["flag"] is False
 
@@ -350,7 +338,6 @@ class TestCompactStructuredFormatter:
         output = formatter.format(record)
         log_data = json.loads(output)
 
-        # Should only have essential fields
         assert set(log_data.keys()) == {"timestamp", "level", "logger", "message"}
 
 
@@ -378,12 +365,10 @@ class TestFormatterIntegration:
 
     def test_multiple_handlers_with_different_formatters(self):
         """Test multiple handlers can use different formatters."""
-        # JSON handler
         json_stream = StringIO()
         json_handler = logging.StreamHandler(json_stream)
         json_handler.setFormatter(StructuredFormatter())
 
-        # Compact JSON handler
         compact_stream = StringIO()
         compact_handler = logging.StreamHandler(compact_stream)
         compact_handler.setFormatter(CompactStructuredFormatter())
@@ -395,19 +380,14 @@ class TestFormatterIntegration:
 
         logger.info("Test", extra={"key": "value", "empty": ""})
 
-        # Both should produce valid JSON
         json_stream.seek(0)
         json_data = json.loads(json_stream.read())
 
         compact_stream.seek(0)
         compact_data = json.loads(compact_stream.read())
 
-        # Both should have the message
         assert json_data["message"] == "Test"
         assert compact_data["message"] == "Test"
 
-        # Regular formatter includes empty field
         assert json_data.get("empty") == ""
-
-        # Compact formatter omits empty field
         assert "empty" not in compact_data

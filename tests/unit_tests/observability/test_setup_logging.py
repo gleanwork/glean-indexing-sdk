@@ -18,7 +18,6 @@ class TestSetupConnectorLogging:
 
     def teardown_method(self):
         """Clean up logging configuration after each test."""
-        # Reset logging configuration
         logging.root.handlers = []
         logging.root.setLevel(logging.WARNING)
 
@@ -26,15 +25,11 @@ class TestSetupConnectorLogging:
         """Test default human-readable logging configuration."""
         setup_connector_logging("test_connector")
 
-        # Verify logger is configured
         logger = logging.getLogger("test_module")
-        assert logger.level == logging.NOTSET  # Inherits from root
+        assert logger.level == logging.NOTSET
         assert logging.root.level == logging.INFO
-
-        # Verify there's a handler
         assert len(logging.root.handlers) > 0
 
-        # Test logging output
         stream = StringIO()
         for handler in logging.root.handlers:
             if isinstance(handler, logging.StreamHandler):
@@ -44,15 +39,12 @@ class TestSetupConnectorLogging:
 
         stream.seek(0)
         output = stream.read()
-
-        # Default format includes connector name in output
         assert "test_connector" in output or "Test message" in output
 
     def test_structured_logging_enabled(self):
         """Test enabling structured JSON logging."""
         setup_connector_logging("test_connector", use_structured_logging=True)
 
-        # Get the stream from the handler
         stream = StringIO()
         for handler in logging.root.handlers:
             if isinstance(handler, logging.StreamHandler):
@@ -63,8 +55,6 @@ class TestSetupConnectorLogging:
 
         stream.seek(0)
         output = stream.read().strip()
-
-        # Should be valid JSON
         log_data = json.loads(output)
 
         assert log_data["message"] == "Test structured message"
@@ -78,7 +68,6 @@ class TestSetupConnectorLogging:
 
         assert logging.root.level == logging.DEBUG
 
-        # Verify DEBUG messages are logged
         stream = StringIO()
         for handler in logging.root.handlers:
             if isinstance(handler, logging.StreamHandler):
@@ -89,7 +78,6 @@ class TestSetupConnectorLogging:
 
         stream.seek(0)
         output = stream.read()
-
         assert "Debug message" in output
 
     def test_custom_formatter(self):
@@ -97,7 +85,6 @@ class TestSetupConnectorLogging:
         custom_formatter = CompactStructuredFormatter()
         setup_connector_logging("test_connector", formatter=custom_formatter)
 
-        # Verify the formatter is applied
         stream = StringIO()
         for handler in logging.root.handlers:
             if isinstance(handler, logging.StreamHandler):
@@ -109,27 +96,21 @@ class TestSetupConnectorLogging:
 
         stream.seek(0)
         log_data = json.loads(stream.read().strip())
-
-        # CompactStructuredFormatter should omit empty values
         assert "keep" in log_data
         assert "omit" not in log_data
 
     def test_extra_handlers(self):
         """Test adding extra handlers."""
-        # Create an extra file-like handler
         extra_stream = StringIO()
         extra_handler = logging.StreamHandler(extra_stream)
 
         setup_connector_logging("test_connector", extra_handlers=[extra_handler])
 
-        # Should have at least 2 handlers (console + extra)
         assert len(logging.root.handlers) >= 2
 
-        # Both should have the same formatter
         logger = logging.getLogger("test_module")
         logger.info("Test message")
 
-        # Check extra handler got the message
         extra_stream.seek(0)
         output = extra_stream.read()
         assert "Test message" in output
@@ -145,32 +126,26 @@ class TestSetupConnectorLogging:
             extra_handlers=[extra_handler],
         )
 
-        # All handlers should have StructuredFormatter
         for handler in logging.root.handlers:
             assert isinstance(handler.formatter, StructuredFormatter)
 
-        # Clear the stream to remove setup log
         extra_stream.truncate(0)
         extra_stream.seek(0)
 
         logger = logging.getLogger("test_module")
         logger.info("Test")
 
-        # Extra handler should get JSON output
         extra_stream.seek(0)
         log_data = json.loads(extra_stream.read().strip())
         assert log_data["message"] == "Test"
 
     def test_force_reconfiguration(self):
         """Test that setup_connector_logging overrides existing configuration."""
-        # Set up initial configuration
         logging.basicConfig(level=logging.ERROR)
         initial_level = logging.root.level
 
-        # Reconfigure with setup_connector_logging
         setup_connector_logging("test_connector", log_level="INFO")
 
-        # Should override the previous configuration
         assert logging.root.level == logging.INFO
         assert logging.root.level != initial_level
 
@@ -178,16 +153,12 @@ class TestSetupConnectorLogging:
         """Test that structured logging emits confirmation with structured fields."""
         stream = StringIO()
 
-        # Setup with structured logging
         setup_connector_logging("test_connector", use_structured_logging=True)
 
-        # Replace handler stream to capture output
         for handler in logging.root.handlers:
             if isinstance(handler, logging.StreamHandler):
                 handler.stream = stream
 
-        # The setup function itself should log
-        # Re-run to capture the log message
         stream.truncate(0)
         stream.seek(0)
 
@@ -209,7 +180,7 @@ class TestSetupConnectorLogging:
         test_cases = ["debug", "DEBUG", "DeBuG"]
 
         for log_level in test_cases:
-            logging.root.handlers = []  # Clear handlers
+            logging.root.handlers = []
             setup_connector_logging("test_connector", log_level=log_level)
             assert logging.root.level == logging.DEBUG
 
@@ -239,14 +210,11 @@ class TestBackwardCompatibilitySetupLogging:
 
     def test_third_positional_argument_log_format(self):
         """Test that 3rd positional argument (log_format) works for backward compatibility."""
-        # Clear existing handlers
         logging.root.handlers = []
 
-        # Test with custom log format as 3rd positional argument
         custom_format = "%(levelname)s - %(message)s"
         setup_connector_logging("test_connector", "INFO", custom_format)
 
-        # Verify the format is applied
         stream = StringIO()
         for handler in logging.root.handlers:
             if isinstance(handler, logging.StreamHandler):
@@ -257,8 +225,6 @@ class TestBackwardCompatibilitySetupLogging:
 
         stream.seek(0)
         output = stream.read().strip()
-
-        # Should match the custom format
         assert output == "INFO - Test message"
 
     def test_default_is_human_readable(self):
@@ -276,22 +242,18 @@ class TestBackwardCompatibilitySetupLogging:
         stream.seek(0)
         output = stream.read()
 
-        # Should NOT be valid JSON (human-readable format)
         with pytest.raises(json.JSONDecodeError):
             json.loads(output)
 
     def test_no_breaking_changes_to_existing_usage(self):
         """Verify existing usage patterns continue to work."""
-        # Pattern 1: Simple setup
         setup_connector_logging("connector1")
         assert logging.root.level == logging.INFO
 
-        # Pattern 2: Custom log level
         logging.root.handlers = []
         setup_connector_logging("connector2", log_level="WARNING")
         assert logging.root.level == logging.WARNING
 
-        # Pattern 3: Should handle string log levels
         logging.root.handlers = []
         setup_connector_logging("connector3", "ERROR")
         assert logging.root.level == logging.ERROR

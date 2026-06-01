@@ -500,24 +500,19 @@ def setup_connector_logging(
         from glean.indexing.observability import CompactStructuredFormatter
         setup_connector_logging("my_connector", formatter=CompactStructuredFormatter())
     """
-    # Determine which formatter to use
     if formatter:
         log_formatter = formatter
     elif use_structured_logging:
         log_formatter = StructuredFormatter()
     elif log_format:
-        # Custom log format provided (backward compatibility)
         log_formatter = logging.Formatter(log_format)
     else:
-        # Default human-readable format
         default_format = f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
         log_formatter = logging.Formatter(default_format)
 
-    # Set up console handler
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(log_formatter)
 
-    # Collect all handlers
     handlers = [console_handler]
     if extra_handlers:
         for handler in extra_handlers:

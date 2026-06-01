@@ -6,6 +6,8 @@ import time
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
+from .formatters import StructuredFormatter
+
 logger = logging.getLogger(__name__)
 
 # Type variable for decorated classes
@@ -236,27 +238,48 @@ class ProgressCallback:
 
 
 def setup_connector_logging(
-    connector_name: str, log_level: str = "INFO", log_format: Optional[str] = None
-):
+    connector_name: str,
+    log_level: str = "INFO",
+    log_format: Optional[str] = None,
+    *,
+    use_structured_logging: bool = False,
+    formatter: Optional[logging.Formatter] = None,
+    extra_handlers: Optional[List[logging.Handler]] = None,
+) -> None:
     """
     Set up standardized logging for a connector.
 
     Args:
         connector_name: Name of the connector for log identification
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
-        log_format: Custom log format string
+        log_format: Custom log format string (ignored if formatter is provided)
+        use_structured_logging: Enable structured JSON logging
+        formatter: Custom formatter instance (overrides use_structured_logging and log_format)
+        extra_handlers: Additional handlers to add beyond the default StreamHandler
     """
-    if log_format is None:
-        log_format = f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
+    logging.root.handlers = []
+    logging.root.setLevel(getattr(logging, log_level.upper()))
 
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format=log_format,
-        handlers=[
-            logging.StreamHandler(),
-            # Add file handler if needed
-            # logging.FileHandler(f"{connector_name}.log")
-        ],
-    )
+    if formatter is None:
+        if use_structured_logging:
+            formatter = StructuredFormatter()
+        else:
+            if log_format is None:
+                log_format = f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
+            formatter = logging.Formatter(log_format)
 
-    logger.info(f"Logging configured for connector: {connector_name}")
+    handlers = [logging.StreamHandler()]
+    if extra_handlers:
+        handlers.extend(extra_handlers)
+
+    for handler in handlers:
+        handler.setFormatter(formatter)
+        logging.root.addHandler(handler)
+
+    if use_structured_logging and formatter is None or isinstance(formatter, StructuredFormatter):
+        logger.info(
+            "Structured logging configured",
+            extra={"connector": connector_name, "log_level": log_level},
+        )
+    else:
+        logger.info(f"Logging configured for connector: {connector_name}")

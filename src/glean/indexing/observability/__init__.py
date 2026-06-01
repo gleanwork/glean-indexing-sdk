@@ -1,19 +1,25 @@
 """Observability and monitoring tools for Glean indexing."""
 
+from glean.indexing.observability.formatters import (
+    CompactStructuredFormatter,
+    StructuredFormatter,
+)
 from glean.indexing.observability.observability import (
     ConnectorObservability,
-    with_observability,
-    track_crawl_progress,
     PerformanceTracker,
     ProgressCallback,
     setup_connector_logging,
+    track_crawl_progress,
+    with_observability,
 )
 
 __all__ = [
+    "CompactStructuredFormatter",
     "ConnectorObservability",
-    "with_observability",
-    "track_crawl_progress",
-    "PerformanceTracker", 
+    "PerformanceTracker",
     "ProgressCallback",
+    "StructuredFormatter",
     "setup_connector_logging",
+    "track_crawl_progress",
+    "with_observability",
 ]

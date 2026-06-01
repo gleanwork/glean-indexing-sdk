@@ -12,10 +12,18 @@ from glean.indexing.observability.observability import (
     track_crawl_progress,
     with_observability,
 )
+from glean.indexing.observability.providers import (
+    InMemoryMetricsProvider,
+    MetricsProvider,
+    MetricType,
+)
 
 __all__ = [
     "CompactStructuredFormatter",
     "ConnectorObservability",
+    "InMemoryMetricsProvider",
+    "MetricsProvider",
+    "MetricType",
     "PerformanceTracker",
     "ProgressCallback",
     "StructuredFormatter",

@@ -3,6 +3,7 @@
 import functools
 import logging
 import time
+import uuid
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
@@ -20,23 +21,85 @@ class ConnectorObservability:
     Tracks metrics, performance, and provides structured logging.
     """
 
-    def __init__(self, connector_name: str):
+    def __init__(
+        self,
+        connector_name: str,
+        datasource: Optional[str] = None,
+        crawl_mode: Optional[str] = None,
+        run_id: Optional[str] = None,
+    ):
         self.connector_name = connector_name
+        self.datasource = datasource or connector_name
+        self.crawl_mode = crawl_mode
+        self.run_id = run_id or str(uuid.uuid4())
         self.metrics: Dict[str, Any] = defaultdict(int)
         self.timers: Dict[str, float] = {}
         self.start_time: Optional[float] = None
 
-    def start_execution(self):
+    def get_common_fields(self, operation: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
+        """Get common fields for structured logging."""
+        fields = {
+            "connector": self.connector_name,
+            "datasource": self.datasource,
+            "run_id": self.run_id,
+        }
+        if self.crawl_mode:
+            fields["crawl_mode"] = self.crawl_mode
+        if operation:
+            fields["operation"] = operation
+        fields.update(kwargs)
+        return fields
+
+    def start_execution(self) -> None:
         """Mark the start of connector execution."""
         self.start_time = time.time()
-        logger.info(f"[{self.connector_name}] Execution started")
+        logger.info(
+            "Crawl started",
+            extra=self.get_common_fields(
+                operation="crawl_started",
+                start_time=self.start_time,
+            ),
+        )
 
-    def end_execution(self):
+    def end_execution(self) -> None:
         """Mark the end of connector execution."""
         if self.start_time:
             duration = time.time() - self.start_time
+            duration_ms = int(duration * 1000)
             self.metrics["total_execution_time"] = duration
-            logger.info(f"[{self.connector_name}] Execution completed in {duration:.2f}s")
+            logger.info(
+                "Crawl completed successfully",
+                extra=self.get_common_fields(
+                    operation="crawl_completed",
+                    duration_ms=duration_ms,
+                    status="success",
+                ),
+            )
+
+    def fail_execution(self, error: Exception) -> None:
+        """Mark the execution as failed."""
+        import sys
+
+        duration_ms = None
+        if self.start_time:
+            duration = time.time() - self.start_time
+            duration_ms = int(duration * 1000)
+
+        exc_info = sys.exc_info()
+        if exc_info[1] is not error:
+            exc_info = (type(error), error, None)
+
+        logger.error(
+            f"Crawl failed: {error}",
+            extra=self.get_common_fields(
+                operation="crawl_failed",
+                status="failed",
+                error_type=type(error).__name__,
+                error_message=str(error),
+                duration_ms=duration_ms,
+            ),
+            exc_info=exc_info,
+        )
 
     def record_metric(self, key: str, value: Any):
         """Record a custom metric."""
@@ -63,6 +126,168 @@ class ConnectorObservability:
     def get_metrics_summary(self) -> Dict[str, Any]:
         """Get a summary of all collected metrics."""
         return dict(self.metrics)
+
+    def log_data_fetch_started(self, **kwargs: Any) -> None:
+        """Log the start of data fetching phase."""
+        logger.info(
+            "Data fetch started",
+            extra=self.get_common_fields(operation="data_fetch_started", **kwargs),
+        )
+
+    def log_data_fetch_completed(self, item_count: int, duration_ms: int, **kwargs: Any) -> None:
+        """Log successful completion of data fetching."""
+        logger.info(
+            f"Data fetch completed: {item_count} items",
+            extra=self.get_common_fields(
+                operation="data_fetch_completed",
+                item_count=item_count,
+                duration_ms=duration_ms,
+                status="success",
+                **kwargs,
+            ),
+        )
+
+    def log_transform_started(self, item_count: int, **kwargs: Any) -> None:
+        """
+        Log the start of data transformation.
+
+        Args:
+            item_count: Number of items to transform
+            **kwargs: Additional fields to include
+        """
+        logger.info(
+            f"Transform started: {item_count} items",
+            extra=self.get_common_fields(
+                operation="transform_started",
+                item_count=item_count,
+                **kwargs,
+            ),
+        )
+
+    def log_transform_completed(self, input_count: int, output_count: int, duration_ms: int, **kwargs: Any) -> None:
+        """
+        Log successful completion of data transformation.
+
+        Args:
+            input_count: Number of input items
+            output_count: Number of output items
+            duration_ms: Duration in milliseconds
+            **kwargs: Additional fields to include
+        """
+        logger.info(
+            f"Transform completed: {input_count} → {output_count} items",
+            extra=self.get_common_fields(
+                operation="transform_completed",
+                input_count=input_count,
+                output_count=output_count,
+                duration_ms=duration_ms,
+                status="success",
+                **kwargs,
+            ),
+        )
+
+    def log_batch_upload_started(
+        self,
+        batch_index: int,
+        batch_count: int,
+        batch_size: int,
+        entity_type: str = "document",
+        **kwargs: Any,
+    ) -> None:
+        """
+        Log the start of a batch upload.
+
+        Args:
+            batch_index: Current batch number (0-indexed)
+            batch_count: Total number of batches
+            batch_size: Number of items in this batch
+            entity_type: Type of entity being uploaded (document, user, group, etc.)
+            **kwargs: Additional fields to include
+        """
+        logger.info(
+            f"Batch upload started: {batch_index + 1}/{batch_count} ({batch_size} {entity_type}s)",
+            extra=self.get_common_fields(
+                operation="batch_upload_started",
+                batch_index=batch_index,
+                batch_count=batch_count,
+                batch_size=batch_size,
+                entity_type=entity_type,
+                **kwargs,
+            ),
+        )
+
+    def log_batch_upload_completed(
+        self,
+        batch_index: int,
+        batch_count: int,
+        batch_size: int,
+        duration_ms: int,
+        entity_type: str = "document",
+        **kwargs: Any,
+    ) -> None:
+        """
+        Log successful completion of a batch upload.
+
+        Args:
+            batch_index: Current batch number (0-indexed)
+            batch_count: Total number of batches
+            batch_size: Number of items uploaded
+            duration_ms: Duration in milliseconds
+            entity_type: Type of entity uploaded
+            **kwargs: Additional fields to include
+        """
+        logger.info(
+            f"Batch upload completed: {batch_index + 1}/{batch_count} ({batch_size} {entity_type}s)",
+            extra=self.get_common_fields(
+                operation="batch_upload_completed",
+                batch_index=batch_index,
+                batch_count=batch_count,
+                batch_size=batch_size,
+                duration_ms=duration_ms,
+                entity_type=entity_type,
+                status="success",
+                **kwargs,
+            ),
+        )
+
+    def log_batch_upload_failed(
+        self,
+        batch_index: int,
+        batch_count: int,
+        error: Exception,
+        entity_type: str = "document",
+        **kwargs: Any,
+    ) -> None:
+        """
+        Log a failed batch upload.
+
+        Args:
+            batch_index: Current batch number (0-indexed)
+            batch_count: Total number of batches
+            error: The exception that caused the failure
+            entity_type: Type of entity being uploaded
+            **kwargs: Additional fields to include
+        """
+        import sys
+
+        exc_info = sys.exc_info()
+        if exc_info[1] is not error:
+            exc_info = (type(error), error, None)
+
+        logger.error(
+            f"Batch upload failed: {batch_index + 1}/{batch_count} - {error}",
+            extra=self.get_common_fields(
+                operation="batch_upload_failed",
+                batch_index=batch_index,
+                batch_count=batch_count,
+                entity_type=entity_type,
+                status="failed",
+                error_type=type(error).__name__,
+                error_message=str(error),
+                **kwargs,
+            ),
+            exc_info=exc_info,
+        )
 
 
 def with_observability(

@@ -36,7 +36,7 @@ class BatchProcessor(Generic[T]):
             yield self.data[i : i + self.batch_size]
 
 
-class SizedBatchProcessor(Generic[T]):
+class _SizedBatchProcessor(Generic[T]):
     """A utility for processing data in batches constrained by item count and bytes."""
 
     def __init__(
@@ -47,7 +47,7 @@ class SizedBatchProcessor(Generic[T]):
         max_batch_bytes: Optional[int] = None,
         size_func: Optional[Callable[[T], int]] = None,
     ):
-        """Initialize the SizedBatchProcessor.
+        """Initialize the _SizedBatchProcessor.
 
         Args:
             data: The data to process in batches.
@@ -94,7 +94,7 @@ class SizedBatchProcessor(Generic[T]):
             yield batch
 
 
-class DocumentBatchProcessor(SizedBatchProcessor[DocumentDefinition]):
+class DocumentBatchProcessor(_SizedBatchProcessor[DocumentDefinition]):
     """Batch processor for documents using serialized document size."""
 
     def __init__(

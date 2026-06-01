@@ -7,6 +7,8 @@ import uuid
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
+from .formatters import StructuredFormatter
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -482,9 +484,6 @@ def setup_connector_logging(
     if formatter:
         log_formatter = formatter
     elif use_structured_logging:
-        # Import here to avoid circular dependency
-        from glean.indexing.observability.formatters import StructuredFormatter
-
         log_formatter = StructuredFormatter()
     else:
         # Default human-readable format

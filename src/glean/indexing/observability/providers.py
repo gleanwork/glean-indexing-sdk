@@ -1,4 +1,35 @@
-"""Metrics provider interface and implementations for connector observability."""
+"""Metrics provider interface and implementations for connector observability.
+
+Example - Custom Provider Implementation:
+    ```python
+    from glean.indexing.observability import MetricsProvider, MetricType
+
+    class DataDogMetricsProvider(MetricsProvider):
+        def __init__(self, api_key: str):
+            from datadog import initialize, statsd
+            initialize(api_key=api_key)
+            self.statsd = statsd
+
+        def emit_metric(self, name, value, metric_type=MetricType.GAUGE, labels=None):
+            tags = [f"{k}:{v}" for k, v in (labels or {}).items()]
+            if metric_type == MetricType.COUNTER:
+                self.statsd.increment(name, value, tags=tags)
+            elif metric_type == MetricType.GAUGE:
+                self.statsd.gauge(name, value, tags=tags)
+            elif metric_type == MetricType.HISTOGRAM:
+                self.statsd.histogram(name, value, tags=tags)
+
+        def flush(self):
+            pass
+
+    # Usage
+    from glean.indexing.observability import ConnectorObservability
+
+    provider = DataDogMetricsProvider(api_key="your-key")
+    obs = ConnectorObservability("my_connector", metrics_provider=provider)
+    obs.record_upload_batch_size(100)
+    ```
+"""
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -18,7 +49,41 @@ class MetricsProvider(ABC):
     """Abstract interface for metrics emission backends.
 
     Allows SDK users to implement custom providers for their observability platform
-    (DataDog, Prometheus, New Relic, etc.).
+    (DataDog, Prometheus, New Relic, CloudWatch, etc.).
+
+    Example:
+        ```python
+        class PrometheusMetricsProvider(MetricsProvider):
+            def __init__(self, registry):
+                from prometheus_client import Counter, Gauge, Histogram
+                self.registry = registry
+                self.metrics = {}
+
+            def emit_metric(self, name, value, metric_type=MetricType.GAUGE, labels=None):
+                label_names = list(labels.keys()) if labels else []
+
+                if name not in self.metrics:
+                    if metric_type == MetricType.COUNTER:
+                        self.metrics[name] = Counter(name, "", label_names, registry=self.registry)
+                    elif metric_type == MetricType.GAUGE:
+                        self.metrics[name] = Gauge(name, "", label_names, registry=self.registry)
+                    elif metric_type == MetricType.HISTOGRAM:
+                        self.metrics[name] = Histogram(name, "", label_names, registry=self.registry)
+
+                metric = self.metrics[name]
+                if labels:
+                    metric = metric.labels(**labels)
+
+                if metric_type == MetricType.COUNTER:
+                    metric.inc(value)
+                elif metric_type == MetricType.GAUGE:
+                    metric.set(value)
+                elif metric_type == MetricType.HISTOGRAM:
+                    metric.observe(value)
+
+            def flush(self):
+                pass
+        ```
     """
 
     @abstractmethod

@@ -38,6 +38,7 @@ class ConnectorObservability:
         self.metrics: Dict[str, Any] = defaultdict(int)
         self.timers: Dict[str, float] = {}
         self.start_time: Optional[float] = None
+        self._execution_failed: bool = False
 
     def get_common_fields(self, operation: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
         """Get common fields for structured logging."""
@@ -56,6 +57,7 @@ class ConnectorObservability:
     def start_execution(self) -> None:
         """Mark the start of connector execution."""
         self.start_time = time.time()
+        self._execution_failed = False
         logger.info(
             "Crawl started",
             extra=self.get_common_fields(
@@ -66,7 +68,7 @@ class ConnectorObservability:
 
     def end_execution(self) -> None:
         """Mark the end of connector execution."""
-        if self.start_time:
+        if self.start_time and not self._execution_failed:
             duration = time.time() - self.start_time
             duration_ms = int(duration * 1000)
             self.metrics["total_execution_time"] = duration
@@ -84,6 +86,7 @@ class ConnectorObservability:
         """Mark the execution as failed."""
         import sys
 
+        self._execution_failed = True
         duration_ms = None
         if self.start_time:
             duration = time.time() - self.start_time
@@ -104,6 +107,7 @@ class ConnectorObservability:
             ),
             exc_info=exc_info,
         )
+        self.metrics_provider.flush()
 
     def record_metric(self, key: str, value: Any):
         """Record a custom metric."""

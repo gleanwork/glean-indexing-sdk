@@ -2,10 +2,12 @@
 
 from glean.api_client.models import (
     ContentDefinition,
+    DatasourceBulkMembershipDefinition,
     DatasourceGroupDefinition,
     DatasourceMembershipDefinition,
     DatasourceUserDefinition,
     DocumentDefinition,
+    EmployeeInfoDefinition,
 )
 
 from glean.indexing.push import PushUploader
@@ -50,6 +52,31 @@ def test_delete_document_calls_generated_client():
     )
 
 
+def test_bulk_index_documents_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+    document = _document()
+
+    with mock_glean_client() as client:
+        uploader.bulk_index_documents(
+            [document],
+            upload_id="upload-1",
+            is_first_page=True,
+            is_last_page=False,
+            force_restart_upload=True,
+            disable_stale_document_deletion_check=False,
+        )
+
+    client.indexing.documents.bulk_index.assert_called_once_with(
+        datasource="test_datasource",
+        documents=[document],
+        upload_id="upload-1",
+        is_first_page=True,
+        is_last_page=False,
+        force_restart_upload=True,
+        disable_stale_document_deletion_check=False,
+    )
+
+
 def test_index_user_calls_generated_client():
     uploader = PushUploader(datasource="test_datasource")
     user = DatasourceUserDefinition(email="user@example.com", name="User")
@@ -61,6 +88,31 @@ def test_index_user_calls_generated_client():
         datasource="test_datasource",
         user=user,
         version=3,
+    )
+
+
+def test_bulk_index_users_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+    user = DatasourceUserDefinition(email="user@example.com", name="User")
+
+    with mock_glean_client() as client:
+        uploader.bulk_index_users(
+            [user],
+            upload_id="upload-1",
+            is_first_page=True,
+            is_last_page=False,
+            force_restart_upload=True,
+            disable_stale_data_deletion_check=False,
+        )
+
+    client.indexing.permissions.bulk_index_users.assert_called_once_with(
+        datasource="test_datasource",
+        users=[user],
+        upload_id="upload-1",
+        is_first_page=True,
+        is_last_page=False,
+        force_restart_upload=True,
+        disable_stale_data_deletion_check=False,
     )
 
 
@@ -78,6 +130,31 @@ def test_index_group_calls_generated_client():
     )
 
 
+def test_bulk_index_groups_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+    group = DatasourceGroupDefinition(name="engineering")
+
+    with mock_glean_client() as client:
+        uploader.bulk_index_groups(
+            [group],
+            upload_id="upload-1",
+            is_first_page=True,
+            is_last_page=False,
+            force_restart_upload=True,
+            disable_stale_data_deletion_check=False,
+        )
+
+    client.indexing.permissions.bulk_index_groups.assert_called_once_with(
+        datasource="test_datasource",
+        groups=[group],
+        upload_id="upload-1",
+        is_first_page=True,
+        is_last_page=False,
+        force_restart_upload=True,
+        disable_stale_data_deletion_check=False,
+    )
+
+
 def test_index_membership_calls_generated_client():
     uploader = PushUploader(datasource="test_datasource")
     membership = DatasourceMembershipDefinition(
@@ -91,6 +168,31 @@ def test_index_membership_calls_generated_client():
         datasource="test_datasource",
         membership=membership,
         version=3,
+    )
+
+
+def test_bulk_index_memberships_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+    membership = DatasourceBulkMembershipDefinition(member_user_id="user@example.com")
+
+    with mock_glean_client() as client:
+        uploader.bulk_index_memberships(
+            [membership],
+            upload_id="upload-1",
+            is_first_page=True,
+            is_last_page=False,
+            force_restart_upload=True,
+            group="engineering",
+        )
+
+    client.indexing.permissions.bulk_index_memberships.assert_called_once_with(
+        datasource="test_datasource",
+        memberships=[membership],
+        upload_id="upload-1",
+        is_first_page=True,
+        is_last_page=False,
+        force_restart_upload=True,
+        group="engineering",
     )
 
 
@@ -133,6 +235,35 @@ def test_delete_membership_calls_generated_client():
         datasource="test_datasource",
         membership=membership,
         version=3,
+    )
+
+
+def test_bulk_index_employees_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+    employee = EmployeeInfoDefinition(
+        email="user@example.com",
+        first_name="User",
+        last_name="Example",
+        department="Engineering",
+    )
+
+    with mock_glean_client() as client:
+        uploader.bulk_index_employees(
+            [employee],
+            upload_id="upload-1",
+            is_first_page=True,
+            is_last_page=False,
+            force_restart_upload=True,
+            disable_stale_data_deletion_check=False,
+        )
+
+    client.indexing.people.bulk_index.assert_called_once_with(
+        employees=[employee],
+        upload_id="upload-1",
+        is_first_page=True,
+        is_last_page=False,
+        force_restart_upload=True,
+        disable_stale_data_deletion_check=False,
     )
 
 

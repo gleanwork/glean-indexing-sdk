@@ -3,20 +3,19 @@
 from typing import Any, Mapping, Optional, Sequence
 
 from glean.api_client.models import (
+    DatasourceBulkMembershipDefinition,
     DatasourceGroupDefinition,
     DatasourceMembershipDefinition,
     DatasourceUserDefinition,
     DocumentDefinition,
+    EmployeeInfoDefinition,
 )
 
 from glean.indexing.common import api_client
 
 
 class PushUploader:
-    """Thin uploader for push indexing APIs.
-
-    Existing connector bulk flows intentionally do not use this class yet.
-    """
+    """Thin uploader for push indexing APIs."""
 
     def __init__(
         self,
@@ -57,6 +56,29 @@ class PushUploader:
                 **self._request_options(),
             )
 
+    def bulk_index_documents(
+        self,
+        documents: Sequence[DocumentDefinition],
+        *,
+        upload_id: str,
+        is_first_page: Optional[bool] = None,
+        is_last_page: Optional[bool] = None,
+        force_restart_upload: Optional[bool] = None,
+        disable_stale_document_deletion_check: Optional[bool] = None,
+    ) -> None:
+        """Replace datasource documents using `/bulkindexdocuments`."""
+        with api_client() as client:
+            client.indexing.documents.bulk_index(
+                datasource=self.datasource,
+                documents=list(documents),
+                upload_id=upload_id,
+                is_first_page=is_first_page,
+                is_last_page=is_last_page,
+                force_restart_upload=force_restart_upload,
+                disable_stale_document_deletion_check=disable_stale_document_deletion_check,
+                **self._request_options(),
+            )
+
     def delete_document(
         self,
         *,
@@ -89,6 +111,29 @@ class PushUploader:
                 **self._request_options(),
             )
 
+    def bulk_index_users(
+        self,
+        users: Sequence[DatasourceUserDefinition],
+        *,
+        upload_id: str,
+        is_first_page: Optional[bool] = None,
+        is_last_page: Optional[bool] = None,
+        force_restart_upload: Optional[bool] = None,
+        disable_stale_data_deletion_check: Optional[bool] = None,
+    ) -> None:
+        """Replace datasource users using `/bulkindexusers`."""
+        with api_client() as client:
+            client.indexing.permissions.bulk_index_users(
+                datasource=self.datasource,
+                users=list(users),
+                upload_id=upload_id,
+                is_first_page=is_first_page,
+                is_last_page=is_last_page,
+                force_restart_upload=force_restart_upload,
+                disable_stale_data_deletion_check=disable_stale_data_deletion_check,
+                **self._request_options(),
+            )
+
     def index_group(
         self,
         group: DatasourceGroupDefinition,
@@ -104,6 +149,29 @@ class PushUploader:
                 **self._request_options(),
             )
 
+    def bulk_index_groups(
+        self,
+        groups: Sequence[DatasourceGroupDefinition],
+        *,
+        upload_id: str,
+        is_first_page: Optional[bool] = None,
+        is_last_page: Optional[bool] = None,
+        force_restart_upload: Optional[bool] = None,
+        disable_stale_data_deletion_check: Optional[bool] = None,
+    ) -> None:
+        """Replace datasource groups using `/bulkindexgroups`."""
+        with api_client() as client:
+            client.indexing.permissions.bulk_index_groups(
+                datasource=self.datasource,
+                groups=list(groups),
+                upload_id=upload_id,
+                is_first_page=is_first_page,
+                is_last_page=is_last_page,
+                force_restart_upload=force_restart_upload,
+                disable_stale_data_deletion_check=disable_stale_data_deletion_check,
+                **self._request_options(),
+            )
+
     def index_membership(
         self,
         membership: DatasourceMembershipDefinition,
@@ -116,6 +184,29 @@ class PushUploader:
                 datasource=self.datasource,
                 membership=membership,
                 version=version,
+                **self._request_options(),
+            )
+
+    def bulk_index_memberships(
+        self,
+        memberships: Sequence[DatasourceBulkMembershipDefinition],
+        *,
+        upload_id: str,
+        is_first_page: Optional[bool] = None,
+        is_last_page: Optional[bool] = None,
+        force_restart_upload: Optional[bool] = None,
+        group: Optional[str] = None,
+    ) -> None:
+        """Replace datasource memberships using `/bulkindexmemberships`."""
+        with api_client() as client:
+            client.indexing.permissions.bulk_index_memberships(
+                datasource=self.datasource,
+                memberships=list(memberships),
+                upload_id=upload_id,
+                is_first_page=is_first_page,
+                is_last_page=is_last_page,
+                force_restart_upload=force_restart_upload,
+                group=group,
                 **self._request_options(),
             )
 
@@ -161,6 +252,28 @@ class PushUploader:
                 datasource=self.datasource,
                 membership=membership,
                 version=version,
+                **self._request_options(),
+            )
+
+    def bulk_index_employees(
+        self,
+        employees: Sequence[EmployeeInfoDefinition],
+        *,
+        upload_id: str,
+        is_first_page: Optional[bool] = None,
+        is_last_page: Optional[bool] = None,
+        force_restart_upload: Optional[bool] = None,
+        disable_stale_data_deletion_check: Optional[bool] = None,
+    ) -> None:
+        """Replace employees using `/bulkindexemployees`."""
+        with api_client() as client:
+            client.indexing.people.bulk_index(
+                employees=list(employees),
+                upload_id=upload_id,
+                is_first_page=is_first_page,
+                is_last_page=is_last_page,
+                force_restart_upload=force_restart_upload,
+                disable_stale_data_deletion_check=disable_stale_data_deletion_check,
                 **self._request_options(),
             )
 

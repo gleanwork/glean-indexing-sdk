@@ -237,6 +237,30 @@ class TestBackwardCompatibilitySetupLogging:
         # Should not raise any errors
         assert logging.root.level == logging.DEBUG
 
+    def test_third_positional_argument_log_format(self):
+        """Test that 3rd positional argument (log_format) works for backward compatibility."""
+        # Clear existing handlers
+        logging.root.handlers = []
+
+        # Test with custom log format as 3rd positional argument
+        custom_format = "%(levelname)s - %(message)s"
+        setup_connector_logging("test_connector", "INFO", custom_format)
+
+        # Verify the format is applied
+        stream = StringIO()
+        for handler in logging.root.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.stream = stream
+
+        logger = logging.getLogger("test")
+        logger.info("Test message")
+
+        stream.seek(0)
+        output = stream.read().strip()
+
+        # Should match the custom format
+        assert output == "INFO - Test message"
+
     def test_default_is_human_readable(self):
         """Test that default logging is NOT structured (backward compatible)."""
         setup_connector_logging("test_connector")

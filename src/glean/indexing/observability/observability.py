@@ -57,7 +57,7 @@ class ConnectorObservability:
             "Crawl started",
             extra=self.get_common_fields(
                 operation="crawl_started",
-                timestamp=self.start_time,
+                start_time=self.start_time,
             ),
         )
 
@@ -78,10 +78,17 @@ class ConnectorObservability:
 
     def fail_execution(self, error: Exception) -> None:
         """Mark the execution as failed."""
+        import sys
+
         duration_ms = None
         if self.start_time:
             duration = time.time() - self.start_time
             duration_ms = int(duration * 1000)
+
+        # Only capture exc_info if error matches current exception
+        exc_info = sys.exc_info()
+        if exc_info[1] is not error:
+            exc_info = (type(error), error, None)
 
         logger.error(
             f"Crawl failed: {error}",
@@ -92,7 +99,7 @@ class ConnectorObservability:
                 error_message=str(error),
                 duration_ms=duration_ms,
             ),
-            exc_info=True,
+            exc_info=exc_info,
         )
 
     def record_metric(self, key: str, value: Any):
@@ -262,6 +269,13 @@ class ConnectorObservability:
             entity_type: Type of entity being uploaded
             **kwargs: Additional fields to include
         """
+        import sys
+
+        # Only capture exc_info if error matches current exception
+        exc_info = sys.exc_info()
+        if exc_info[1] is not error:
+            exc_info = (type(error), error, None)
+
         logger.error(
             f"Batch upload failed: {batch_index + 1}/{batch_count} - {error}",
             extra=self.get_common_fields(
@@ -274,7 +288,7 @@ class ConnectorObservability:
                 error_message=str(error),
                 **kwargs,
             ),
-            exc_info=True,
+            exc_info=exc_info,
         )
 
 
@@ -452,6 +466,8 @@ class ProgressCallback:
 def setup_connector_logging(
     connector_name: str,
     log_level: str = "INFO",
+    log_format: Optional[str] = None,
+    *,
     use_structured_logging: bool = False,
     formatter: Optional[logging.Formatter] = None,
     extra_handlers: Optional[List[logging.Handler]] = None,
@@ -465,13 +481,17 @@ def setup_connector_logging(
     Args:
         connector_name: Name of the connector for log identification
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        use_structured_logging: If True, enables JSON structured logging
-        formatter: Custom formatter to use (overrides use_structured_logging)
-        extra_handlers: Additional handlers to attach beyond the default StreamHandler
+        log_format: Custom log format string (backward compatibility)
+        use_structured_logging: If True, enables JSON structured logging (keyword-only)
+        formatter: Custom formatter to use (keyword-only, overrides all other options)
+        extra_handlers: Additional handlers to attach beyond the default StreamHandler (keyword-only)
 
     Example:
         # Default human-readable logging
         setup_connector_logging("my_connector")
+
+        # Custom format string (backward compatible)
+        setup_connector_logging("my_connector", "INFO", "%(message)s")
 
         # Structured JSON logging
         setup_connector_logging("my_connector", use_structured_logging=True)
@@ -485,10 +505,13 @@ def setup_connector_logging(
         log_formatter = formatter
     elif use_structured_logging:
         log_formatter = StructuredFormatter()
+    elif log_format:
+        # Custom log format provided (backward compatibility)
+        log_formatter = logging.Formatter(log_format)
     else:
         # Default human-readable format
-        log_format = f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
-        log_formatter = logging.Formatter(log_format)
+        default_format = f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
+        log_formatter = logging.Formatter(default_format)
 
     # Set up console handler
     console_handler = logging.StreamHandler()
@@ -509,7 +532,9 @@ def setup_connector_logging(
     )
 
     # Log setup confirmation
-    if use_structured_logging or formatter:
+    if formatter:
+        logger.info(f"Logging configured with custom formatter for connector: {connector_name}")
+    elif use_structured_logging:
         logger.info(
             "Structured logging configured",
             extra={"connector": connector_name, "log_level": log_level},

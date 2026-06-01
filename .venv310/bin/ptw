@@ -1,0 +1,6 @@
+#!/Users/dishant.gupta/workspace/glean-indexing-sdk/.venv310/bin/python3.10
+import sys
+from pytest_watcher import run
+if __name__ == '__main__':
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
+    sys.exit(run())

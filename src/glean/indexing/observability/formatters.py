@@ -135,7 +135,7 @@ class StructuredFormatter(logging.Formatter):
                     log_data[key] = value
 
         # Handle exceptions
-        if record.exc_info:
+        if record.exc_info and record.exc_info[0] is not None:
             log_data[self.exception_field] = {
                 "type": record.exc_info[0].__name__ if record.exc_info[0] else None,
                 "message": str(record.exc_info[1]) if record.exc_info[1] else None,

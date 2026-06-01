@@ -8,12 +8,13 @@ from glean.indexing.testing import _patch_targets as pt_module
 from glean.indexing.testing._patch_targets import _PATCH_TARGETS, validate_patch_targets
 
 
-def test_patch_targets_includes_all_four_connector_modules():
+def test_patch_targets_includes_all_api_client_import_sites():
     expected = {
         "glean.indexing.connectors.base_datasource_connector.api_client",
         "glean.indexing.connectors.base_streaming_datasource_connector.api_client",
         "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client",
         "glean.indexing.connectors.base_people_connector.api_client",
+        "glean.indexing.push.uploader.api_client",
     }
     assert set(_PATCH_TARGETS) == expected, (
         "If you added a new connector base class, register its module in "

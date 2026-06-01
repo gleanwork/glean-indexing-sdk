@@ -15,6 +15,7 @@ _PATCH_TARGETS: Tuple[str, ...] = (
     "glean.indexing.connectors.base_streaming_datasource_connector.api_client",
     "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client",
     "glean.indexing.connectors.base_people_connector.api_client",
+    "glean.indexing.push.uploader.api_client",
 )
 
 _validated: bool = False

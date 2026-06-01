@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 from glean.api_client.models.propertydefinition import PropertyDefinition, PropertyType, UIOptions
+
 from glean.indexing.exceptions import InvalidPropertyError
 
 

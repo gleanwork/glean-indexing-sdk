@@ -6,7 +6,6 @@ import uuid
 from abc import ABC
 from typing import AsyncGenerator, List, Optional, Sequence
 
-from glean.indexing.common import DocumentBatchProcessor
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
 from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
@@ -186,33 +185,24 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
                 logger.info("Force restarting upload - discarding any previous upload progress")
 
             options = self._options
-            document_batches = list(
-                DocumentBatchProcessor(
-                    list(transformed_batch),
-                    batch_size=self.batch_size,
-                    max_batch_bytes=options.document_batch_size_bytes
-                    if options
-                    else ConnectorOptions().document_batch_size_bytes,
-                )
-            )
-
             uploader = PushUploader(
                 datasource=self.name,
                 timeout_ms=options.upload_timeout_ms if options else None,
             )
-            for batch_index, document_batch in enumerate(document_batches):
-                is_first_page = is_first_batch and batch_index == 0
-                is_last_page = is_last_batch and batch_index == len(document_batches) - 1
-                uploader.bulk_index_documents(
-                    documents=list(document_batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_page,
-                    is_last_page=is_last_page,
-                    force_restart_upload=True if (self._force_restart and is_first_page) else None,
-                    disable_stale_document_deletion_check=True
-                    if (options and is_last_page and options.disable_stale_deletion_check)
-                    else None,
-                )
+            uploader.bulk_index_documents(
+                documents=list(transformed_batch),
+                upload_id=upload_id,
+                is_first_page=is_first_batch,
+                is_last_page=is_last_batch,
+                force_restart_upload=True if (self._force_restart and is_first_batch) else None,
+                disable_stale_document_deletion_check=True
+                if (options and is_last_batch and options.disable_stale_deletion_check)
+                else None,
+                batch_size=self.batch_size,
+                max_batch_bytes=options.document_batch_size_bytes
+                if options
+                else ConnectorOptions().document_batch_size_bytes,
+            )
 
             logger.info(f"Batch {batch_number} indexed successfully")
 

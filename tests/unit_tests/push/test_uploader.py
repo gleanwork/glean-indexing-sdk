@@ -61,7 +61,7 @@ def test_bulk_index_documents_calls_generated_client():
             [document],
             upload_id="upload-1",
             is_first_page=True,
-            is_last_page=False,
+            is_last_page=True,
             force_restart_upload=True,
             disable_stale_document_deletion_check=False,
         )
@@ -71,10 +71,41 @@ def test_bulk_index_documents_calls_generated_client():
         documents=[document],
         upload_id="upload-1",
         is_first_page=True,
-        is_last_page=False,
+        is_last_page=True,
         force_restart_upload=True,
         disable_stale_document_deletion_check=False,
     )
+
+
+def test_bulk_index_documents_splits_batches():
+    uploader = PushUploader(datasource="test_datasource")
+    documents = [_document(), _document()]
+
+    with mock_glean_client() as client:
+        page_count = uploader.bulk_index_documents(
+            documents,
+            upload_id="upload-1",
+            is_first_page=True,
+            is_last_page=True,
+            force_restart_upload=True,
+            disable_stale_document_deletion_check=True,
+            batch_size=10,
+            max_batch_bytes=1,
+        )
+
+    assert page_count == 2
+    calls = client.indexing.documents.bulk_index.call_args_list
+    assert len(calls) == 2
+    first_call = calls[0][1]
+    assert first_call["is_first_page"] is True
+    assert first_call["is_last_page"] is False
+    assert first_call["force_restart_upload"] is True
+    assert first_call["disable_stale_document_deletion_check"] is None
+    last_call = calls[1][1]
+    assert last_call["is_first_page"] is False
+    assert last_call["is_last_page"] is True
+    assert last_call["force_restart_upload"] is None
+    assert last_call["disable_stale_document_deletion_check"] is True
 
 
 def test_index_user_calls_generated_client():

@@ -11,7 +11,8 @@ from glean.api_client.models import (
     EmployeeInfoDefinition,
 )
 
-from glean.indexing.common import api_client
+from glean.indexing.common import DocumentBatchProcessor, api_client
+from glean.indexing.common.batch_processor import DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
 
 
 class PushUploader:
@@ -61,23 +62,44 @@ class PushUploader:
         documents: Sequence[DocumentDefinition],
         *,
         upload_id: str,
-        is_first_page: Optional[bool] = None,
-        is_last_page: Optional[bool] = None,
+        is_first_page: Optional[bool] = True,
+        is_last_page: Optional[bool] = True,
         force_restart_upload: Optional[bool] = None,
         disable_stale_document_deletion_check: Optional[bool] = None,
-    ) -> None:
+        batch_size: Optional[int] = None,
+        max_batch_bytes: Optional[int] = DEFAULT_DOCUMENT_BATCH_SIZE_BYTES,
+    ) -> int:
         """Replace datasource documents using `/bulkindexdocuments`."""
-        with api_client() as client:
-            client.indexing.documents.bulk_index(
-                datasource=self.datasource,
-                documents=list(documents),
-                upload_id=upload_id,
-                is_first_page=is_first_page,
-                is_last_page=is_last_page,
-                force_restart_upload=force_restart_upload,
-                disable_stale_document_deletion_check=disable_stale_document_deletion_check,
-                **self._request_options(),
+        document_list = list(documents)
+        if not document_list:
+            return 0
+
+        document_batches = list(
+            DocumentBatchProcessor(
+                document_list,
+                batch_size=batch_size or len(document_list),
+                max_batch_bytes=max_batch_bytes,
             )
+        )
+
+        with api_client() as client:
+            for i, batch in enumerate(document_batches):
+                page_is_first = is_first_page if i == 0 else False
+                page_is_last = is_last_page if i == len(document_batches) - 1 else False
+                client.indexing.documents.bulk_index(
+                    datasource=self.datasource,
+                    documents=list(batch),
+                    upload_id=upload_id,
+                    is_first_page=page_is_first,
+                    is_last_page=page_is_last,
+                    force_restart_upload=force_restart_upload if page_is_first else None,
+                    disable_stale_document_deletion_check=disable_stale_document_deletion_check
+                    if page_is_last
+                    else None,
+                    **self._request_options(),
+                )
+
+        return len(document_batches)
 
     def delete_document(
         self,

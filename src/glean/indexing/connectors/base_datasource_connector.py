@@ -7,7 +7,7 @@ from typing import Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
 
-from glean.indexing.common import BatchProcessor, DocumentBatchProcessor, api_client
+from glean.indexing.common import BatchProcessor, api_client
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.exceptions import InconsistentDataError, InvalidDatasourceConfigError
@@ -305,51 +305,41 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         if not documents:
             return
 
-        batches = list(
-            DocumentBatchProcessor(
-                list(documents),
-                batch_size=self.batch_size,
-                max_batch_bytes=options.document_batch_size_bytes
-                if options
-                else ConnectorOptions().document_batch_size_bytes,
-            )
-        )
-        total_batches = len(batches)
         force_restart = options.force_restart if options else False
 
-        logger.info(f"Uploading {len(documents)} documents in {total_batches} batches")
+        logger.info(f"Uploading {len(documents)} documents")
 
         upload_id = str(uuid.uuid4())
         uploader = PushUploader(
             datasource=self.name,
             timeout_ms=options.upload_timeout_ms if options else None,
         )
-        for i, batch in enumerate(batches):
-            try:
-                is_first_page = i == 0
-                is_last_page = i == total_batches - 1
+        try:
+            if force_restart:
+                logger.info("Force restarting upload - discarding any previous upload progress")
 
-                if force_restart and is_first_page:
-                    logger.info("Force restarting upload - discarding any previous upload progress")
+            page_count = uploader.bulk_index_documents(
+                documents=list(documents),
+                upload_id=upload_id,
+                is_first_page=True,
+                is_last_page=True,
+                force_restart_upload=True if force_restart else None,
+                disable_stale_document_deletion_check=True
+                if (options and options.disable_stale_deletion_check)
+                else None,
+                batch_size=self.batch_size,
+                max_batch_bytes=options.document_batch_size_bytes
+                if options
+                else ConnectorOptions().document_batch_size_bytes,
+            )
 
-                uploader.bulk_index_documents(
-                    documents=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_page,
-                    is_last_page=is_last_page,
-                    force_restart_upload=True if (force_restart and is_first_page) else None,
-                    disable_stale_document_deletion_check=True
-                    if (options and is_last_page and options.disable_stale_deletion_check)
-                    else None,
-                )
+            logger.info(f"Document upload completed successfully in {page_count} batches")
+            self._observability.increment_counter("batches_uploaded", page_count)
 
-                logger.info(f"Document batch {i + 1}/{total_batches} uploaded successfully")
-                self._observability.increment_counter("batches_uploaded")
-
-            except Exception as e:
-                logger.error(f"Failed to upload document batch {i + 1}/{total_batches}: {e}")
-                self._observability.increment_counter("batch_upload_errors")
-                raise
+        except Exception as e:
+            logger.error(f"Failed to upload documents: {e}")
+            self._observability.increment_counter("batch_upload_errors")
+            raise
 
     def _get_last_crawl_timestamp(self) -> Optional[str]:
         """

@@ -200,9 +200,12 @@ class TestBackwardCompatibilitySetupLogging:
 
     def test_original_signature_still_works(self):
         """Test that original function signature still works."""
+        # Original signature: setup_connector_logging(connector_name, log_level, log_format)
+        # All new parameters have defaults, so old code should work
         setup_connector_logging("old_connector")
         setup_connector_logging("old_connector", "DEBUG")
 
+        # Should not raise any errors
         assert logging.root.level == logging.DEBUG
 
     def test_third_positional_argument_log_format(self):

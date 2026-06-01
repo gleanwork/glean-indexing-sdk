@@ -641,7 +641,6 @@ def setup_connector_logging(
             handler.setFormatter(log_formatter)
         handlers.extend(extra_handlers)
 
-    # Configure root logger
     logging.basicConfig(
         level=getattr(logging, log_level.upper()),
         handlers=handlers,

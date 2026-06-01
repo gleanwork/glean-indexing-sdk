@@ -7,7 +7,7 @@ from typing import Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
 
-from glean.indexing.common import BatchProcessor, api_client
+from glean.indexing.common import BatchProcessor, DocumentBatchProcessor, api_client
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.exceptions import InconsistentDataError, InvalidDatasourceConfigError
@@ -305,7 +305,15 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         if not documents:
             return
 
-        batches = list(BatchProcessor(list(documents), batch_size=self.batch_size))
+        batches = list(
+            DocumentBatchProcessor(
+                list(documents),
+                batch_size=self.batch_size,
+                max_batch_bytes=options.document_batch_size_bytes
+                if options
+                else ConnectorOptions().document_batch_size_bytes,
+            )
+        )
         total_batches = len(batches)
         force_restart = options.force_restart if options else False
 

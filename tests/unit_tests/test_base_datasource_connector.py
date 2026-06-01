@@ -295,3 +295,39 @@ class TestBaseDatasourceConnector:
 
         call_kwargs = mock_client.indexing.documents.bulk_index.call_args[1]
         assert call_kwargs.get("timeout_ms") is None
+
+    @patch("glean.indexing.push.uploader.api_client")
+    def test_document_batch_size_bytes_splits_bulk_index_calls(self, mock_api_client):
+        """Test that document uploads are split by serialized byte size."""
+        mock_client = Mock()
+        mock_api_client.return_value.__enter__.return_value = mock_client
+
+        test_data = [
+            {
+                "id": "1",
+                "title": "Doc 1",
+                "content": "Content 1",
+                "url": "https://test.example.com/1",
+            },
+            {
+                "id": "2",
+                "title": "Doc 2",
+                "content": "Content 2",
+                "url": "https://test.example.com/2",
+            },
+        ]
+        data_client = MockDataClient(test_data)
+        connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
+        connector.batch_size = 10
+
+        connector.index_data(options=ConnectorOptions(document_batch_size_bytes=1))
+
+        assert mock_client.indexing.documents.bulk_index.call_count == 2
+        first_call = mock_client.indexing.documents.bulk_index.call_args_list[0][1]
+        last_call = mock_client.indexing.documents.bulk_index.call_args_list[1][1]
+        assert len(first_call["documents"]) == 1
+        assert first_call["is_first_page"] is True
+        assert first_call["is_last_page"] is False
+        assert len(last_call["documents"]) == 1
+        assert last_call["is_first_page"] is False
+        assert last_call["is_last_page"] is True

@@ -5,7 +5,6 @@ import logging
 from datetime import datetime
 from io import StringIO
 
-import pytest
 
 from glean.indexing.observability.formatters import (
     CompactStructuredFormatter,

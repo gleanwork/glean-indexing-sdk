@@ -1,6 +1,5 @@
 """Tests for metrics integration with ConnectorObservability."""
 
-import pytest
 
 from glean.indexing.observability import (
     ConnectorObservability,

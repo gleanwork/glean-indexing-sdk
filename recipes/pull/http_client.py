@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from recipes.pull.options import AuthProvider, PullOptions
+from recipes.pull.options import PullOptions
 from recipes.pull.response import PullResponse
 
 logger = logging.getLogger(__name__)
@@ -32,9 +32,8 @@ class PullHttpError(RuntimeError):
 class PullHttpClient:
     """HTTP client recipe for source APIs.
 
-    It provides session reuse, base URL handling, auth/header injection,
-    retries, response parsing, redacted request logging, and bounded binary
-    fetches.
+    It provides session reuse, base URL handling, header merging, retries,
+    response parsing, redacted request logging, and bounded binary fetches.
     """
 
     def __init__(
@@ -42,7 +41,6 @@ class PullHttpClient:
         *,
         base_url: str,
         headers: Mapping[str, str] | None = None,
-        auth: AuthProvider | None = None,
         options: PullOptions | None = None,
         client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
@@ -52,14 +50,12 @@ class PullHttpClient:
         Args:
             base_url: Base URL for relative request paths.
             headers: Default headers sent with each request.
-            auth: Optional provider for dynamic auth headers.
             options: Request timeout, retry, redirect, and logging behavior.
             client: Optional preconfigured `httpx.Client`.
             sleep: Sleep function used for retry backoff.
         """
         self.base_url = base_url.rstrip("/") + "/"
         self.default_headers = dict(headers or {})
-        self.auth = auth
         self.options = options or PullOptions()
         self._client = client or httpx.Client(follow_redirects=self.options.follow_redirects)
         self._owns_client = client is None
@@ -302,8 +298,6 @@ class PullHttpClient:
 
     def _headers(self, headers: Mapping[str, str] | None) -> dict[str, str]:
         out = dict(self.default_headers)
-        if self.auth is not None:
-            out.update(self.auth.headers())
         if headers:
             out.update(headers)
         return out

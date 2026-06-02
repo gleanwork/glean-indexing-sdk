@@ -1,6 +1,5 @@
 """Tests for source-side pull HTTP recipes."""
 
-from collections.abc import Mapping
 from email.utils import formatdate
 from time import time
 
@@ -8,14 +7,6 @@ import httpx
 import pytest
 
 from recipes.pull import PullHttpClient, PullHttpError, PullOptions, PullRetryOptions
-
-
-class StaticAuth:
-    def __init__(self, headers: Mapping[str, str]) -> None:
-        self._headers = headers
-
-    def headers(self) -> Mapping[str, str]:
-        return self._headers
 
 
 def _fast_options(max_attempts: int = 2) -> PullOptions:
@@ -29,7 +20,7 @@ def _fast_options(max_attempts: int = 2) -> PullOptions:
     )
 
 
-def test_http_client_uses_base_url_auth_headers_and_parses_json(httpx_mock):
+def test_http_client_uses_base_url_headers_and_parses_json(httpx_mock):
     httpx_mock.add_response(
         url="https://example.com/v1/items?limit=1",
         json={"items": [{"id": "item-1"}]},
@@ -38,8 +29,7 @@ def test_http_client_uses_base_url_auth_headers_and_parses_json(httpx_mock):
 
     client = PullHttpClient(
         base_url="https://example.com/v1",
-        headers={"Accept": "application/json"},
-        auth=StaticAuth({"Authorization": "Bearer token-1"}),
+        headers={"Accept": "application/json", "Authorization": "Bearer token-1"},
         options=_fast_options(),
     )
 

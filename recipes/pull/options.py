@@ -1,16 +1,6 @@
 """Options for source-side HTTP pull recipes."""
 
-from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Protocol
-
-
-class AuthProvider(Protocol):
-    """Provides request headers for a source API."""
-
-    def headers(self) -> Mapping[str, str]:
-        """Return headers to merge into a source API request."""
-        ...
 
 
 @dataclass

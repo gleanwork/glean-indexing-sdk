@@ -32,9 +32,9 @@ class PullHttpError(RuntimeError):
 class PullHttpClient:
     """HTTP client recipe for source APIs.
 
-    This mirrors the useful, source-agnostic parts of the demo PR's pull layer:
-    session reuse, base URL handling, auth/header injection, retries, response
-    parsing, redacted request logging, and bounded binary fetches.
+    It provides session reuse, base URL handling, auth/header injection,
+    retries, response parsing, redacted request logging, and bounded binary
+    fetches.
     """
 
     def __init__(

@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Callable, Generic, Iterator, Optional, Sequence, TypeVar
+from typing import Generic, Iterator, Optional, Sequence, TypeVar
 
 from glean.api_client.models import DocumentDefinition
 
@@ -36,65 +36,7 @@ class BatchProcessor(Generic[T]):
             yield self.data[i : i + self.batch_size]
 
 
-class _SizedBatchProcessor(Generic[T]):
-    """A utility for processing data in batches constrained by item count and bytes."""
-
-    def __init__(
-        self,
-        data: Sequence[T],
-        *,
-        batch_size: int = 100,
-        max_batch_bytes: Optional[int] = None,
-        size_func: Optional[Callable[[T], int]] = None,
-    ):
-        """Initialize the _SizedBatchProcessor.
-
-        Args:
-            data: The data to process in batches.
-            batch_size: The maximum number of items in each batch.
-            max_batch_bytes: Optional maximum byte size for each batch.
-            size_func: Function used to measure each item's byte size when
-                max_batch_bytes is set.
-        """
-        if batch_size <= 0:
-            raise ValueError("batch_size must be greater than 0")
-        if max_batch_bytes is not None and max_batch_bytes <= 0:
-            raise ValueError("max_batch_bytes must be greater than 0")
-        if max_batch_bytes is not None and size_func is None:
-            raise ValueError("size_func is required when max_batch_bytes is set")
-
-        self.data = data
-        self.batch_size = batch_size
-        self.max_batch_bytes = max_batch_bytes
-        self.size_func = size_func
-
-    def __iter__(self) -> Iterator[Sequence[T]]:
-        """Iterate over data in count- and byte-constrained batches."""
-        batch: list[T] = []
-        batch_bytes = 0
-
-        for item in self.data:
-            item_bytes = self.size_func(item) if self.size_func else 0
-
-            if batch and (
-                len(batch) >= self.batch_size
-                or (
-                    self.max_batch_bytes is not None
-                    and batch_bytes + item_bytes > self.max_batch_bytes
-                )
-            ):
-                yield batch
-                batch = []
-                batch_bytes = 0
-
-            batch.append(item)
-            batch_bytes += item_bytes
-
-        if batch:
-            yield batch
-
-
-class DocumentBatchProcessor(_SizedBatchProcessor[DocumentDefinition]):
+class DocumentBatchProcessor:
     """Batch processor for documents using serialized document size."""
 
     def __init__(
@@ -111,12 +53,39 @@ class DocumentBatchProcessor(_SizedBatchProcessor[DocumentDefinition]):
             batch_size: The maximum number of documents in each batch.
             max_batch_bytes: Optional maximum serialized byte size for each batch.
         """
-        super().__init__(
-            documents,
-            batch_size=batch_size,
-            max_batch_bytes=max_batch_bytes,
-            size_func=_document_size_bytes if max_batch_bytes is not None else None,
-        )
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than 0")
+        if max_batch_bytes is not None and max_batch_bytes <= 0:
+            raise ValueError("max_batch_bytes must be greater than 0")
+
+        self.documents = documents
+        self.batch_size = batch_size
+        self.max_batch_bytes = max_batch_bytes
+
+    def __iter__(self) -> Iterator[Sequence[DocumentDefinition]]:
+        """Iterate over documents in count- and byte-constrained batches."""
+        batch: list[DocumentDefinition] = []
+        batch_bytes = 0
+
+        for document in self.documents:
+            document_bytes = _document_size_bytes(document) if self.max_batch_bytes else 0
+
+            if batch and (
+                len(batch) >= self.batch_size
+                or (
+                    self.max_batch_bytes is not None
+                    and batch_bytes + document_bytes > self.max_batch_bytes
+                )
+            ):
+                yield batch
+                batch = []
+                batch_bytes = 0
+
+            batch.append(document)
+            batch_bytes += document_bytes
+
+        if batch:
+            yield batch
 
 
 def _document_size_bytes(document: DocumentDefinition) -> int:

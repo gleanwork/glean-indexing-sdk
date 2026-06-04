@@ -117,20 +117,20 @@ class StructuredFormatter(logging.Formatter):
 
         log_data.update(self.extra_fields)
 
+        excluded_fields = self.EXCLUDED_ATTRS | {
+            self.timestamp_field,
+            self.level_field,
+            self.logger_field,
+            self.message_field,
+            self.exception_field,
+        }
         for key, value in record.__dict__.items():
-            if key not in self.EXCLUDED_ATTRS and not key.startswith("_"):
-                if key not in {
-                    self.timestamp_field,
-                    self.level_field,
-                    self.logger_field,
-                    self.message_field,
-                    self.exception_field,
-                }:
-                    log_data[key] = value
+            if key not in excluded_fields and not key.startswith("_"):
+                log_data[key] = value
 
         if record.exc_info and record.exc_info[0] is not None:
             log_data[self.exception_field] = {
-                "type": record.exc_info[0].__name__ if record.exc_info[0] else None,
+                "type": record.exc_info[0].__name__,
                 "message": str(record.exc_info[1]) if record.exc_info[1] else None,
                 "traceback": self._format_exception(record.exc_info),
             }

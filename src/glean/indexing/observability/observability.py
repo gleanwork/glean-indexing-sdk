@@ -269,7 +269,7 @@ def setup_connector_logging(
         handler.setFormatter(formatter)
         logging.root.addHandler(handler)
 
-    if use_structured_logging and formatter is None or isinstance(formatter, StructuredFormatter):
+    if isinstance(formatter, StructuredFormatter):
         logger.info(
             "Structured logging configured",
             extra={"connector": connector_name, "log_level": log_level},

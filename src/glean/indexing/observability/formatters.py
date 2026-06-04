@@ -104,27 +104,21 @@ class StructuredFormatter(logging.Formatter):
         Returns:
             JSON string representation of the log record
         """
-        # Start with core fields
         log_data: Dict[str, Any] = {}
 
-        # Add timestamp
         if self.include_timestamp:
             log_data[self.timestamp_field] = datetime.utcfromtimestamp(
                 record.created
             ).isoformat() + "Z"
 
-        # Add core metadata
         log_data[self.level_field] = record.levelname
         log_data[self.logger_field] = record.name
         log_data[self.message_field] = record.getMessage()
 
-        # Add any extra fields configured at formatter level
         log_data.update(self.extra_fields)
 
-        # Merge fields from extra={} parameter in logging call
         for key, value in record.__dict__.items():
             if key not in self.EXCLUDED_ATTRS and not key.startswith("_"):
-                # Skip if it's a standard attribute we've already processed
                 if key not in {
                     self.timestamp_field,
                     self.level_field,
@@ -134,7 +128,6 @@ class StructuredFormatter(logging.Formatter):
                 }:
                     log_data[key] = value
 
-        # Handle exceptions
         if record.exc_info and record.exc_info[0] is not None:
             log_data[self.exception_field] = {
                 "type": record.exc_info[0].__name__ if record.exc_info[0] else None,
@@ -142,11 +135,9 @@ class StructuredFormatter(logging.Formatter):
                 "traceback": self._format_exception(record.exc_info),
             }
 
-        # Serialize to JSON
         try:
             return json.dumps(log_data, default=str)
         except (TypeError, ValueError) as e:
-            # Fallback if serialization fails
             return json.dumps(
                 {
                     self.level_field: "ERROR",
@@ -191,14 +182,11 @@ class CompactStructuredFormatter(StructuredFormatter):
 
     def format(self, record: logging.LogRecord) -> str:
         """Format a log record, omitting empty fields."""
-        # Get the full formatted output from parent
         full_output = super().format(record)
 
         try:
-            # Parse back to dict
             log_data = json.loads(full_output)
 
-            # Filter out empty/null values
             filtered_data = {
                 k: v
                 for k, v in log_data.items()
@@ -207,5 +195,4 @@ class CompactStructuredFormatter(StructuredFormatter):
 
             return json.dumps(filtered_data, default=str)
         except (json.JSONDecodeError, TypeError, ValueError):
-            # If something goes wrong, return original
             return full_output

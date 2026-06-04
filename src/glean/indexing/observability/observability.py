@@ -10,7 +10,6 @@ from .formatters import StructuredFormatter
 
 logger = logging.getLogger(__name__)
 
-# Type variable for decorated classes
 T = TypeVar("T")
 
 
@@ -95,7 +94,6 @@ def with_observability(
                 method_name = method.__name__
                 class_name = self.__class__.__name__
 
-                # Log method start
                 if include_args:
                     logger.info(
                         f"[{class_name}] {method_name} started with args={args}, kwargs={kwargs}"
@@ -109,7 +107,6 @@ def with_observability(
                     result = method(self, *args, **kwargs)
                     duration = time.time() - start_time
 
-                    # Log successful completion
                     if include_return:
                         logger.info(
                             f"[{class_name}] {method_name} completed in {duration:.3f}s with result={result}"
@@ -117,7 +114,6 @@ def with_observability(
                     else:
                         logger.info(f"[{class_name}] {method_name} completed in {duration:.3f}s")
 
-                    # Record timing metric if observability is available
                     if hasattr(self, "_observability"):
                         self._observability.record_metric(f"{method_name}_duration", duration)
 
@@ -127,7 +123,6 @@ def with_observability(
                     duration = time.time() - start_time
                     logger.error(f"[{class_name}] {method_name} failed after {duration:.3f}s: {e}")
 
-                    # Record error metric if observability is available
                     if hasattr(self, "_observability"):
                         self._observability.increment_counter(f"{method_name}_errors")
 
@@ -135,7 +130,6 @@ def with_observability(
 
             return wrapped_method
 
-        # Apply the wrapper to all public methods
         for attr_name, attr_value in cls.__dict__.items():
             if callable(attr_value) and not attr_name.startswith("_"):
                 setattr(cls, attr_name, wrap_method(attr_value))
@@ -156,7 +150,6 @@ def track_crawl_progress(method: Callable[..., Any]) -> Callable[..., Any]:
     def wrapper(self, *args: Any, **kwargs: Any) -> Any:
         result = method(self, *args, **kwargs)
 
-        # Track item count if result is a sequence
         if hasattr(result, "__len__"):
             item_count = len(result)
             if hasattr(self, "_observability"):

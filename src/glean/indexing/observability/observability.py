@@ -54,6 +54,17 @@ class ConnectorObservability:
         fields.update(kwargs)
         return fields
 
+    def _get_metric_labels(self, **kwargs: str) -> Dict[str, str]:
+        """Get base metric labels with optional additional labels."""
+        labels = {
+            "connector": self.connector_name,
+            "datasource": self.datasource,
+        }
+        if self.crawl_mode:
+            labels["crawl_mode"] = self.crawl_mode
+        labels.update(kwargs)
+        return labels
+
     def start_execution(self) -> None:
         """Mark the start of connector execution."""
         self.start_time = time.time()
@@ -299,116 +310,74 @@ class ConnectorObservability:
 
     def record_upload_batch_size(self, batch_size: int) -> None:
         """Record the size of an upload batch."""
-        labels = {
-            "connector": self.connector_name,
-            "datasource": self.datasource,
-        }
         self.metrics_provider.emit_metric(
             "upload_batch_size",
             float(batch_size),
             MetricType.HISTOGRAM,
-            labels,
+            self._get_metric_labels(),
         )
 
     def record_upload_throughput(self, docs_per_sec: float) -> None:
         """Record upload throughput in documents per second."""
-        labels = {
-            "connector": self.connector_name,
-            "datasource": self.datasource,
-        }
         self.metrics_provider.emit_metric(
             "upload_throughput",
             docs_per_sec,
             MetricType.GAUGE,
-            labels,
+            self._get_metric_labels(),
         )
 
     def record_api_request_latency(self, latency_ms: float, endpoint: str) -> None:
         """Record API request latency in milliseconds."""
-        labels = {
-            "connector": self.connector_name,
-            "datasource": self.datasource,
-            "endpoint": endpoint,
-        }
         self.metrics_provider.emit_metric(
             "api_request_latency_ms",
             latency_ms,
             MetricType.HISTOGRAM,
-            labels,
+            self._get_metric_labels(endpoint=endpoint),
         )
 
     def record_api_request_count(self, endpoint: str) -> None:
         """Record an API request count."""
-        labels = {
-            "connector": self.connector_name,
-            "datasource": self.datasource,
-            "endpoint": endpoint,
-        }
         self.metrics_provider.emit_metric(
             "api_request_count",
             1.0,
             MetricType.COUNTER,
-            labels,
+            self._get_metric_labels(endpoint=endpoint),
         )
 
     def record_api_request_error(self, endpoint: str, error_type: str) -> None:
         """Record an API request error."""
-        labels = {
-            "connector": self.connector_name,
-            "datasource": self.datasource,
-            "endpoint": endpoint,
-            "error_type": error_type,
-        }
         self.metrics_provider.emit_metric(
             "api_request_errors",
             1.0,
             MetricType.COUNTER,
-            labels,
+            self._get_metric_labels(endpoint=endpoint, error_type=error_type),
         )
 
     def record_retry(self, operation: str) -> None:
         """Record a retry attempt."""
-        labels = {
-            "connector": self.connector_name,
-            "datasource": self.datasource,
-            "operation": operation,
-        }
         self.metrics_provider.emit_metric(
             "retry_count",
             1.0,
             MetricType.COUNTER,
-            labels,
+            self._get_metric_labels(operation=operation),
         )
 
     def record_crawl_success(self) -> None:
         """Record a successful crawl completion."""
-        labels = {
-            "connector": self.connector_name,
-            "datasource": self.datasource,
-        }
-        if self.crawl_mode:
-            labels["crawl_mode"] = self.crawl_mode
         self.metrics_provider.emit_metric(
             "crawl_success",
             1.0,
             MetricType.COUNTER,
-            labels,
+            self._get_metric_labels(),
         )
 
     def record_crawl_failure(self, error_type: str) -> None:
         """Record a failed crawl."""
-        labels = {
-            "connector": self.connector_name,
-            "datasource": self.datasource,
-            "error_type": error_type,
-        }
-        if self.crawl_mode:
-            labels["crawl_mode"] = self.crawl_mode
         self.metrics_provider.emit_metric(
             "crawl_failure",
             1.0,
             MetricType.COUNTER,
-            labels,
+            self._get_metric_labels(error_type=error_type),
         )
 
 

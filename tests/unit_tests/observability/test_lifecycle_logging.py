@@ -18,10 +18,10 @@ class TestConnectorObservabilityInitialization:
         obs = ConnectorObservability("test_connector")
 
         assert obs.connector_name == "test_connector"
-        assert obs.datasource == "test_connector"  # Defaults to connector_name
+        assert obs.datasource == "test_connector"
         assert obs.crawl_mode is None
-        assert obs.run_id is not None  # Auto-generated
-        assert isinstance(uuid.UUID(obs.run_id), uuid.UUID)  # Valid UUID
+        assert obs.run_id is not None
+        assert isinstance(uuid.UUID(obs.run_id), uuid.UUID)
 
     def test_init_with_all_parameters(self):
         """Test initialization with all parameters provided."""
@@ -43,7 +43,6 @@ class TestConnectorObservabilityInitialization:
         obs1 = ConnectorObservability("connector1")
         obs2 = ConnectorObservability("connector2")
 
-        # Each instance should get a unique run_id
         assert obs1.run_id != obs2.run_id
         assert isinstance(uuid.UUID(obs1.run_id), uuid.UUID)
         assert isinstance(uuid.UUID(obs2.run_id), uuid.UUID)
@@ -117,7 +116,6 @@ class TestLifecycleEvents:
             run_id="test-run-123",
         )
 
-        # Capture logger output
         stream = StringIO()
         handler = logging.StreamHandler(stream)
         handler.setFormatter(StructuredFormatter())
@@ -128,7 +126,6 @@ class TestLifecycleEvents:
 
         yield obs, stream, logger
 
-        # Cleanup
         logger.removeHandler(handler)
 
     def test_start_execution_emits_event(self, observability_with_logger):
@@ -154,7 +151,7 @@ class TestLifecycleEvents:
         obs, stream, logger = observability_with_logger
 
         obs.start_execution()
-        stream.truncate(0)  # Clear previous output
+        stream.truncate(0)
         stream.seek(0)
 
         obs.end_execution()
@@ -262,7 +259,7 @@ class TestLifecycleEvents:
         stream.seek(0)
         log_data = json.loads(stream.read())
 
-        assert "3/10" in log_data["message"]  # batch_index is 0-based, display is 1-based
+        assert "3/10" in log_data["message"]
         assert "50 documents" in log_data["message"]
         assert log_data["operation"] == "batch_upload_started"
         assert log_data["batch_index"] == 2
@@ -322,7 +319,6 @@ class TestBackwardCompatibility:
         """Test that basic observability works without structured logging."""
         obs = ConnectorObservability("test_connector")
 
-        # These should work without errors
         obs.start_execution()
         obs.record_metric("test_metric", 123)
         obs.increment_counter("test_counter")
@@ -330,7 +326,6 @@ class TestBackwardCompatibility:
         obs.end_timer("operation")
         obs.end_execution()
 
-        # Metrics should be recorded
         summary = obs.get_metrics_summary()
         assert summary["test_metric"] == 123
         assert summary["test_counter"] == 1
@@ -341,7 +336,6 @@ class TestBackwardCompatibility:
         """Test that existing public methods maintain their signatures."""
         obs = ConnectorObservability("test_connector")
 
-        # These methods should exist and work
         assert hasattr(obs, "start_execution")
         assert hasattr(obs, "end_execution")
         assert hasattr(obs, "record_metric")
@@ -350,7 +344,6 @@ class TestBackwardCompatibility:
         assert hasattr(obs, "end_timer")
         assert hasattr(obs, "get_metrics_summary")
 
-        # Call them to ensure they work
         obs.start_execution()
         obs.record_metric("key", 100)
         obs.increment_counter("counter", 5)
@@ -366,7 +359,6 @@ class TestIntegrationWithStructuredFormatter:
 
     def test_lifecycle_events_with_structured_formatter(self):
         """Test that all lifecycle events work correctly with StructuredFormatter."""
-        # Setup logger with structured formatter
         stream = StringIO()
         handler = logging.StreamHandler(stream)
         handler.setFormatter(StructuredFormatter())
@@ -382,7 +374,6 @@ class TestIntegrationWithStructuredFormatter:
                 crawl_mode="full",
             )
 
-            # Simulate full lifecycle
             obs.start_execution()
             obs.log_data_fetch_started()
             obs.log_data_fetch_completed(item_count=50, duration_ms=1000)
@@ -397,13 +388,11 @@ class TestIntegrationWithStructuredFormatter:
             )
             obs.end_execution()
 
-            # Parse all log lines
             stream.seek(0)
             log_lines = stream.read().strip().split("\n")
 
-            assert len(log_lines) == 8  # 8 lifecycle events
+            assert len(log_lines) == 8
 
-            # Verify all have run_id
             for line in log_lines:
                 log_data = json.loads(line)
                 assert "run_id" in log_data
@@ -430,17 +419,14 @@ class TestIntegrationWithStructuredFormatter:
                 run_id="fixed-run-id-123",
             )
 
-            # Emit various events
             obs.start_execution()
             obs.log_data_fetch_completed(item_count=10, duration_ms=100)
             obs.log_batch_upload_started(batch_index=0, batch_count=1, batch_size=10)
             obs.end_execution()
 
-            # Parse logs
             stream.seek(0)
             log_lines = stream.read().strip().split("\n")
 
-            # Verify each event has required fields
             required_fields = {"connector", "datasource", "run_id", "crawl_mode"}
             for line in log_lines:
                 log_data = json.loads(line)

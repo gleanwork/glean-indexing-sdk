@@ -44,7 +44,6 @@ class CloudMonitoringProvider(MetricsProvider):
         metric_type: MetricType = MetricType.GAUGE,
         labels: Optional[dict[str, str]] = None,
     ) -> None:
-        """Emit a metric to Cloud Monitoring."""
         from google.cloud import monitoring_v3
 
         series = monitoring_v3.TimeSeries()
@@ -78,7 +77,6 @@ class CloudMonitoringProvider(MetricsProvider):
             self.flush()
 
     def flush(self) -> None:
-        """Flush buffered metrics to Cloud Monitoring."""
         if not self.buffer:
             return
 

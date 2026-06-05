@@ -33,7 +33,6 @@ class CloudLoggingProvider(LoggerProvider):
         self.resource_labels = resource_labels or {}
 
     def setup_handler(self, logger_name: str, level: int = logging.INFO) -> logging.Handler:
-        """Create Cloud Logging handler."""
         from google.cloud.logging.handlers import CloudLoggingHandler
         from google.cloud.logging.resource import Resource
 
@@ -51,5 +50,4 @@ class CloudLoggingProvider(LoggerProvider):
         return handler
 
     def flush(self) -> None:
-        """Flush any buffered logs."""
         pass

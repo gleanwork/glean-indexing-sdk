@@ -250,7 +250,11 @@ def setup_connector_logging(
         formatter: Custom formatter instance (overrides use_structured_logging and log_format)
         extra_handlers: Additional handlers to add beyond the default StreamHandler
     """
-    logging.root.handlers = []
+    for handler in logging.root.handlers[:]:
+        handler.flush()
+        handler.close()
+        logging.root.removeHandler(handler)
+
     logging.root.setLevel(getattr(logging, log_level.upper()))
 
     if formatter is None:

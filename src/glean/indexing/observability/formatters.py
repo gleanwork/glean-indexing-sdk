@@ -94,17 +94,19 @@ class StructuredFormatter(logging.Formatter):
         self.exception_field = exception_field
         self.extra_fields = extra_fields or {}
 
-    def format(self, record: logging.LogRecord) -> str:
+    def _build_log_data(self, record: logging.LogRecord) -> Dict[str, Any]:
         """
-        Format a log record as JSON.
+        Build log data dictionary from a LogRecord.
 
         Args:
-            record: The LogRecord to format
+            record: The LogRecord to process
 
         Returns:
-            JSON string representation of the log record
+            Dictionary of log data ready for serialization
         """
         log_data: Dict[str, Any] = {}
+
+        log_data.update(self.extra_fields)
 
         if self.include_timestamp:
             log_data[self.timestamp_field] = datetime.utcfromtimestamp(
@@ -114,8 +116,6 @@ class StructuredFormatter(logging.Formatter):
         log_data[self.level_field] = record.levelname
         log_data[self.logger_field] = record.name
         log_data[self.message_field] = record.getMessage()
-
-        log_data.update(self.extra_fields)
 
         excluded_fields = self.EXCLUDED_ATTRS | {
             self.timestamp_field,
@@ -134,6 +134,20 @@ class StructuredFormatter(logging.Formatter):
                 "message": str(record.exc_info[1]) if record.exc_info[1] else None,
                 "traceback": self._format_exception(record.exc_info),
             }
+
+        return log_data
+
+    def format(self, record: logging.LogRecord) -> str:
+        """
+        Format a log record as JSON.
+
+        Args:
+            record: The LogRecord to format
+
+        Returns:
+            JSON string representation of the log record
+        """
+        log_data = self._build_log_data(record)
 
         try:
             return json.dumps(log_data, default=str)
@@ -177,22 +191,26 @@ class CompactStructuredFormatter(StructuredFormatter):
     Example:
         >>> handler.setFormatter(CompactStructuredFormatter())
         >>> logger.info("Done")
-        {"timestamp": "2026-05-28T18:00:00.000Z", "level": "INFO", "message": "Done"}
+        {"timestamp": "2026-05-28T18:00:00.000Z", "level": "INFO", "logger": "mymodule", "message": "Done"}
     """
 
     def format(self, record: logging.LogRecord) -> str:
         """Format a log record, omitting empty fields."""
-        full_output = super().format(record)
+        log_data = self._build_log_data(record)
+
+        filtered_data = {
+            k: v
+            for k, v in log_data.items()
+            if v not in (None, "", [], {})
+        }
 
         try:
-            log_data = json.loads(full_output)
-
-            filtered_data = {
-                k: v
-                for k, v in log_data.items()
-                if v not in (None, "", [], {})
-            }
-
             return json.dumps(filtered_data, default=str)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            return full_output
+        except (TypeError, ValueError) as e:
+            return json.dumps(
+                {
+                    self.level_field: "ERROR",
+                    self.message_field: f"Failed to serialize log record: {e}",
+                    "original_message": str(record.msg),
+                }
+            )

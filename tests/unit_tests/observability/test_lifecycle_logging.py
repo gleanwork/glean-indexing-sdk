@@ -121,12 +121,14 @@ class TestLifecycleEvents:
         handler.setFormatter(StructuredFormatter())
 
         logger = logging.getLogger("glean.indexing.observability.observability")
+        original_level = logger.level
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
 
         yield obs, stream, logger
 
         logger.removeHandler(handler)
+        logger.setLevel(original_level)
 
     def test_start_execution_emits_event(self, observability_with_logger):
         """Test that start_execution emits crawl_started event."""

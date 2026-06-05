@@ -35,9 +35,32 @@ class ConnectorObservability:
         self.metrics: Dict[str, Any] = defaultdict(int)
         self.timers: Dict[str, float] = {}
         self.start_time: Optional[float] = None
+        self._execution_failed: bool = False
 
     def get_common_fields(self, operation: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
-        """Get common fields for structured logging."""
+        """Get common fields for structured logging.
+
+        Args:
+            operation: Optional operation name
+            **kwargs: Additional fields to include
+
+        Raises:
+            ValueError: If kwargs contains reserved LogRecord attribute names
+        """
+        reserved_attrs = {
+            "name", "msg", "args", "created", "filename", "funcName", "levelname",
+            "levelno", "lineno", "module", "msecs", "message", "pathname", "process",
+            "processName", "relativeCreated", "thread", "threadName", "asctime",
+            "exc_info", "exc_text", "stack_info",
+        }
+
+        conflicting_keys = set(kwargs.keys()) & reserved_attrs
+        if conflicting_keys:
+            raise ValueError(
+                f"Cannot use reserved LogRecord attribute names in extra fields: {conflicting_keys}. "
+                f"Please rename these fields to avoid conflicts with Python logging."
+            )
+
         fields = {
             "connector": self.connector_name,
             "datasource": self.datasource,
@@ -53,6 +76,7 @@ class ConnectorObservability:
     def start_execution(self) -> None:
         """Mark the start of connector execution."""
         self.start_time = time.time()
+        self._execution_failed = False
         logger.info(
             "Crawl started",
             extra=self.get_common_fields(
@@ -62,8 +86,18 @@ class ConnectorObservability:
         )
 
     def end_execution(self) -> None:
-        """Mark the end of connector execution."""
-        if self.start_time:
+        """Mark the end of connector execution.
+
+        If called from a finally block while an exception is active, or if
+        fail_execution() was already called, this will not log a success event.
+        """
+        import sys
+
+        if self.start_time and not self._execution_failed:
+            exc_info = sys.exc_info()
+            if exc_info[0] is not None:
+                return
+
             duration = time.time() - self.start_time
             duration_ms = int(duration * 1000)
             self.metrics["total_execution_time"] = duration
@@ -77,13 +111,19 @@ class ConnectorObservability:
             )
 
     def fail_execution(self, error: Exception) -> None:
-        """Mark the execution as failed."""
+        """Mark the execution as failed.
+
+        Records execution duration and sets terminal state to prevent
+        end_execution() from logging a success event.
+        """
         import sys
 
+        self._execution_failed = True
         duration_ms = None
         if self.start_time:
             duration = time.time() - self.start_time
             duration_ms = int(duration * 1000)
+            self.metrics["total_execution_time"] = duration
 
         exc_info = sys.exc_info()
         if exc_info[1] is not error:

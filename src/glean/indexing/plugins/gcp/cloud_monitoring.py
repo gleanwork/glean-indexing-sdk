@@ -54,8 +54,22 @@ class CloudMonitoringProvider(MetricsProvider):
         series.resource = self.resource
 
         point = monitoring_v3.Point()
-        point.value.double_value = value
-        point.interval.end_time.seconds = int(time.time())
+        now = int(time.time())
+        point.interval.end_time.seconds = now
+
+        if metric_type == MetricType.COUNTER:
+            series.metric_kind = monitoring_v3.MetricDescriptor.MetricKind.CUMULATIVE
+            point.value.int64_value = int(value)
+            point.interval.start_time.seconds = now
+        elif metric_type == MetricType.HISTOGRAM:
+            series.metric_kind = monitoring_v3.MetricDescriptor.MetricKind.GAUGE
+            series.value_type = monitoring_v3.MetricDescriptor.ValueType.DISTRIBUTION
+            point.value.distribution_value.count = 1
+            point.value.distribution_value.mean = value
+            point.value.distribution_value.bucket_counts.extend([1])
+        else:
+            series.metric_kind = monitoring_v3.MetricDescriptor.MetricKind.GAUGE
+            point.value.double_value = value
 
         series.points = [point]
         self.buffer.append(series)

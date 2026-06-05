@@ -1,7 +1,6 @@
 """GCP Cloud Logging provider for connector logging."""
 
 import logging
-from typing import Optional
 
 from glean.indexing.observability.logging import LoggerProvider
 
@@ -14,7 +13,7 @@ class CloudLoggingProvider(LoggerProvider):
         project_id: str,
         log_name: str = "glean-connector",
         resource_type: str = "global",
-        resource_labels: Optional[dict[str, str]] = None,
+        resource_labels: dict[str, str] | None = None,
     ):
         """
         Initialize Cloud Logging provider.
@@ -28,18 +27,25 @@ class CloudLoggingProvider(LoggerProvider):
         from google.cloud import logging as cloud_logging
 
         self.project_id = project_id
+        self.log_name = log_name
         self.client = cloud_logging.Client(project=project_id)
-        self.logger = self.client.logger(log_name)
         self.resource_type = resource_type
         self.resource_labels = resource_labels or {}
 
     def setup_handler(self, logger_name: str, level: int = logging.INFO) -> logging.Handler:
         """Create Cloud Logging handler."""
         from google.cloud.logging.handlers import CloudLoggingHandler
+        from google.cloud.logging.resource import Resource
+
+        resource = Resource(
+            type=self.resource_type,
+            labels=self.resource_labels,
+        )
 
         handler = CloudLoggingHandler(
             client=self.client,
-            name=logger_name,
+            name=self.log_name,
+            resource=resource,
         )
         handler.setLevel(level)
         return handler

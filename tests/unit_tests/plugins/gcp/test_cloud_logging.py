@@ -6,9 +6,9 @@ import pytest
 
 pytest.importorskip("google.cloud.logging")
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch  # noqa: E402
 
-from glean.indexing.plugins.gcp import CloudLoggingProvider
+from glean.indexing.plugins.gcp import CloudLoggingProvider  # noqa: E402
 
 
 class TestCloudLoggingProvider:
@@ -19,8 +19,6 @@ class TestCloudLoggingProvider:
         """Test provider initialization."""
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
-        mock_logger = MagicMock()
-        mock_client.logger.return_value = mock_logger
 
         provider = CloudLoggingProvider(
             project_id="test-project",
@@ -30,26 +28,41 @@ class TestCloudLoggingProvider:
         )
 
         assert provider.project_id == "test-project"
+        assert provider.log_name == "test-connector"
         assert provider.resource_type == "gce_instance"
         assert provider.resource_labels == {"zone": "us-central1-a"}
         mock_client_class.assert_called_once_with(project="test-project")
-        mock_client.logger.assert_called_once_with("test-connector")
 
     @patch("google.cloud.logging.Client")
+    @patch("google.cloud.logging.resource.Resource")
     @patch("google.cloud.logging.handlers.CloudLoggingHandler")
-    def test_setup_handler_creates_cloud_logging_handler(self, mock_handler_class, mock_client_class):
+    def test_setup_handler_creates_cloud_logging_handler(
+        self, mock_handler_class, mock_resource_class, mock_client_class
+    ):
         """Test that setup_handler creates a Cloud Logging handler."""
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
         mock_handler = MagicMock()
         mock_handler_class.return_value = mock_handler
+        mock_resource = MagicMock()
+        mock_resource_class.return_value = mock_resource
 
-        provider = CloudLoggingProvider(project_id="test-project", log_name="test-logs")
+        provider = CloudLoggingProvider(
+            project_id="test-project",
+            log_name="test-logs",
+            resource_type="gce_instance",
+            resource_labels={"zone": "us-central1-a"},
+        )
         handler = provider.setup_handler("test_connector")
 
+        mock_resource_class.assert_called_once_with(
+            type="gce_instance",
+            labels={"zone": "us-central1-a"},
+        )
         mock_handler_class.assert_called_once_with(
             client=mock_client,
-            name="test_connector",
+            name="test-logs",
+            resource=mock_resource,
         )
         assert handler == mock_handler
 
@@ -106,12 +119,9 @@ class TestCloudLoggingProvider:
     @patch("google.cloud.logging.Client")
     def test_default_log_name(self, mock_client_class):
         """Test default log name is glean-connector."""
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-
         provider = CloudLoggingProvider(project_id="test-project")
 
-        mock_client.logger.assert_called_once_with("glean-connector")
+        assert provider.log_name == "glean-connector"
 
     @patch("google.cloud.logging.Client")
     def test_default_resource_type(self, mock_client_class):

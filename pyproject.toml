@@ -40,10 +40,6 @@ lint = [
 typing = [
     "pyright>=1.1.370",
 ]
-aws = [
-    "boto3>=1.34.0,<2",
-    "watchtower>=3.3.0,<4",
-]
 gcp = [
     "google-cloud-logging>=3.11.0,<4",
     "google-cloud-monitoring>=2.22.0,<3",

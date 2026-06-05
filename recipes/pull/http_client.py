@@ -3,7 +3,7 @@
 import logging
 import random
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Literal
@@ -182,6 +182,31 @@ class PullHttpClient:
         )
         return self._parse_response(response)
 
+    def paginate(
+        self,
+        path_or_url: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        headers: Mapping[str, str] | None = None,
+        timeout_seconds: float | None = None,
+        next_page: Callable[[PullResponse], str | None] | None = None,
+    ) -> Iterator[PullResponse]:
+        """Yield GET responses across pages.
+
+        By default, follows RFC 5988 `Link` headers with `rel="next"`.
+        Streaming data clients can iterate over responses and yield items from each page.
+        """
+        current_path: str | None = path_or_url
+        current_params = params
+        resolve_next_page = next_page or _next_link_url
+
+        while current_path:
+            response = self.get(current_path, params=current_params, headers=headers, timeout_seconds=timeout_seconds)
+            yield response
+
+            current_path = resolve_next_page(response)
+            current_params = None
+
     def get_bytes(
         self,
         path_or_url: str,
@@ -235,7 +260,7 @@ class PullHttpClient:
                     json=json,
                     data=data,
                     headers=request_headers,
-                    timeout=timeout_seconds or self.options.timeout_seconds,
+                    timeout=timeout_seconds if timeout_seconds is not None else self.options.timeout_seconds,
                 )
                 if response.status_code not in retry_options.retry_status_codes:
                     response.raise_for_status()
@@ -246,7 +271,7 @@ class PullHttpClient:
                     f"Source API request failed with status {exc.response.status_code}",
                     response=exc.response,
                 ) from exc
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
+            except httpx.RequestError as exc:
                 last_error = exc
                 if not retry_options.retry_connection_errors:
                     raise PullHttpError(f"Source API request failed: {exc}") from exc
@@ -310,6 +335,27 @@ class PullHttpClient:
 
 def _is_text(content_type: str) -> bool:
     return content_type.startswith("text/") or "xml" in content_type or "html" in content_type
+
+
+def _next_link_url(response: PullResponse) -> str | None:
+    return _parse_link_header_next(response.headers.get("link") or response.headers.get("Link"))
+
+
+def _parse_link_header_next(link_header: str | None) -> str | None:
+    if not link_header:
+        return None
+
+    for part in link_header.split(","):
+        segments = [segment.strip() for segment in part.strip().split(";")]
+        if not segments:
+            continue
+
+        rel_is_next = any(segment.lower() in {'rel="next"', "rel='next'", "rel=next"} for segment in segments[1:])
+        link = segments[0]
+        if rel_is_next and link.startswith("<") and ">" in link:
+            return link[1 : link.index(">")]
+
+    return None
 
 
 def _retry_after_seconds(value: str | None) -> float | None:

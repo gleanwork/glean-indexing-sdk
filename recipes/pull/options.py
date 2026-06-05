@@ -7,14 +7,14 @@ from dataclasses import dataclass, field
 class PullRetryOptions:
     """Retry behavior for source API calls."""
 
-    max_attempts: int = 3
+    max_attempts: int = 2
     initial_backoff_seconds: float = 1.0
     max_backoff_seconds: float = 60.0
     backoff_multiplier: float = 2.0
     retry_status_codes: set[int] = field(default_factory=lambda: {429, 500, 502, 503, 504})
     retry_connection_errors: bool = True
     respect_retry_after: bool = True
-    jitter_seconds: float = 0.1
+    jitter_seconds: float = 1.0
 
 
 @dataclass

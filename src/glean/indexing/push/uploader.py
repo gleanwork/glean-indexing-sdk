@@ -4,6 +4,7 @@ import uuid
 from typing import Any, Mapping, Optional, Sequence, TypeVar
 
 from glean.api_client.models import (
+    CustomDatasourceConfig,
     DatasourceBulkMembershipDefinition,
     DatasourceGroupDefinition,
     DatasourceMembershipDefinition,
@@ -43,6 +44,19 @@ class PushUploader:
         self.server_url = server_url
         self.timeout_ms = timeout_ms
         self.http_headers = http_headers
+
+    def configure_datasource(self, config: CustomDatasourceConfig) -> None:
+        """Configure a datasource using `datasources.add()`."""
+        # Use attribute access instead of model_dump() because certain
+        # pydantic/api-client version combinations return camelCase aliases
+        # even with by_alias=False, and datasources.add() expects snake_case.
+        kwargs = {
+            name: getattr(config, name)
+            for name in type(config).model_fields
+            if name in config.model_fields_set
+        }
+        with api_client() as client:
+            client.indexing.datasources.add(**kwargs)
 
     def index_documents(
         self,

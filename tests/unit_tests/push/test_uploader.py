@@ -2,6 +2,7 @@
 
 from glean.api_client.models import (
     ContentDefinition,
+    CustomDatasourceConfig,
     DatasourceBulkMembershipDefinition,
     DatasourceGroupDefinition,
     DatasourceMembershipDefinition,
@@ -22,6 +23,26 @@ def _document(document_id: str = "doc-1") -> DocumentDefinition:
         view_url=f"https://example.com/{document_id}",
         body=ContentDefinition(mime_type="text/plain", text_content="hello"),
     )
+
+
+def test_configure_datasource_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+    config = CustomDatasourceConfig(
+        name="test_datasource",
+        display_name="Test Datasource",
+        url_regex=r"https://example\.com/.*",
+        trust_url_regex_for_view_activity=True,
+    )
+
+    with mock_glean_client() as client:
+        uploader.configure_datasource(config)
+
+    client.indexing.datasources.add.assert_called_once()
+    call_args = client.indexing.datasources.add.call_args[1]
+    assert call_args["name"] == "test_datasource"
+    assert call_args["display_name"] == "Test Datasource"
+    assert call_args["url_regex"] == r"https://example\.com/.*"
+    assert call_args["trust_url_regex_for_view_activity"] is True
 
 
 def test_index_documents_calls_generated_client():

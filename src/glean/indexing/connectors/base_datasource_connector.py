@@ -6,7 +6,6 @@ from typing import Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
 
-from glean.indexing.common import api_client
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.exceptions import InconsistentDataError, InvalidDatasourceConfigError
@@ -113,17 +112,8 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         if is_test:
             config.is_test_datasource = True
 
-        with api_client() as client:
-            # Use attribute access instead of model_dump() because certain
-            # pydantic/api-client version combinations return camelCase aliases
-            # even with by_alias=False, and datasources.add() expects snake_case.
-            kwargs = {
-                name: getattr(config, name)
-                for name in type(config).model_fields
-                if name in config.model_fields_set
-            }
-            client.indexing.datasources.add(**kwargs)
-            logger.info(f"Successfully configured datasource: {config.name}")
+        PushUploader(datasource=config.name).configure_datasource(config)
+        logger.info(f"Successfully configured datasource: {config.name}")
 
     def index_data(
         self,

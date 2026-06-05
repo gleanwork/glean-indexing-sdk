@@ -67,7 +67,7 @@ class TestBaseDatasourceConnector:
         assert config.url_regex == r"https://test\.example\.com/.*"
         assert config.trust_url_regex_for_view_activity is True
 
-    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    @patch("glean.indexing.push.uploader.api_client")
     def test_configure_datasource(self, mock_api_client):
         """Test datasource configuration."""
         mock_client = Mock()

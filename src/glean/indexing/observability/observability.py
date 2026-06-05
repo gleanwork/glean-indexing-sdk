@@ -83,6 +83,12 @@ class ConnectorObservability:
             duration = time.time() - self.start_time
             duration_ms = int(duration * 1000)
             self.metrics["total_execution_time"] = duration
+            self.metrics_provider.emit_metric(
+                "connector_execution_duration_ms",
+                float(duration_ms),
+                MetricType.HISTOGRAM,
+                self._get_metric_labels(),
+            )
             logger.info(
                 "Crawl completed successfully",
                 extra=self.get_common_fields(
@@ -102,6 +108,12 @@ class ConnectorObservability:
         if self.start_time:
             duration = time.time() - self.start_time
             duration_ms = int(duration * 1000)
+            self.metrics_provider.emit_metric(
+                "connector_execution_duration_ms",
+                float(duration_ms),
+                MetricType.HISTOGRAM,
+                self._get_metric_labels(),
+            )
 
         exc_info = sys.exc_info()
         if exc_info[1] is not error:

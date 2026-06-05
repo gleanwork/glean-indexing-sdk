@@ -104,6 +104,51 @@ class MetricsProvider(ABC):
         """
         pass
 
+    def record_counter(
+        self,
+        name: str,
+        value: float = 1.0,
+        labels: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Record a counter metric (convenience method).
+
+        Args:
+            name: Metric name
+            value: Counter increment value (default: 1.0)
+            labels: Optional labels/tags for the metric
+        """
+        self.emit_metric(name, value, MetricType.COUNTER, labels)
+
+    def record_gauge(
+        self,
+        name: str,
+        value: float,
+        labels: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Record a gauge metric (convenience method).
+
+        Args:
+            name: Metric name
+            value: Gauge value
+            labels: Optional labels/tags for the metric
+        """
+        self.emit_metric(name, value, MetricType.GAUGE, labels)
+
+    def record_histogram(
+        self,
+        name: str,
+        value: float,
+        labels: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Record a histogram metric (convenience method).
+
+        Args:
+            name: Metric name
+            value: Histogram observation
+            labels: Optional labels/tags for the metric
+        """
+        self.emit_metric(name, value, MetricType.HISTOGRAM, labels)
+
     @abstractmethod
     def flush(self) -> None:
         """Flush any buffered metrics."""
@@ -139,7 +184,7 @@ class InMemoryMetricsProvider(MetricsProvider):
                 "name": name,
                 "value": value,
                 "type": metric_type.value,
-                "labels": labels or {},
+                "labels": labels.copy() if labels else {},
             }
         )
 

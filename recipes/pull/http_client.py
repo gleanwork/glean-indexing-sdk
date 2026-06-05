@@ -16,7 +16,7 @@ from recipes.pull.response import PullResponse
 
 logger = logging.getLogger(__name__)
 
-HttpMethod = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
+HttpMethod = Literal["GET", "POST"]
 
 
 class PullHttpError(RuntimeError):
@@ -105,59 +105,6 @@ class PullHttpClient:
             headers=headers,
             timeout_seconds=timeout_seconds,
         )
-
-    def put(
-        self,
-        path_or_url: str,
-        *,
-        json: Any = None,
-        data: Any = None,
-        params: Mapping[str, Any] | None = None,
-        headers: Mapping[str, str] | None = None,
-        timeout_seconds: float | None = None,
-    ) -> PullResponse:
-        """Issue a PUT request and parse the response."""
-        return self.request(
-            "PUT",
-            path_or_url,
-            json=json,
-            data=data,
-            params=params,
-            headers=headers,
-            timeout_seconds=timeout_seconds,
-        )
-
-    def patch(
-        self,
-        path_or_url: str,
-        *,
-        json: Any = None,
-        data: Any = None,
-        params: Mapping[str, Any] | None = None,
-        headers: Mapping[str, str] | None = None,
-        timeout_seconds: float | None = None,
-    ) -> PullResponse:
-        """Issue a PATCH request and parse the response."""
-        return self.request(
-            "PATCH",
-            path_or_url,
-            json=json,
-            data=data,
-            params=params,
-            headers=headers,
-            timeout_seconds=timeout_seconds,
-        )
-
-    def delete(
-        self,
-        path_or_url: str,
-        *,
-        params: Mapping[str, Any] | None = None,
-        headers: Mapping[str, str] | None = None,
-        timeout_seconds: float | None = None,
-    ) -> PullResponse:
-        """Issue a DELETE request and parse the response."""
-        return self.request("DELETE", path_or_url, params=params, headers=headers, timeout_seconds=timeout_seconds)
 
     def request(
         self,

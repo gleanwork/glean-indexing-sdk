@@ -45,8 +45,8 @@ aws = [
     "watchtower>=3.3.0,<4",
 ]
 gcp = [
-    "google-cloud-logging>=3.11.0,<4.0.0",
-    "google-cloud-monitoring>=2.22.0,<3.0.0",
+    "google-cloud-logging>=3.11.0,<4",
+    "google-cloud-monitoring>=2.22.0,<3",
 ]
 [project.urls]
 "Source Code" = "https://github.com/glean-io/glean-indexing-sdk"

@@ -39,7 +39,6 @@ class CloudWatchMetricsProvider(MetricsProvider):
         metric_type: MetricType = MetricType.GAUGE,
         labels: Optional[dict[str, str]] = None,
     ) -> None:
-        """Emit a metric to CloudWatch."""
         merged_dimensions = {**self.default_dimensions, **(labels or {})}
         dimensions = [{"Name": k, "Value": v} for k, v in merged_dimensions.items()]
 
@@ -62,7 +61,6 @@ class CloudWatchMetricsProvider(MetricsProvider):
             self.flush()
 
     def flush(self) -> None:
-        """Flush buffered metrics to CloudWatch."""
         if not self.buffer:
             return
 

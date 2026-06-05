@@ -30,7 +30,6 @@ class CloudWatchLogsProvider(LoggerProvider):
         self.create_log_group = create_log_group
 
     def setup_handler(self, logger_name: str, level: int = logging.INFO) -> logging.Handler:
-        """Create CloudWatch Logs handler."""
         import boto3
         import watchtower
 
@@ -48,5 +47,4 @@ class CloudWatchLogsProvider(LoggerProvider):
         return handler
 
     def flush(self) -> None:
-        """Flush any buffered logs."""
         pass

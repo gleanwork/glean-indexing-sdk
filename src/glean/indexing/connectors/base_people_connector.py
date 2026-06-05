@@ -94,7 +94,22 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
             self._observability.record_metric("employees_transformed", len(employees))
 
             self._observability.start_timer("data_upload")
-            self._batch_index_employees(employees, options=options)
+            if employees:
+                force_restart = options.force_restart if options else False
+                if force_restart:
+                    logger.info("Force restarting upload - discarding any previous upload progress")
+
+                PushUploader(
+                    datasource=self.name,
+                    timeout_ms=options.upload_timeout_ms if options else None,
+                ).bulk_index_employees(
+                    employees=employees,
+                    batch_size=self.batch_size,
+                    force_restart_upload=True if force_restart else None,
+                    disable_stale_data_deletion_check=True
+                    if (options and options.disable_stale_deletion_check)
+                    else None,
+                )
             self._observability.end_timer("data_upload")
 
             logger.info(f"Successfully indexed {len(employees)} employees to Glean")
@@ -117,44 +132,6 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
             A sequence of source data items from the external system.
         """
         return self.data_client.get_source_data(since=since)
-
-    def _batch_index_employees(
-        self,
-        employees: Sequence[EmployeeInfoDefinition],
-        options: Optional[ConnectorOptions] = None,
-    ) -> None:
-        """Index employees to Glean in batches.
-
-        Args:
-            employees: The employees to index
-            options: Optional connector options for controlling indexing behavior
-        """
-        if not employees:
-            return
-
-        force_restart = options.force_restart if options else False
-
-        logger.info(f"Uploading {len(employees)} employees")
-        if force_restart:
-            logger.info("Force restarting upload - discarding any previous upload progress")
-
-        try:
-            PushUploader(
-                datasource=self.name,
-                timeout_ms=options.upload_timeout_ms if options else None,
-            ).bulk_index_employees(
-                employees=employees,
-                batch_size=self.batch_size,
-                force_restart_upload=True if force_restart else None,
-                disable_stale_data_deletion_check=True
-                if (options and options.disable_stale_deletion_check)
-                else None,
-            )
-            logger.info("Employees uploaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to upload employees: {e}")
-            self._observability.increment_counter("batch_upload_errors")
-            raise
 
     def _get_last_crawl_timestamp(self) -> Optional[str]:
         """

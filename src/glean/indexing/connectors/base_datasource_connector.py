@@ -148,12 +148,16 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             users = identities.get("users")
             if users:
                 logger.info(f"Indexing {len(users)} users")
-                self._batch_index_users(users)
+                PushUploader(datasource=self.name).bulk_index_users(
+                    users=users, batch_size=self.batch_size
+                )
 
             groups = identities.get("groups")
             if groups:
                 logger.info(f"Indexing {len(groups)} groups")
-                self._batch_index_groups(groups)
+                PushUploader(datasource=self.name).bulk_index_groups(
+                    groups=groups, batch_size=self.batch_size
+                )
 
                 memberships = identities.get("memberships")
                 if not memberships:
@@ -165,7 +169,9 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                     )
 
                 logger.info(f"Indexing {len(memberships)} memberships")
-                self._batch_index_memberships(memberships)
+                PushUploader(datasource=self.name).bulk_index_memberships(
+                    memberships=memberships, batch_size=self.batch_size
+                )
 
             since = None
             if mode == IndexingMode.INCREMENTAL:
@@ -190,7 +196,21 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             self._observability.start_timer("data_upload")
             if documents:
                 logger.info(f"Indexing {len(documents)} documents")
-                self._batch_index_documents(documents, options=options)
+                force_restart = options.force_restart if options else False
+                if force_restart:
+                    logger.info("Force restarting upload - discarding any previous upload progress")
+
+                PushUploader(
+                    datasource=self.name,
+                    timeout_ms=options.upload_timeout_ms if options else None,
+                ).bulk_index_documents(
+                    documents=documents,
+                    batch_size=self.batch_size,
+                    force_restart_upload=True if force_restart else None,
+                    disable_stale_document_deletion_check=True
+                    if (options and options.disable_stale_deletion_check)
+                    else None,
+                )
             self._observability.end_timer("data_upload")
 
             logger.info(f"Successfully indexed {len(documents)} documents to Glean")
@@ -202,95 +222,6 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             raise
         finally:
             self._observability.end_execution()
-
-    def _batch_index_users(self, users) -> None:
-        """Index users in batches with proper page signaling."""
-        if not users:
-            return
-
-        logger.info(f"Uploading {len(users)} users")
-
-        try:
-            PushUploader(datasource=self.name).bulk_index_users(
-                users=users, batch_size=self.batch_size
-            )
-            logger.info("Users uploaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to upload users: {e}")
-            self._observability.increment_counter("batch_upload_errors")
-            raise
-
-    def _batch_index_groups(self, groups) -> None:
-        """Index groups in batches with proper page signaling."""
-        if not groups:
-            return
-
-        logger.info(f"Uploading {len(groups)} groups")
-
-        try:
-            PushUploader(datasource=self.name).bulk_index_groups(
-                groups=groups, batch_size=self.batch_size
-            )
-            logger.info("Groups uploaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to upload groups: {e}")
-            self._observability.increment_counter("batch_upload_errors")
-            raise
-
-    def _batch_index_memberships(self, memberships) -> None:
-        """Index memberships in batches with proper page signaling."""
-        if not memberships:
-            return
-
-        logger.info(f"Uploading {len(memberships)} memberships")
-
-        try:
-            PushUploader(datasource=self.name).bulk_index_memberships(
-                memberships=memberships, batch_size=self.batch_size
-            )
-            logger.info("Memberships uploaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to upload memberships: {e}")
-            self._observability.increment_counter("batch_upload_errors")
-            raise
-
-    def _batch_index_documents(
-        self,
-        documents: Sequence[DocumentDefinition],
-        options: Optional[ConnectorOptions] = None,
-    ) -> None:
-        """Index documents in batches with proper page signaling.
-
-        Args:
-            documents: The documents to index
-            options: Optional connector options for controlling indexing behavior
-        """
-        if not documents:
-            return
-
-        force_restart = options.force_restart if options else False
-
-        logger.info(f"Uploading {len(documents)} documents")
-        if force_restart:
-            logger.info("Force restarting upload - discarding any previous upload progress")
-
-        try:
-            PushUploader(
-                datasource=self.name,
-                timeout_ms=options.upload_timeout_ms if options else None,
-            ).bulk_index_documents(
-                documents=documents,
-                batch_size=self.batch_size,
-                force_restart_upload=True if force_restart else None,
-                disable_stale_document_deletion_check=True
-                if (options and options.disable_stale_deletion_check)
-                else None,
-            )
-            logger.info("Documents uploaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to upload documents: {e}")
-            self._observability.increment_counter("batch_upload_errors")
-            raise
 
     def _get_last_crawl_timestamp(self) -> Optional[str]:
         """

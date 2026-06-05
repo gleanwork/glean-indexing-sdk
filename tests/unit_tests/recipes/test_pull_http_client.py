@@ -1,12 +1,13 @@
 """Tests for source-side pull HTTP recipes."""
 
+from collections.abc import Generator
 from email.utils import formatdate
 from time import time
 
 import httpx
 import pytest
 
-from recipes.pull import PullHttpClient, PullHttpError, PullOptions, PullRetryOptions
+from recipes.pull import BasePullHttpStreamingDataClient, PullHttpClient, PullHttpError, PullOptions, PullRetryOptions
 
 
 def _fast_options(max_attempts: int = 2) -> PullOptions:
@@ -217,6 +218,31 @@ def test_paginate_accepts_custom_next_page_resolver(httpx_mock):
     pages = list(client.paginate("/items", next_page=lambda response: response.json_dict()["next"]))
 
     assert [item["id"] for page in pages for item in page.json_dict()["items"]] == ["item-1", "item-2"]
+
+
+def test_http_streaming_data_client_uses_paginated_http_client(httpx_mock):
+    class ItemDataClient(BasePullHttpStreamingDataClient[dict[str, object]]):
+        def get_source_data(self, **kwargs: object) -> Generator[dict[str, object], None, None]:
+            for page in self.http.paginate("/items"):
+                yield from page.json_dict()["items"]
+
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": [{"id": "item-1"}]},
+        headers={
+            "Content-Type": "application/json",
+            "Link": '<https://example.com/v1/items?page=2>; rel="next"',
+        },
+    )
+    httpx_mock.add_response(
+        url="https://example.com/v1/items?page=2",
+        json={"items": [{"id": "item-2"}]},
+        headers={"Content-Type": "application/json"},
+    )
+
+    data_client = ItemDataClient(base_url="https://example.com/v1", options=_fast_options())
+
+    assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2"]
 
 
 def test_get_bytes_applies_size_cap(httpx_mock):

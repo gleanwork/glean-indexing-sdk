@@ -4,10 +4,10 @@ import pytest
 
 pytest.importorskip("boto3")
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch  # noqa: E402
 
-from glean.indexing.observability import MetricType
-from glean.indexing.plugins.aws import CloudWatchMetricsProvider
+from glean.indexing.observability import MetricType  # noqa: E402
+from glean.indexing.plugins.aws import CloudWatchMetricsProvider  # noqa: E402
 
 
 class TestCloudWatchMetricsProvider:

@@ -1,7 +1,6 @@
 """AWS CloudWatch Logs provider for connector logging."""
 
 import logging
-from typing import Optional
 
 from glean.indexing.observability.logging import LoggerProvider
 
@@ -25,8 +24,6 @@ class CloudWatchLogsProvider(LoggerProvider):
             region_name: AWS region name
             create_log_group: Whether to create log group if it doesn't exist
         """
-        import watchtower
-
         self.log_group = log_group
         self.log_stream = log_stream
         self.region_name = region_name
@@ -34,7 +31,10 @@ class CloudWatchLogsProvider(LoggerProvider):
 
     def setup_handler(self, logger_name: str, level: int = logging.INFO) -> logging.Handler:
         """Create CloudWatch Logs handler."""
+        import boto3
         import watchtower
+
+        boto3_client = boto3.client("logs", region_name=self.region_name)
 
         handler = watchtower.CloudWatchLogHandler(
             log_group=self.log_group,
@@ -42,6 +42,7 @@ class CloudWatchLogsProvider(LoggerProvider):
             use_queues=True,
             send_interval=5,
             create_log_group=self.create_log_group,
+            boto3_client=boto3_client,
         )
         handler.setLevel(level)
         return handler

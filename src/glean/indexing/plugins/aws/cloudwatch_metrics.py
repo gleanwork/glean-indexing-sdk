@@ -40,8 +40,8 @@ class CloudWatchMetricsProvider(MetricsProvider):
         labels: Optional[dict[str, str]] = None,
     ) -> None:
         """Emit a metric to CloudWatch."""
-        dimensions = [{"Name": k, "Value": v} for k, v in (labels or {}).items()]
-        dimensions.extend([{"Name": k, "Value": v} for k, v in self.default_dimensions.items()])
+        merged_dimensions = {**self.default_dimensions, **(labels or {})}
+        dimensions = [{"Name": k, "Value": v} for k, v in merged_dimensions.items()]
 
         unit = "None"
         if metric_type == MetricType.COUNTER:
@@ -66,5 +66,8 @@ class CloudWatchMetricsProvider(MetricsProvider):
         if not self.buffer:
             return
 
-        self.client.put_metric_data(Namespace=self.namespace, MetricData=self.buffer)
+        for i in range(0, len(self.buffer), 20):
+            batch = self.buffer[i : i + 20]
+            self.client.put_metric_data(Namespace=self.namespace, MetricData=batch)
+
         self.buffer.clear()

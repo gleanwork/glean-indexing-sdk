@@ -6,9 +6,9 @@ import pytest
 
 pytest.importorskip("watchtower")
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch  # noqa: E402
 
-from glean.indexing.plugins.aws import CloudWatchLogsProvider
+from glean.indexing.plugins.aws import CloudWatchLogsProvider  # noqa: E402
 
 
 class TestCloudWatchLogsProvider:
@@ -28,24 +28,32 @@ class TestCloudWatchLogsProvider:
         assert provider.region_name == "us-west-2"
         assert provider.create_log_group is True
 
+    @patch("boto3.client")
     @patch("watchtower.CloudWatchLogHandler")
-    def test_setup_handler_creates_cloudwatch_handler(self, mock_handler_class):
+    def test_setup_handler_creates_cloudwatch_handler(
+        self, mock_handler_class, mock_boto_client
+    ):
         """Test that setup_handler creates a CloudWatch handler."""
         mock_handler = MagicMock()
         mock_handler_class.return_value = mock_handler
+        mock_client = MagicMock()
+        mock_boto_client.return_value = mock_client
 
         provider = CloudWatchLogsProvider(
             log_group="/test/logs",
             log_stream="test-stream",
+            region_name="us-west-2",
         )
         handler = provider.setup_handler("test_connector")
 
+        mock_boto_client.assert_called_once_with("logs", region_name="us-west-2")
         mock_handler_class.assert_called_once_with(
             log_group="/test/logs",
             stream_name="test-stream",
             use_queues=True,
             send_interval=5,
             create_log_group=True,
+            boto3_client=mock_client,
         )
         assert handler == mock_handler
 

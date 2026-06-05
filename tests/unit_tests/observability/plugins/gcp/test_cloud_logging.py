@@ -8,7 +8,7 @@ pytest.importorskip("google.cloud.logging")
 
 from unittest.mock import MagicMock, patch  # noqa: E402
 
-from glean.indexing.plugins.gcp import CloudLoggingProvider  # noqa: E402
+from glean.indexing.observability.plugins.gcp import CloudLoggingProvider  # noqa: E402
 
 
 class TestCloudLoggingProvider:

@@ -14,12 +14,12 @@ from glean.indexing.push import PushUploader
 from glean.indexing.testing import mock_glean_client
 
 
-def _document() -> DocumentDefinition:
+def _document(document_id: str = "doc-1") -> DocumentDefinition:
     return DocumentDefinition(
         datasource="test_datasource",
-        id="doc-1",
-        title="Doc 1",
-        view_url="https://example.com/doc-1",
+        id=document_id,
+        title=f"Doc {document_id}",
+        view_url=f"https://example.com/{document_id}",
         body=ContentDefinition(mime_type="text/plain", text_content="hello"),
     )
 
@@ -54,26 +54,35 @@ def test_delete_document_calls_generated_client():
 
 def test_bulk_index_documents_calls_generated_client():
     uploader = PushUploader(datasource="test_datasource")
-    document = _document()
+    documents = [_document("doc-1"), _document("doc-2")]
 
     with mock_glean_client() as client:
         uploader.bulk_index_documents(
-            [document],
+            documents,
             upload_id="upload-1",
-            is_first_page=True,
-            is_last_page=False,
+            batch_size=1,
             force_restart_upload=True,
-            disable_stale_document_deletion_check=False,
+            disable_stale_document_deletion_check=True,
         )
 
-    client.indexing.documents.bulk_index.assert_called_once_with(
+    assert client.indexing.documents.bulk_index.call_count == 2
+    client.indexing.documents.bulk_index.assert_any_call(
         datasource="test_datasource",
-        documents=[document],
+        documents=[documents[0]],
         upload_id="upload-1",
         is_first_page=True,
         is_last_page=False,
         force_restart_upload=True,
-        disable_stale_document_deletion_check=False,
+        disable_stale_document_deletion_check=None,
+    )
+    client.indexing.documents.bulk_index.assert_any_call(
+        datasource="test_datasource",
+        documents=[documents[1]],
+        upload_id="upload-1",
+        is_first_page=False,
+        is_last_page=True,
+        force_restart_upload=None,
+        disable_stale_document_deletion_check=True,
     )
 
 
@@ -99,10 +108,8 @@ def test_bulk_index_users_calls_generated_client():
         uploader.bulk_index_users(
             [user],
             upload_id="upload-1",
-            is_first_page=True,
-            is_last_page=False,
             force_restart_upload=True,
-            disable_stale_data_deletion_check=False,
+            disable_stale_data_deletion_check=True,
         )
 
     client.indexing.permissions.bulk_index_users.assert_called_once_with(
@@ -110,9 +117,9 @@ def test_bulk_index_users_calls_generated_client():
         users=[user],
         upload_id="upload-1",
         is_first_page=True,
-        is_last_page=False,
+        is_last_page=True,
         force_restart_upload=True,
-        disable_stale_data_deletion_check=False,
+        disable_stale_data_deletion_check=True,
     )
 
 
@@ -138,10 +145,8 @@ def test_bulk_index_groups_calls_generated_client():
         uploader.bulk_index_groups(
             [group],
             upload_id="upload-1",
-            is_first_page=True,
-            is_last_page=False,
             force_restart_upload=True,
-            disable_stale_data_deletion_check=False,
+            disable_stale_data_deletion_check=True,
         )
 
     client.indexing.permissions.bulk_index_groups.assert_called_once_with(
@@ -149,9 +154,9 @@ def test_bulk_index_groups_calls_generated_client():
         groups=[group],
         upload_id="upload-1",
         is_first_page=True,
-        is_last_page=False,
+        is_last_page=True,
         force_restart_upload=True,
-        disable_stale_data_deletion_check=False,
+        disable_stale_data_deletion_check=True,
     )
 
 
@@ -179,8 +184,6 @@ def test_bulk_index_memberships_calls_generated_client():
         uploader.bulk_index_memberships(
             [membership],
             upload_id="upload-1",
-            is_first_page=True,
-            is_last_page=False,
             force_restart_upload=True,
             group="engineering",
         )
@@ -190,7 +193,7 @@ def test_bulk_index_memberships_calls_generated_client():
         memberships=[membership],
         upload_id="upload-1",
         is_first_page=True,
-        is_last_page=False,
+        is_last_page=True,
         force_restart_upload=True,
         group="engineering",
     )
@@ -251,19 +254,17 @@ def test_bulk_index_employees_calls_generated_client():
         uploader.bulk_index_employees(
             [employee],
             upload_id="upload-1",
-            is_first_page=True,
-            is_last_page=False,
             force_restart_upload=True,
-            disable_stale_data_deletion_check=False,
+            disable_stale_data_deletion_check=True,
         )
 
     client.indexing.people.bulk_index.assert_called_once_with(
         employees=[employee],
         upload_id="upload-1",
         is_first_page=True,
-        is_last_page=False,
+        is_last_page=True,
         force_restart_upload=True,
-        disable_stale_data_deletion_check=False,
+        disable_stale_data_deletion_check=True,
     )
 
 

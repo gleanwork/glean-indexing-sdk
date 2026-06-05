@@ -67,7 +67,9 @@ def test_index_data_batches_and_uploads():
     client = DummyStreamingDataClient()
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 2
-    with patch("glean.indexing.push.uploader.api_client") as api_client:
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
         assert bulk_index.call_count == 3
@@ -84,7 +86,9 @@ def test_index_data_empty():
             yield from []
 
     connector = DummyStreamingConnector("test_stream", EmptyClient())
-    with patch("glean.indexing.push.uploader.api_client") as api_client:
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
         assert bulk_index.call_count == 0
@@ -93,7 +97,9 @@ def test_index_data_empty():
 def test_index_data_error_handling():
     client = DummyStreamingDataClient()
     connector = DummyStreamingConnector("test_stream", client)
-    with patch("glean.indexing.push.uploader.api_client") as api_client:
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         bulk_index.side_effect = Exception("upload failed")
         with pytest.raises(Exception):
@@ -106,7 +112,9 @@ def test_force_restart_upload():
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 2
 
-    with patch("glean.indexing.push.uploader.api_client") as api_client:
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data(options=ConnectorOptions(force_restart=True))
 
@@ -136,7 +144,9 @@ def test_normal_upload_no_force_restart():
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 5
 
-    with patch("glean.indexing.push.uploader.api_client") as api_client:
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
 
@@ -154,7 +164,9 @@ def test_disable_stale_deletion_check_on_last_page_only():
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 2
 
-    with patch("glean.indexing.push.uploader.api_client") as api_client:
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data(options=ConnectorOptions(disable_stale_deletion_check=True))
 
@@ -176,7 +188,9 @@ def test_upload_timeout_ms_passed_to_bulk_index():
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 2
 
-    with patch("glean.indexing.push.uploader.api_client") as api_client:
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data(options=ConnectorOptions(upload_timeout_ms=120_000))
 
@@ -190,7 +204,9 @@ def test_upload_timeout_ms_defaults_to_none():
     client = DummyStreamingDataClient()
     connector = DummyStreamingConnector("test_stream", client)
 
-    with patch("glean.indexing.push.uploader.api_client") as api_client:
+    with patch(
+        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
+    ) as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
 

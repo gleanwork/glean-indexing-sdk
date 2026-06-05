@@ -11,7 +11,9 @@ import importlib
 from typing import Tuple
 
 _PATCH_TARGETS: Tuple[str, ...] = (
+    "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client",
     "glean.indexing.connectors.base_datasource_connector.api_client",
+    "glean.indexing.connectors.base_streaming_datasource_connector.api_client",
     "glean.indexing.push.uploader.api_client",
 )
 

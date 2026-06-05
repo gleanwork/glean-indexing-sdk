@@ -1,13 +1,12 @@
 """Base datasource connector for the Glean Connector SDK."""
 
 import logging
-import uuid
 from abc import ABC
 from typing import Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
 
-from glean.indexing.common import BatchProcessor, api_client
+from glean.indexing.common import api_client
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.exceptions import InconsistentDataError, InvalidDatasourceConfigError
@@ -209,87 +208,51 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         if not users:
             return
 
-        batches = list(BatchProcessor(users, batch_size=self.batch_size))
-        total_batches = len(batches)
+        logger.info(f"Uploading {len(users)} users")
 
-        logger.info(f"Uploading {len(users)} users in {total_batches} batches")
-
-        upload_id = str(uuid.uuid4())
-        uploader = PushUploader(datasource=self.name)
-        for i, batch in enumerate(batches):
-            try:
-                uploader.bulk_index_users(
-                    users=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=(i == 0),
-                    is_last_page=(i == total_batches - 1),
-                )
-
-                logger.info(f"User batch {i + 1}/{total_batches} uploaded successfully")
-                self._observability.increment_counter("batches_uploaded")
-
-            except Exception as e:
-                logger.error(f"Failed to upload user batch {i + 1}/{total_batches}: {e}")
-                self._observability.increment_counter("batch_upload_errors")
-                raise
+        try:
+            PushUploader(datasource=self.name).bulk_index_users(
+                users=users, batch_size=self.batch_size
+            )
+            logger.info("Users uploaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to upload users: {e}")
+            self._observability.increment_counter("batch_upload_errors")
+            raise
 
     def _batch_index_groups(self, groups) -> None:
         """Index groups in batches with proper page signaling."""
         if not groups:
             return
 
-        batches = list(BatchProcessor(groups, batch_size=self.batch_size))
-        total_batches = len(batches)
+        logger.info(f"Uploading {len(groups)} groups")
 
-        logger.info(f"Uploading {len(groups)} groups in {total_batches} batches")
-
-        upload_id = str(uuid.uuid4())
-        uploader = PushUploader(datasource=self.name)
-        for i, batch in enumerate(batches):
-            try:
-                uploader.bulk_index_groups(
-                    groups=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=(i == 0),
-                    is_last_page=(i == total_batches - 1),
-                )
-
-                logger.info(f"Group batch {i + 1}/{total_batches} uploaded successfully")
-                self._observability.increment_counter("batches_uploaded")
-
-            except Exception as e:
-                logger.error(f"Failed to upload group batch {i + 1}/{total_batches}: {e}")
-                self._observability.increment_counter("batch_upload_errors")
-                raise
+        try:
+            PushUploader(datasource=self.name).bulk_index_groups(
+                groups=groups, batch_size=self.batch_size
+            )
+            logger.info("Groups uploaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to upload groups: {e}")
+            self._observability.increment_counter("batch_upload_errors")
+            raise
 
     def _batch_index_memberships(self, memberships) -> None:
         """Index memberships in batches with proper page signaling."""
         if not memberships:
             return
 
-        batches = list(BatchProcessor(memberships, batch_size=self.batch_size))
-        total_batches = len(batches)
+        logger.info(f"Uploading {len(memberships)} memberships")
 
-        logger.info(f"Uploading {len(memberships)} memberships in {total_batches} batches")
-
-        upload_id = str(uuid.uuid4())
-        uploader = PushUploader(datasource=self.name)
-        for i, batch in enumerate(batches):
-            try:
-                uploader.bulk_index_memberships(
-                    memberships=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=(i == 0),
-                    is_last_page=(i == total_batches - 1),
-                )
-
-                logger.info(f"Membership batch {i + 1}/{total_batches} uploaded successfully")
-                self._observability.increment_counter("batches_uploaded")
-
-            except Exception as e:
-                logger.error(f"Failed to upload membership batch {i + 1}/{total_batches}: {e}")
-                self._observability.increment_counter("batch_upload_errors")
-                raise
+        try:
+            PushUploader(datasource=self.name).bulk_index_memberships(
+                memberships=memberships, batch_size=self.batch_size
+            )
+            logger.info("Memberships uploaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to upload memberships: {e}")
+            self._observability.increment_counter("batch_upload_errors")
+            raise
 
     def _batch_index_documents(
         self,
@@ -305,43 +268,29 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         if not documents:
             return
 
-        batches = list(BatchProcessor(list(documents), batch_size=self.batch_size))
-        total_batches = len(batches)
         force_restart = options.force_restart if options else False
 
-        logger.info(f"Uploading {len(documents)} documents in {total_batches} batches")
+        logger.info(f"Uploading {len(documents)} documents")
+        if force_restart:
+            logger.info("Force restarting upload - discarding any previous upload progress")
 
-        upload_id = str(uuid.uuid4())
-        uploader = PushUploader(
-            datasource=self.name,
-            timeout_ms=options.upload_timeout_ms if options else None,
-        )
-        for i, batch in enumerate(batches):
-            try:
-                is_first_page = i == 0
-                is_last_page = i == total_batches - 1
-
-                if force_restart and is_first_page:
-                    logger.info("Force restarting upload - discarding any previous upload progress")
-
-                uploader.bulk_index_documents(
-                    documents=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_page,
-                    is_last_page=is_last_page,
-                    force_restart_upload=True if (force_restart and is_first_page) else None,
-                    disable_stale_document_deletion_check=True
-                    if (options and is_last_page and options.disable_stale_deletion_check)
-                    else None,
-                )
-
-                logger.info(f"Document batch {i + 1}/{total_batches} uploaded successfully")
-                self._observability.increment_counter("batches_uploaded")
-
-            except Exception as e:
-                logger.error(f"Failed to upload document batch {i + 1}/{total_batches}: {e}")
-                self._observability.increment_counter("batch_upload_errors")
-                raise
+        try:
+            PushUploader(
+                datasource=self.name,
+                timeout_ms=options.upload_timeout_ms if options else None,
+            ).bulk_index_documents(
+                documents=documents,
+                batch_size=self.batch_size,
+                force_restart_upload=True if force_restart else None,
+                disable_stale_document_deletion_check=True
+                if (options and options.disable_stale_deletion_check)
+                else None,
+            )
+            logger.info("Documents uploaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to upload documents: {e}")
+            self._observability.increment_counter("batch_upload_errors")
+            raise
 
     def _get_last_crawl_timestamp(self) -> Optional[str]:
         """

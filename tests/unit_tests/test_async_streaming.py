@@ -120,7 +120,9 @@ class TestBaseAsyncStreamingDatasourceConnector:
         connector = DummyAsyncConnector("test", client)
         connector.batch_size = 2
 
-        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async()
 
@@ -145,7 +147,9 @@ class TestBaseAsyncStreamingDatasourceConnector:
         client = DummyAsyncDataClient(items=[])
         connector = DummyAsyncConnector("test", client)
 
-        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async()
             assert bulk_index.call_count == 0
@@ -160,7 +164,9 @@ class TestBaseAsyncStreamingDatasourceConnector:
         connector = DummyAsyncConnector("test", client)
         connector.batch_size = 2
 
-        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async()
 
@@ -183,7 +189,9 @@ class TestBaseAsyncStreamingDatasourceConnector:
         connector = DummyAsyncConnector("test", client)
         connector.batch_size = 2
 
-        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async(options=ConnectorOptions(force_restart=True))
 
@@ -201,7 +209,9 @@ class TestBaseAsyncStreamingDatasourceConnector:
         client = DummyAsyncDataClient()
         connector = DummyAsyncConnector("test", client)
 
-        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             bulk_index.side_effect = Exception("upload failed")
 
@@ -215,7 +225,9 @@ class TestBaseAsyncStreamingDatasourceConnector:
         connector = DummyAsyncConnector("test", client)
         connector.batch_size = 2
 
-        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async(
                 options=ConnectorOptions(disable_stale_deletion_check=True)
@@ -240,7 +252,9 @@ class TestBaseAsyncStreamingDatasourceConnector:
         connector = DummyAsyncConnector("test", client)
         connector.batch_size = 2
 
-        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async(options=ConnectorOptions(upload_timeout_ms=120_000))
 
@@ -254,7 +268,9 @@ class TestBaseAsyncStreamingDatasourceConnector:
         client = DummyAsyncDataClient()
         connector = DummyAsyncConnector("test", client)
 
-        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async()
 
@@ -271,7 +287,9 @@ class TestBaseAsyncStreamingDatasourceConnector:
         connector = DummyAsyncConnector("test", DummyAsyncDataClient())
         connector.batch_size = 10
 
-        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
+        with patch(
+            "glean.indexing.connectors.base_async_streaming_datasource_connector.api_client"
+        ) as mock_api_client:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             connector.index_data()
             assert bulk_index.call_count == 1

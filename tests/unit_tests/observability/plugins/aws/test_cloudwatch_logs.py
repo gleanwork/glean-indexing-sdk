@@ -8,7 +8,7 @@ pytest.importorskip("watchtower")
 
 from unittest.mock import MagicMock, patch  # noqa: E402
 
-from glean.indexing.plugins.aws import CloudWatchLogsProvider  # noqa: E402
+from glean.indexing.observability.plugins.aws import CloudWatchLogsProvider  # noqa: E402
 
 
 class TestCloudWatchLogsProvider:

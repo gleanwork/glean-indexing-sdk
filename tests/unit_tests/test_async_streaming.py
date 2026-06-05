@@ -274,7 +274,7 @@ class TestBaseAsyncStreamingDatasourceConnector:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async()
 
-            assert bulk_index.call_args[1].get("timeout_ms") is None
+            assert bulk_index.call_args[1]["timeout_ms"] is None
 
     def test_sync_fallback_get_data(self):
         """Test that sync get_data() works as fallback."""

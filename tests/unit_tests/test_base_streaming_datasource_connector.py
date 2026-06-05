@@ -210,4 +210,4 @@ def test_upload_timeout_ms_defaults_to_none():
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
 
-        assert bulk_index.call_args[1].get("timeout_ms") is None
+        assert bulk_index.call_args[1]["timeout_ms"] is None

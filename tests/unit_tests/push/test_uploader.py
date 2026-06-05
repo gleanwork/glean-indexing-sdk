@@ -86,6 +86,31 @@ def test_bulk_index_documents_calls_generated_client():
     )
 
 
+def test_bulk_index_single_batch_upload_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+    document = _document()
+
+    with mock_glean_client() as client:
+        uploader.bulk_index_single_batch_upload(
+            [document],
+            upload_id="upload-1",
+            is_first_page=True,
+            is_last_page=False,
+            force_restart_upload=True,
+            disable_stale_document_deletion_check=False,
+        )
+
+    client.indexing.documents.bulk_index.assert_called_once_with(
+        datasource="test_datasource",
+        documents=[document],
+        upload_id="upload-1",
+        is_first_page=True,
+        is_last_page=False,
+        force_restart_upload=True,
+        disable_stale_document_deletion_check=False,
+    )
+
+
 def test_index_user_calls_generated_client():
     uploader = PushUploader(datasource="test_datasource")
     user = DatasourceUserDefinition(email="user@example.com", name="User")

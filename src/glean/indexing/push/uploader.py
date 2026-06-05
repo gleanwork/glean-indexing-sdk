@@ -74,24 +74,42 @@ class PushUploader:
             return
 
         upload_id = self._upload_id(upload_id)
+        for i, batch in enumerate(batches):
+            is_first_page = i == 0
+            is_last_page = i == len(batches) - 1
+            self.bulk_index_single_batch_upload(
+                documents=list(batch),
+                upload_id=upload_id,
+                is_first_page=is_first_page,
+                is_last_page=is_last_page,
+                force_restart_upload=self._first_page_value(force_restart_upload, is_first_page),
+                disable_stale_document_deletion_check=self._last_page_value(
+                    disable_stale_document_deletion_check, is_last_page
+                ),
+            )
+
+    def bulk_index_single_batch_upload(
+        self,
+        documents: Sequence[DocumentDefinition],
+        *,
+        upload_id: str,
+        is_first_page: Optional[bool] = None,
+        is_last_page: Optional[bool] = None,
+        force_restart_upload: Optional[bool] = None,
+        disable_stale_document_deletion_check: Optional[bool] = None,
+    ) -> None:
+        """Upload one pre-batched `/bulkindexdocuments` page."""
         with api_client() as client:
-            for i, batch in enumerate(batches):
-                is_first_page = i == 0
-                is_last_page = i == len(batches) - 1
-                client.indexing.documents.bulk_index(
-                    datasource=self.datasource,
-                    documents=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_page,
-                    is_last_page=is_last_page,
-                    force_restart_upload=self._first_page_value(
-                        force_restart_upload, is_first_page
-                    ),
-                    disable_stale_document_deletion_check=self._last_page_value(
-                        disable_stale_document_deletion_check, is_last_page
-                    ),
-                    **self._request_options(),
-                )
+            client.indexing.documents.bulk_index(
+                datasource=self.datasource,
+                documents=list(documents),
+                upload_id=upload_id,
+                is_first_page=is_first_page,
+                is_last_page=is_last_page,
+                force_restart_upload=force_restart_upload,
+                disable_stale_document_deletion_check=disable_stale_document_deletion_check,
+                **self._request_options(),
+            )
 
     def delete_document(
         self,

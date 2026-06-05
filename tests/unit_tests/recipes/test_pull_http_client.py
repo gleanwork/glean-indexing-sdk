@@ -1,6 +1,5 @@
 """Tests for source-side pull HTTP recipes."""
 
-from collections.abc import Generator
 from email.utils import formatdate
 from time import time
 
@@ -221,11 +220,6 @@ def test_paginate_accepts_custom_next_page_resolver(httpx_mock):
 
 
 def test_http_streaming_data_client_uses_paginated_http_client(httpx_mock):
-    class ItemDataClient(BasePullHttpStreamingDataClient[dict[str, object]]):
-        def get_source_data(self, **kwargs: object) -> Generator[dict[str, object], None, None]:
-            for page in self.http.paginate("/items"):
-                yield from page.json_dict()["items"]
-
     httpx_mock.add_response(
         url="https://example.com/v1/items",
         json={"items": [{"id": "item-1"}]},
@@ -240,7 +234,56 @@ def test_http_streaming_data_client_uses_paginated_http_client(httpx_mock):
         headers={"Content-Type": "application/json"},
     )
 
-    data_client = ItemDataClient(base_url="https://example.com/v1", options=_fast_options())
+    data_client = BasePullHttpStreamingDataClient[dict[str, object]](
+        base_url="https://example.com/v1",
+        path="/items",
+        options=_fast_options(),
+    )
+
+    assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2"]
+
+
+def test_http_streaming_data_client_supports_offset_pagination(httpx_mock):
+    httpx_mock.add_response(
+        url="https://example.com/v1/items?limit=2&offset=0",
+        json={"items": [{"id": "item-1"}, {"id": "item-2"}]},
+        headers={"Content-Type": "application/json"},
+    )
+    httpx_mock.add_response(
+        url="https://example.com/v1/items?limit=2&offset=2",
+        json={"items": [{"id": "item-3"}]},
+        headers={"Content-Type": "application/json"},
+    )
+
+    data_client = BasePullHttpStreamingDataClient[dict[str, object]](
+        base_url="https://example.com/v1",
+        path="/items",
+        pagination="offset",
+        page_size=2,
+        options=_fast_options(),
+    )
+
+    assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2", "item-3"]
+
+
+def test_http_streaming_data_client_supports_cursor_pagination(httpx_mock):
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": [{"id": "item-1"}], "next_cursor": "cursor-2"},
+        headers={"Content-Type": "application/json"},
+    )
+    httpx_mock.add_response(
+        url="https://example.com/v1/items?cursor=cursor-2",
+        json={"items": [{"id": "item-2"}]},
+        headers={"Content-Type": "application/json"},
+    )
+
+    data_client = BasePullHttpStreamingDataClient[dict[str, object]](
+        base_url="https://example.com/v1",
+        path="/items",
+        pagination="cursor",
+        options=_fast_options(),
+    )
 
     assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2"]
 

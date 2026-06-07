@@ -1,13 +1,11 @@
 """Base people connector for the Glean Connector SDK."""
 
 import logging
-import uuid
 from abc import ABC
 from typing import Optional, Sequence
 
 from glean.api_client.models import EmployeeInfoDefinition
 
-from glean.indexing.common import BatchProcessor
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
@@ -96,7 +94,22 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
             self._observability.record_metric("employees_transformed", len(employees))
 
             self._observability.start_timer("data_upload")
-            self._batch_index_employees(employees, options=options)
+            if employees:
+                force_restart = options.force_restart if options else False
+                if force_restart:
+                    logger.info("Force restarting upload - discarding any previous upload progress")
+
+                PushUploader(
+                    datasource=self.name,
+                    timeout_ms=options.upload_timeout_ms if options else None,
+                ).bulk_index_employees(
+                    employees=employees,
+                    batch_size=self.batch_size,
+                    force_restart_upload=True if force_restart else None,
+                    disable_stale_data_deletion_check=True
+                    if (options and options.disable_stale_deletion_check)
+                    else None,
+                )
             self._observability.end_timer("data_upload")
 
             logger.info(f"Successfully indexed {len(employees)} employees to Glean")
@@ -119,58 +132,6 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
             A sequence of source data items from the external system.
         """
         return self.data_client.get_source_data(since=since)
-
-    def _batch_index_employees(
-        self,
-        employees: Sequence[EmployeeInfoDefinition],
-        options: Optional[ConnectorOptions] = None,
-    ) -> None:
-        """Index employees to Glean in batches.
-
-        Args:
-            employees: The employees to index
-            options: Optional connector options for controlling indexing behavior
-        """
-        if not employees:
-            return
-
-        batches = list(BatchProcessor(list(employees), batch_size=self.batch_size))
-        total_batches = len(batches)
-        force_restart = options.force_restart if options else False
-
-        logger.info(f"Uploading {len(employees)} employees in {total_batches} batches")
-
-        upload_id = str(uuid.uuid4())
-        uploader = PushUploader(
-            datasource=self.name,
-            timeout_ms=options.upload_timeout_ms if options else None,
-        )
-        for i, batch in enumerate(batches):
-            try:
-                is_first_page = i == 0
-                is_last_page = i == total_batches - 1
-
-                if force_restart and is_first_page:
-                    logger.info("Force restarting upload - discarding any previous upload progress")
-
-                uploader.bulk_index_employees(
-                    employees=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_page,
-                    is_last_page=is_last_page,
-                    force_restart_upload=True if (force_restart and is_first_page) else None,
-                    disable_stale_data_deletion_check=True
-                    if (options and is_last_page and options.disable_stale_deletion_check)
-                    else None,
-                )
-
-                logger.info(f"Employee batch {i + 1}/{total_batches} uploaded successfully")
-                self._observability.increment_counter("batches_uploaded")
-
-            except Exception as e:
-                logger.error(f"Failed to upload employee batch {i + 1}/{total_batches}: {e}")
-                self._observability.increment_counter("batch_upload_errors")
-                raise
 
     def _get_last_crawl_timestamp(self) -> Optional[str]:
         """

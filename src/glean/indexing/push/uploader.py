@@ -1,8 +1,10 @@
 """First-class wrappers for push indexing APIs."""
 
-from typing import Any, Mapping, Optional, Sequence
+import uuid
+from typing import Any, Mapping, Optional, Sequence, TypeVar
 
 from glean.api_client.models import (
+    CustomDatasourceConfig,
     DatasourceBulkMembershipDefinition,
     DatasourceGroupDefinition,
     DatasourceMembershipDefinition,
@@ -11,8 +13,10 @@ from glean.api_client.models import (
     EmployeeInfoDefinition,
 )
 
-from glean.indexing.common import DocumentBatchProcessor, api_client
+from glean.indexing.common import BatchProcessor, DocumentBatchProcessor, api_client
 from glean.indexing.common.batch_processor import DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
+
+T = TypeVar("T")
 
 
 class PushUploader:
@@ -42,6 +46,19 @@ class PushUploader:
         self.timeout_ms = timeout_ms
         self.http_headers = http_headers
 
+    def configure_datasource(self, config: CustomDatasourceConfig) -> None:
+        """Configure a datasource using `datasources.add()`."""
+        # Use attribute access instead of model_dump() because certain
+        # pydantic/api-client version combinations return camelCase aliases
+        # even with by_alias=False, and datasources.add() expects snake_case.
+        kwargs = {
+            name: getattr(config, name)
+            for name in type(config).model_fields
+            if name in config.model_fields_set
+        }
+        with api_client() as client:
+            client.indexing.datasources.add(**kwargs)
+
     def index_documents(
         self,
         documents: Sequence[DocumentDefinition],
@@ -61,45 +78,65 @@ class PushUploader:
         self,
         documents: Sequence[DocumentDefinition],
         *,
-        upload_id: str,
-        is_first_page: Optional[bool] = True,
-        is_last_page: Optional[bool] = True,
+        upload_id: Optional[str] = None,
+        batch_size: int = 1000,
+        max_batch_bytes: Optional[int] = DEFAULT_DOCUMENT_BATCH_SIZE_BYTES,
         force_restart_upload: Optional[bool] = None,
         disable_stale_document_deletion_check: Optional[bool] = None,
-        batch_size: Optional[int] = None,
-        max_batch_bytes: Optional[int] = DEFAULT_DOCUMENT_BATCH_SIZE_BYTES,
     ) -> int:
         """Replace datasource documents using `/bulkindexdocuments`."""
         document_list = list(documents)
         if not document_list:
             return 0
 
-        document_batches = list(
+        batches = list(
             DocumentBatchProcessor(
                 document_list,
-                batch_size=batch_size or len(document_list),
+                batch_size=batch_size,
                 max_batch_bytes=max_batch_bytes,
             )
         )
+        if not batches:
+            return 0
 
+        upload_id = self._upload_id(upload_id)
+        for i, batch in enumerate(batches):
+            is_first_page = i == 0
+            is_last_page = i == len(batches) - 1
+            self.bulk_index_single_batch_upload(
+                documents=list(batch),
+                upload_id=upload_id,
+                is_first_page=is_first_page,
+                is_last_page=is_last_page,
+                force_restart_upload=self._first_page_value(force_restart_upload, is_first_page),
+                disable_stale_document_deletion_check=self._last_page_value(
+                    disable_stale_document_deletion_check, is_last_page
+                ),
+            )
+        return len(batches)
+
+    def bulk_index_single_batch_upload(
+        self,
+        documents: Sequence[DocumentDefinition],
+        *,
+        upload_id: str,
+        is_first_page: Optional[bool] = None,
+        is_last_page: Optional[bool] = None,
+        force_restart_upload: Optional[bool] = None,
+        disable_stale_document_deletion_check: Optional[bool] = None,
+    ) -> None:
+        """Upload one pre-batched `/bulkindexdocuments` page."""
         with api_client() as client:
-            for i, batch in enumerate(document_batches):
-                page_is_first = is_first_page if i == 0 else False
-                page_is_last = is_last_page if i == len(document_batches) - 1 else False
-                client.indexing.documents.bulk_index(
-                    datasource=self.datasource,
-                    documents=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=page_is_first,
-                    is_last_page=page_is_last,
-                    force_restart_upload=force_restart_upload if page_is_first else None,
-                    disable_stale_document_deletion_check=disable_stale_document_deletion_check
-                    if page_is_last
-                    else None,
-                    **self._request_options(),
-                )
-
-        return len(document_batches)
+            client.indexing.documents.bulk_index(
+                datasource=self.datasource,
+                documents=list(documents),
+                upload_id=upload_id,
+                is_first_page=is_first_page,
+                is_last_page=is_last_page,
+                force_restart_upload=force_restart_upload,
+                disable_stale_document_deletion_check=disable_stale_document_deletion_check,
+                **self._request_options(),
+            )
 
     def delete_document(
         self,
@@ -137,24 +174,35 @@ class PushUploader:
         self,
         users: Sequence[DatasourceUserDefinition],
         *,
-        upload_id: str,
-        is_first_page: Optional[bool] = None,
-        is_last_page: Optional[bool] = None,
+        upload_id: Optional[str] = None,
+        batch_size: int = 1000,
         force_restart_upload: Optional[bool] = None,
         disable_stale_data_deletion_check: Optional[bool] = None,
     ) -> None:
         """Replace datasource users using `/bulkindexusers`."""
+        batches = self._batches(users, batch_size)
+        if not batches:
+            return
+
+        upload_id = self._upload_id(upload_id)
         with api_client() as client:
-            client.indexing.permissions.bulk_index_users(
-                datasource=self.datasource,
-                users=list(users),
-                upload_id=upload_id,
-                is_first_page=is_first_page,
-                is_last_page=is_last_page,
-                force_restart_upload=force_restart_upload,
-                disable_stale_data_deletion_check=disable_stale_data_deletion_check,
-                **self._request_options(),
-            )
+            for i, batch in enumerate(batches):
+                is_first_page = i == 0
+                is_last_page = i == len(batches) - 1
+                client.indexing.permissions.bulk_index_users(
+                    datasource=self.datasource,
+                    users=list(batch),
+                    upload_id=upload_id,
+                    is_first_page=is_first_page,
+                    is_last_page=is_last_page,
+                    force_restart_upload=self._first_page_value(
+                        force_restart_upload, is_first_page
+                    ),
+                    disable_stale_data_deletion_check=self._last_page_value(
+                        disable_stale_data_deletion_check, is_last_page
+                    ),
+                    **self._request_options(),
+                )
 
     def index_group(
         self,
@@ -175,24 +223,35 @@ class PushUploader:
         self,
         groups: Sequence[DatasourceGroupDefinition],
         *,
-        upload_id: str,
-        is_first_page: Optional[bool] = None,
-        is_last_page: Optional[bool] = None,
+        upload_id: Optional[str] = None,
+        batch_size: int = 1000,
         force_restart_upload: Optional[bool] = None,
         disable_stale_data_deletion_check: Optional[bool] = None,
     ) -> None:
         """Replace datasource groups using `/bulkindexgroups`."""
+        batches = self._batches(groups, batch_size)
+        if not batches:
+            return
+
+        upload_id = self._upload_id(upload_id)
         with api_client() as client:
-            client.indexing.permissions.bulk_index_groups(
-                datasource=self.datasource,
-                groups=list(groups),
-                upload_id=upload_id,
-                is_first_page=is_first_page,
-                is_last_page=is_last_page,
-                force_restart_upload=force_restart_upload,
-                disable_stale_data_deletion_check=disable_stale_data_deletion_check,
-                **self._request_options(),
-            )
+            for i, batch in enumerate(batches):
+                is_first_page = i == 0
+                is_last_page = i == len(batches) - 1
+                client.indexing.permissions.bulk_index_groups(
+                    datasource=self.datasource,
+                    groups=list(batch),
+                    upload_id=upload_id,
+                    is_first_page=is_first_page,
+                    is_last_page=is_last_page,
+                    force_restart_upload=self._first_page_value(
+                        force_restart_upload, is_first_page
+                    ),
+                    disable_stale_data_deletion_check=self._last_page_value(
+                        disable_stale_data_deletion_check, is_last_page
+                    ),
+                    **self._request_options(),
+                )
 
     def index_membership(
         self,
@@ -213,24 +272,33 @@ class PushUploader:
         self,
         memberships: Sequence[DatasourceBulkMembershipDefinition],
         *,
-        upload_id: str,
-        is_first_page: Optional[bool] = None,
-        is_last_page: Optional[bool] = None,
+        upload_id: Optional[str] = None,
+        batch_size: int = 1000,
         force_restart_upload: Optional[bool] = None,
         group: Optional[str] = None,
     ) -> None:
         """Replace datasource memberships using `/bulkindexmemberships`."""
+        batches = self._batches(memberships, batch_size)
+        if not batches:
+            return
+
+        upload_id = self._upload_id(upload_id)
         with api_client() as client:
-            client.indexing.permissions.bulk_index_memberships(
-                datasource=self.datasource,
-                memberships=list(memberships),
-                upload_id=upload_id,
-                is_first_page=is_first_page,
-                is_last_page=is_last_page,
-                force_restart_upload=force_restart_upload,
-                group=group,
-                **self._request_options(),
-            )
+            for i, batch in enumerate(batches):
+                is_first_page = i == 0
+                is_last_page = i == len(batches) - 1
+                client.indexing.permissions.bulk_index_memberships(
+                    datasource=self.datasource,
+                    memberships=list(batch),
+                    upload_id=upload_id,
+                    is_first_page=is_first_page,
+                    is_last_page=is_last_page,
+                    force_restart_upload=self._first_page_value(
+                        force_restart_upload, is_first_page
+                    ),
+                    group=group,
+                    **self._request_options(),
+                )
 
     def delete_user(
         self,
@@ -281,23 +349,49 @@ class PushUploader:
         self,
         employees: Sequence[EmployeeInfoDefinition],
         *,
-        upload_id: str,
-        is_first_page: Optional[bool] = None,
-        is_last_page: Optional[bool] = None,
+        upload_id: Optional[str] = None,
+        batch_size: int = 1000,
         force_restart_upload: Optional[bool] = None,
         disable_stale_data_deletion_check: Optional[bool] = None,
     ) -> None:
         """Replace employees using `/bulkindexemployees`."""
+        batches = self._batches(employees, batch_size)
+        if not batches:
+            return
+
+        upload_id = self._upload_id(upload_id)
         with api_client() as client:
-            client.indexing.people.bulk_index(
-                employees=list(employees),
-                upload_id=upload_id,
-                is_first_page=is_first_page,
-                is_last_page=is_last_page,
-                force_restart_upload=force_restart_upload,
-                disable_stale_data_deletion_check=disable_stale_data_deletion_check,
-                **self._request_options(),
-            )
+            for i, batch in enumerate(batches):
+                is_first_page = i == 0
+                is_last_page = i == len(batches) - 1
+                client.indexing.people.bulk_index(
+                    employees=list(batch),
+                    upload_id=upload_id,
+                    is_first_page=is_first_page,
+                    is_last_page=is_last_page,
+                    force_restart_upload=self._first_page_value(
+                        force_restart_upload, is_first_page
+                    ),
+                    disable_stale_data_deletion_check=self._last_page_value(
+                        disable_stale_data_deletion_check, is_last_page
+                    ),
+                    **self._request_options(),
+                )
+
+    def _batches(self, items: Sequence[T], batch_size: int) -> list[Sequence[T]]:
+        """Split items using the SDK's shared batching utility."""
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than 0")
+        return list(BatchProcessor(list(items), batch_size=batch_size))
+
+    def _upload_id(self, upload_id: Optional[str]) -> str:
+        return upload_id or str(uuid.uuid4())
+
+    def _first_page_value(self, value: Optional[bool], is_first_page: bool) -> Optional[bool]:
+        return True if value and is_first_page else None
+
+    def _last_page_value(self, value: Optional[bool], is_last_page: bool) -> Optional[bool]:
+        return True if value and is_last_page else None
 
     def _request_options(self) -> dict[str, Any]:
         """Return only generated-client request options explicitly configured."""

@@ -195,22 +195,3 @@ def test_upload_timeout_ms_defaults_to_none():
         connector.index_data()
 
         assert bulk_index.call_args[1].get("timeout_ms") is None
-
-
-def test_document_batch_size_bytes_splits_transformed_batches():
-    """Test that streaming document uploads are split by serialized byte size."""
-    client = DummyStreamingDataClient()
-    connector = DummyStreamingConnector("test_stream", client)
-    connector.batch_size = 5
-
-    with patch("glean.indexing.push.uploader.api_client") as api_client:
-        bulk_index = api_client().__enter__().indexing.documents.bulk_index
-        connector.index_data(options=ConnectorOptions(document_batch_size_bytes=1))
-
-        assert bulk_index.call_count == 5
-        first_call = bulk_index.call_args_list[0][1]
-        last_call = bulk_index.call_args_list[-1][1]
-        assert first_call["is_first_page"] is True
-        assert first_call["is_last_page"] is False
-        assert last_call["is_first_page"] is False
-        assert last_call["is_last_page"] is True

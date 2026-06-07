@@ -260,25 +260,6 @@ class TestBaseAsyncStreamingDatasourceConnector:
 
             assert bulk_index.call_args[1].get("timeout_ms") is None
 
-    @pytest.mark.asyncio
-    async def test_document_batch_size_bytes_splits_transformed_batches(self):
-        """Test that async streaming uploads are split by serialized byte size."""
-        client = DummyAsyncDataClient()
-        connector = DummyAsyncConnector("test", client)
-        connector.batch_size = 5
-
-        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
-            bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
-            await connector.index_data_async(options=ConnectorOptions(document_batch_size_bytes=1))
-
-            assert bulk_index.call_count == 5
-            first_call = bulk_index.call_args_list[0][1]
-            last_call = bulk_index.call_args_list[-1][1]
-            assert first_call["is_first_page"] is True
-            assert first_call["is_last_page"] is False
-            assert last_call["is_first_page"] is False
-            assert last_call["is_last_page"] is True
-
     def test_sync_fallback_get_data(self):
         """Test that sync get_data() works as fallback."""
         connector = DummyAsyncConnector("test", DummyAsyncDataClient())

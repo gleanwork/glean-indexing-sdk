@@ -78,7 +78,7 @@ def test_bulk_index_documents_calls_generated_client():
     documents = [_document("doc-1"), _document("doc-2")]
 
     with mock_glean_client() as client:
-        page_count = uploader.bulk_index_documents(
+        uploader.bulk_index_documents(
             documents,
             upload_id="upload-1",
             batch_size=1,
@@ -86,7 +86,6 @@ def test_bulk_index_documents_calls_generated_client():
             disable_stale_document_deletion_check=True,
         )
 
-    assert page_count == 2
     assert client.indexing.documents.bulk_index.call_count == 2
     client.indexing.documents.bulk_index.assert_any_call(
         datasource="test_datasource",
@@ -113,7 +112,7 @@ def test_bulk_index_documents_splits_batches_by_byte_size():
     documents = [_document("doc-1"), _document("doc-2")]
 
     with mock_glean_client() as client:
-        page_count = uploader.bulk_index_documents(
+        uploader.bulk_index_documents(
             documents,
             upload_id="upload-1",
             batch_size=10,
@@ -122,7 +121,6 @@ def test_bulk_index_documents_splits_batches_by_byte_size():
             disable_stale_document_deletion_check=True,
         )
 
-    assert page_count == 2
     calls = client.indexing.documents.bulk_index.call_args_list
     assert len(calls) == 2
     first_call = calls[0][1]

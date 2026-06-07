@@ -83,11 +83,11 @@ class PushUploader:
         max_batch_bytes: Optional[int] = DEFAULT_DOCUMENT_BATCH_SIZE_BYTES,
         force_restart_upload: Optional[bool] = None,
         disable_stale_document_deletion_check: Optional[bool] = None,
-    ) -> int:
+    ) -> None:
         """Replace datasource documents using `/bulkindexdocuments`."""
         document_list = list(documents)
         if not document_list:
-            return 0
+            return
 
         batches = list(
             DocumentBatchProcessor(
@@ -97,7 +97,7 @@ class PushUploader:
             )
         )
         if not batches:
-            return 0
+            return
 
         upload_id = self._upload_id(upload_id)
         for i, batch in enumerate(batches):
@@ -113,7 +113,6 @@ class PushUploader:
                     disable_stale_document_deletion_check, is_last_page
                 ),
             )
-        return len(batches)
 
     def bulk_index_single_batch_upload(
         self,

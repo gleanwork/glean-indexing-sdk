@@ -277,6 +277,27 @@ def test_http_streaming_data_client_uses_paginated_http_client(httpx_mock):
     assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2"]
 
 
+def test_http_streaming_data_client_applies_max_items_to_link_pagination(httpx_mock):
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": [{"id": "item-1"}, {"id": "item-2"}]},
+        headers={
+            "Content-Type": "application/json",
+            "Link": '<https://example.com/v1/items?page=2>; rel="next"',
+        },
+    )
+
+    data_client = BasePullHttpStreamingDataClient[dict[str, object]](
+        base_url="https://example.com/v1",
+        path="/items",
+        max_items=1,
+        options=_fast_options(),
+    )
+
+    assert [item["id"] for item in data_client.get_source_data()] == ["item-1"]
+    assert len(httpx_mock.get_requests()) == 1
+
+
 def test_http_streaming_data_client_supports_offset_pagination(httpx_mock):
     httpx_mock.add_response(
         url="https://example.com/v1/items?limit=2&offset=0",
@@ -305,6 +326,31 @@ def test_http_streaming_data_client_supports_offset_pagination(httpx_mock):
     assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2", "item-3"]
 
 
+def test_http_streaming_data_client_applies_max_items_to_offset_pagination(httpx_mock):
+    httpx_mock.add_response(
+        url="https://example.com/v1/items?limit=2&offset=0",
+        json={"items": [{"id": "item-1"}, {"id": "item-2"}]},
+        headers={"Content-Type": "application/json"},
+    )
+    httpx_mock.add_response(
+        url="https://example.com/v1/items?limit=2&offset=2",
+        json={"items": [{"id": "item-3"}, {"id": "item-4"}]},
+        headers={"Content-Type": "application/json"},
+    )
+
+    data_client = BasePullHttpStreamingDataClient[dict[str, object]](
+        base_url="https://example.com/v1",
+        path="/items",
+        pagination="offset",
+        page_size=2,
+        max_items=3,
+        options=_fast_options(),
+    )
+
+    assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2", "item-3"]
+    assert len(httpx_mock.get_requests()) == 2
+
+
 def test_http_streaming_data_client_supports_cursor_pagination(httpx_mock):
     httpx_mock.add_response(
         url="https://example.com/v1/items",
@@ -325,6 +371,25 @@ def test_http_streaming_data_client_supports_cursor_pagination(httpx_mock):
     )
 
     assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2"]
+
+
+def test_http_streaming_data_client_applies_max_items_to_cursor_pagination(httpx_mock):
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": [{"id": "item-1"}, {"id": "item-2"}], "next_cursor": "cursor-2"},
+        headers={"Content-Type": "application/json"},
+    )
+
+    data_client = BasePullHttpStreamingDataClient[dict[str, object]](
+        base_url="https://example.com/v1",
+        path="/items",
+        pagination="cursor",
+        max_items=1,
+        options=_fast_options(),
+    )
+
+    assert [item["id"] for item in data_client.get_source_data()] == ["item-1"]
+    assert len(httpx_mock.get_requests()) == 1
 
 
 def test_get_bytes_applies_size_cap(httpx_mock):

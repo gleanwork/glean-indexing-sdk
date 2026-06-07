@@ -32,6 +32,7 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
         pagination: PullPaginationMode = "link",
         params: Mapping[str, Any] | None = None,
         page_size: int | None = None,
+        max_items: int | None = None,
         offset_param: str = "offset",
         limit_param: str = "limit",
         start_offset: int = 0,
@@ -48,12 +49,16 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
         if pagination == "offset" and (page_size is None or page_size <= 0):
             msg = "page_size must be positive for offset pagination"
             raise ValueError(msg)
+        if max_items is not None and max_items < 0:
+            msg = "max_items must be non-negative"
+            raise ValueError(msg)
 
         self.path = path
         self.items_key = items_key
         self.pagination = pagination
         self.params = dict(params or {})
         self.page_size = page_size
+        self.max_items = max_items
         self.offset_param = offset_param
         self.limit_param = limit_param
         self.start_offset = start_offset
@@ -71,6 +76,9 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
 
     def get_source_data(self, **kwargs: Any) -> Generator[TSourceData, None, None]:
         """Yield source data from the configured HTTP endpoint."""
+        if self.max_items == 0:
+            return
+
         params = self.__params(kwargs)
 
         if self.pagination == "link":
@@ -86,7 +94,8 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
             return
 
         response = self.http.get(self.path, params=params, timeout_seconds=self.timeout_seconds)
-        yield from self.__items(response)
+        items, _, _ = self.__limited_items(response, items_yielded=0)
+        yield from items
 
     def close(self) -> None:
         """Close the underlying HTTP client."""
@@ -102,30 +111,36 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
     def __offset_items(self, base_params: Mapping[str, Any]) -> Generator[TSourceData, None, None]:
         offset = self.start_offset
         page_size = cast(int, self.page_size)
+        items_yielded = 0
 
         while True:
             params = dict(base_params)
             params[self.limit_param] = page_size
             params[self.offset_param] = offset
-            items = self.__items(self.http.get(self.path, params=params, timeout_seconds=self.timeout_seconds))
-            if not items:
-                return
-
+            response = self.http.get(self.path, params=params, timeout_seconds=self.timeout_seconds)
+            items, items_yielded, should_stop = self.__limited_items(response, items_yielded)
             yield from items
+            if should_stop:
+                return
             offset += page_size
 
     def __link_items(self, base_params: Mapping[str, Any]) -> Generator[TSourceData, None, None]:
         current_path: str | None = self.path
         current_params: Mapping[str, Any] | None = base_params
+        items_yielded = 0
 
         while current_path:
             response = self.http.get(current_path, params=current_params, timeout_seconds=self.timeout_seconds)
-            yield from self.__items(response)
+            items, items_yielded, should_stop = self.__limited_items(response, items_yielded)
+            yield from items
+            if should_stop:
+                return
             current_path = self.__next_link_url(response)
             current_params = None
 
     def __cursor_items(self, base_params: Mapping[str, Any]) -> Generator[TSourceData, None, None]:
         cursor = self.initial_cursor
+        items_yielded = 0
 
         while True:
             params = dict(base_params)
@@ -133,12 +148,31 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
                 params[self.cursor_param] = cursor
 
             response = self.http.get(self.path, params=params, timeout_seconds=self.timeout_seconds)
-            yield from self.__items(response)
+            items, items_yielded, should_stop = self.__limited_items(response, items_yielded)
+            yield from items
+            if should_stop:
+                return
 
             next_cursor = response.json_dict().get(self.cursor_key)
             if not isinstance(next_cursor, str) or not next_cursor or next_cursor == cursor:
                 return
             cursor = next_cursor
+
+    def __limited_items(self, response: PullResponse, items_yielded: int) -> tuple[list[TSourceData], int, bool]:
+        items = self.__items(response)
+        if not items:
+            return [], items_yielded, True
+
+        if self.max_items is None:
+            return items, items_yielded + len(items), False
+
+        remaining = self.max_items - items_yielded
+        if remaining <= 0:
+            return [], items_yielded, True
+
+        limited_items = items[:remaining]
+        items_yielded += len(limited_items)
+        return limited_items, items_yielded, items_yielded >= self.max_items
 
     def __items(self, response: PullResponse) -> list[TSourceData]:
         data = response.json_list() if self.items_key is None else response.json_dict().get(self.items_key, [])

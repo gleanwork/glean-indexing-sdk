@@ -23,5 +23,5 @@ class PullOptions:
 
     timeout_seconds: float = 30.0
     retries: PullRetryOptions = field(default_factory=PullRetryOptions)
-    mask_logs: bool = False
+    mask_params: bool = True
     follow_redirects: bool = True

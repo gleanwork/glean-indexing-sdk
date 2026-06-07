@@ -1,5 +1,6 @@
 """HTTP-based streaming data client helpers for pull recipes."""
 
+import re
 import time
 from collections.abc import Callable, Generator, Mapping
 from typing import Any, Generic, Literal, cast
@@ -8,9 +9,9 @@ import httpx
 
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
 from glean.indexing.models import TSourceData
-from recipes.pull.http_client import PullHttpClient
-from recipes.pull.options import PullOptions
-from recipes.pull.response import PullResponse
+from glean.indexing.recipes.pull.http_client import PullHttpClient
+from glean.indexing.recipes.pull.options import PullOptions
+from glean.indexing.recipes.pull.response import PullResponse
 
 PullPaginationMode = Literal["link", "offset", "cursor", "none"]
 
@@ -70,36 +71,35 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
 
     def get_source_data(self, **kwargs: Any) -> Generator[TSourceData, None, None]:
         """Yield source data from the configured HTTP endpoint."""
-        params = self._params(kwargs)
+        params = self.__params(kwargs)
 
         if self.pagination == "link":
-            for response in self.http.paginate(self.path, params=params, timeout_seconds=self.timeout_seconds):
-                yield from self._items(response)
+            yield from self.__link_items(params)
             return
 
         if self.pagination == "offset":
-            yield from self._offset_items(params)
+            yield from self.__offset_items(params)
             return
 
         if self.pagination == "cursor":
-            yield from self._cursor_items(params)
+            yield from self.__cursor_items(params)
             return
 
         response = self.http.get(self.path, params=params, timeout_seconds=self.timeout_seconds)
-        yield from self._items(response)
+        yield from self.__items(response)
 
     def close(self) -> None:
         """Close the underlying HTTP client."""
         self.http.close()
 
-    def _params(self, extra_params: Mapping[str, Any]) -> dict[str, Any]:
+    def __params(self, extra_params: Mapping[str, Any]) -> dict[str, Any]:
         params = dict(self.params)
         params.update(extra_params)
         if self.pagination != "offset" and self.page_size is not None:
             params.setdefault(self.limit_param, self.page_size)
         return params
 
-    def _offset_items(self, base_params: Mapping[str, Any]) -> Generator[TSourceData, None, None]:
+    def __offset_items(self, base_params: Mapping[str, Any]) -> Generator[TSourceData, None, None]:
         offset = self.start_offset
         page_size = cast(int, self.page_size)
 
@@ -107,16 +107,24 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
             params = dict(base_params)
             params[self.limit_param] = page_size
             params[self.offset_param] = offset
-            items = self._items(self.http.get(self.path, params=params, timeout_seconds=self.timeout_seconds))
+            items = self.__items(self.http.get(self.path, params=params, timeout_seconds=self.timeout_seconds))
             if not items:
                 return
 
             yield from items
-            if len(items) < page_size:
-                return
             offset += page_size
 
-    def _cursor_items(self, base_params: Mapping[str, Any]) -> Generator[TSourceData, None, None]:
+    def __link_items(self, base_params: Mapping[str, Any]) -> Generator[TSourceData, None, None]:
+        current_path: str | None = self.path
+        current_params: Mapping[str, Any] | None = base_params
+
+        while current_path:
+            response = self.http.get(current_path, params=current_params, timeout_seconds=self.timeout_seconds)
+            yield from self.__items(response)
+            current_path = self.__next_link_url(response)
+            current_params = None
+
+    def __cursor_items(self, base_params: Mapping[str, Any]) -> Generator[TSourceData, None, None]:
         cursor = self.initial_cursor
 
         while True:
@@ -125,16 +133,42 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
                 params[self.cursor_param] = cursor
 
             response = self.http.get(self.path, params=params, timeout_seconds=self.timeout_seconds)
-            yield from self._items(response)
+            yield from self.__items(response)
 
             next_cursor = response.json_dict().get(self.cursor_key)
             if not isinstance(next_cursor, str) or not next_cursor or next_cursor == cursor:
                 return
             cursor = next_cursor
 
-    def _items(self, response: PullResponse) -> list[TSourceData]:
+    def __items(self, response: PullResponse) -> list[TSourceData]:
         data = response.json_list() if self.items_key is None else response.json_dict().get(self.items_key, [])
         if not isinstance(data, list):
             msg = f"Expected `{self.items_key}` to be a list, got {type(data).__name__}"
             raise TypeError(msg)
         return cast(list[TSourceData], data)
+
+    @classmethod
+    def __next_link_url(cls, response: PullResponse) -> str | None:
+        return cls.__parse_link_header_next(response.headers.get("link") or response.headers.get("Link"))
+
+    @classmethod
+    def __parse_link_header_next(cls, link_header: str | None) -> str | None:
+        if not link_header:
+            return None
+
+        for part in re.split(r",\s*(?=<)", link_header):
+            segments = [segment.strip() for segment in part.strip().split(";")]
+            if not segments:
+                continue
+
+            rel_is_next = any(cls.__link_rel_is_next(segment) for segment in segments[1:])
+            link = segments[0]
+            if rel_is_next and link.startswith("<") and ">" in link:
+                return link[1 : link.index(">")]
+
+        return None
+
+    @staticmethod
+    def __link_rel_is_next(segment: str) -> bool:
+        match = re.match(r"""rel\s*=\s*['"]?([^'"]+)['"]?""", segment, re.IGNORECASE)
+        return bool(match and "next" in match.group(1).lower().split())

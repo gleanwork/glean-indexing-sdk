@@ -6,7 +6,7 @@ from time import time
 import httpx
 import pytest
 
-from recipes.pull import BasePullHttpStreamingDataClient, PullHttpClient, PullHttpError, PullOptions, PullRetryOptions
+from glean.indexing.recipes.pull import BasePullHttpStreamingDataClient, PullHttpClient, PullHttpError, PullOptions, PullRetryOptions
 
 
 def _fast_options(max_attempts: int = 2) -> PullOptions:
@@ -180,7 +180,7 @@ def test_response_json_helpers_validate_shape(httpx_mock):
         response.json_dict()
 
 
-def test_paginate_yields_responses_across_link_header(httpx_mock):
+def test_http_streaming_data_client_uses_link_pagination(httpx_mock):
     httpx_mock.add_response(
         url="https://example.com/v1/items?limit=1",
         json={"items": [{"id": "item-1"}]},
@@ -195,28 +195,62 @@ def test_paginate_yields_responses_across_link_header(httpx_mock):
         headers={"Content-Type": "application/json"},
     )
 
-    client = PullHttpClient(base_url="https://example.com/v1", options=_fast_options())
-    pages = list(client.paginate("/items", params={"limit": 1}))
+    data_client = BasePullHttpStreamingDataClient[dict[str, object]](
+        base_url="https://example.com/v1",
+        path="/items",
+        params={"limit": 1},
+        options=_fast_options(),
+    )
 
-    assert [page.json_dict()["items"][0]["id"] for page in pages] == ["item-1", "item-2"]
+    assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2"]
 
 
-def test_paginate_accepts_custom_next_page_resolver(httpx_mock):
+def test_http_streaming_data_client_handles_commas_inside_link_header_urls(httpx_mock):
     httpx_mock.add_response(
         url="https://example.com/v1/items",
-        json={"items": [{"id": "item-1"}], "next": "/items?page=2"},
+        json={"items": [{"id": "item-1"}]},
+        headers={
+            "Content-Type": "application/json",
+            "Link": '<https://example.com/v1/items?filter=a,b&page=2>; rel="next"',
+        },
+    )
+    httpx_mock.add_response(
+        url="https://example.com/v1/items?filter=a,b&page=2",
+        json={"items": [{"id": "item-2"}]},
         headers={"Content-Type": "application/json"},
+    )
+
+    data_client = BasePullHttpStreamingDataClient[dict[str, object]](
+        base_url="https://example.com/v1",
+        path="/items",
+        options=_fast_options(),
+    )
+
+    assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2"]
+
+
+def test_http_streaming_data_client_handles_flexible_next_rel_format(httpx_mock):
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": [{"id": "item-1"}]},
+        headers={
+            "Content-Type": "application/json",
+            "Link": '<https://example.com/v1/items?page=2>; REL = "prev next"',
+        },
     )
     httpx_mock.add_response(
         url="https://example.com/v1/items?page=2",
-        json={"items": [{"id": "item-2"}], "next": None},
+        json={"items": [{"id": "item-2"}]},
         headers={"Content-Type": "application/json"},
     )
 
-    client = PullHttpClient(base_url="https://example.com/v1", options=_fast_options())
-    pages = list(client.paginate("/items", next_page=lambda response: response.json_dict()["next"]))
+    data_client = BasePullHttpStreamingDataClient[dict[str, object]](
+        base_url="https://example.com/v1",
+        path="/items",
+        options=_fast_options(),
+    )
 
-    assert [item["id"] for page in pages for item in page.json_dict()["items"]] == ["item-1", "item-2"]
+    assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2"]
 
 
 def test_http_streaming_data_client_uses_paginated_http_client(httpx_mock):
@@ -252,6 +286,11 @@ def test_http_streaming_data_client_supports_offset_pagination(httpx_mock):
     httpx_mock.add_response(
         url="https://example.com/v1/items?limit=2&offset=2",
         json={"items": [{"id": "item-3"}]},
+        headers={"Content-Type": "application/json"},
+    )
+    httpx_mock.add_response(
+        url="https://example.com/v1/items?limit=2&offset=4",
+        json={"items": []},
         headers={"Content-Type": "application/json"},
     )
 

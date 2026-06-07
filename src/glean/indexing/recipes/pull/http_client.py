@@ -3,7 +3,7 @@
 import logging
 import random
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Literal
@@ -11,8 +11,8 @@ from urllib.parse import urljoin
 
 import httpx
 
-from recipes.pull.options import PullOptions
-from recipes.pull.response import PullResponse
+from glean.indexing.recipes.pull.options import PullOptions
+from glean.indexing.recipes.pull.response import PullResponse
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ class PullHttpClient:
         timeout_seconds: float | None = None,
     ) -> PullResponse:
         """Issue an HTTP request with retry handling."""
-        response = self._request_raw(
+        response = self.__request_raw(
             method,
             path_or_url,
             params=params,
@@ -127,32 +127,7 @@ class PullHttpClient:
             headers=headers,
             timeout_seconds=timeout_seconds,
         )
-        return self._parse_response(response)
-
-    def paginate(
-        self,
-        path_or_url: str,
-        *,
-        params: Mapping[str, Any] | None = None,
-        headers: Mapping[str, str] | None = None,
-        timeout_seconds: float | None = None,
-        next_page: Callable[[PullResponse], str | None] | None = None,
-    ) -> Iterator[PullResponse]:
-        """Yield GET responses across pages.
-
-        By default, follows RFC 5988 `Link` headers with `rel="next"`.
-        Streaming data clients can iterate over responses and yield items from each page.
-        """
-        current_path: str | None = path_or_url
-        current_params = params
-        resolve_next_page = next_page or _next_link_url
-
-        while current_path:
-            response = self.get(current_path, params=current_params, headers=headers, timeout_seconds=timeout_seconds)
-            yield response
-
-            current_path = resolve_next_page(response)
-            current_params = None
+        return self.__parse_response(response)
 
     def get_bytes(
         self,
@@ -173,13 +148,13 @@ class PullHttpClient:
         Returns:
             A tuple of response bytes and content type.
         """
-        response = self._request_raw("GET", path_or_url, headers=headers, timeout_seconds=timeout_seconds)
+        response = self.__request_raw("GET", path_or_url, headers=headers, timeout_seconds=timeout_seconds)
         content = response.content if max_bytes is None else response.content[:max_bytes]
         if max_bytes is not None and len(response.content) > max_bytes:
             logger.warning("Downloaded source content was truncated to %s bytes", max_bytes)
         return content, response.headers.get("content-type", "")
 
-    def _request_raw(
+    def __request_raw(
         self,
         method: HttpMethod,
         path_or_url: str,
@@ -190,8 +165,8 @@ class PullHttpClient:
         headers: Mapping[str, str] | None = None,
         timeout_seconds: float | None = None,
     ) -> httpx.Response:
-        url = self._full_url(path_or_url)
-        request_headers = self._headers(headers)
+        url = self.__full_url(path_or_url)
+        request_headers = self.__headers(headers)
         retry_options = self.options.retries
         attempts = max(1, retry_options.max_attempts)
         last_error: Exception | None = None
@@ -199,7 +174,7 @@ class PullHttpClient:
         for attempt in range(1, attempts + 1):
             response: httpx.Response | None = None
             try:
-                logger.info("Pull %s %s params=%s", method, url, "***MASKED***" if self.options.mask_logs else params)
+                logger.info("Pull %s %s params=%s", method, url, "***MASKED***" if self.options.mask_params else params)
                 response = self._client.request(
                     method,
                     url,
@@ -225,16 +200,16 @@ class PullHttpClient:
 
             if attempt == attempts:
                 break
-            self._sleep_before_retry(attempt, response)
+            self.__sleep_before_retry(attempt, response)
 
         if isinstance(last_error, PullHttpError):
             raise last_error
         raise PullHttpError(f"Source API request failed after {attempts} attempts: {last_error}")
 
-    def _sleep_before_retry(self, attempt: int, response: httpx.Response | None) -> None:
+    def __sleep_before_retry(self, attempt: int, response: httpx.Response | None) -> None:
         retry_options = self.options.retries
         if retry_options.respect_retry_after and response is not None:
-            retry_after_seconds = _retry_after_seconds(response.headers.get("retry-after"))
+            retry_after_seconds = self.__retry_after_seconds(response.headers.get("retry-after"))
             if retry_after_seconds is not None:
                 self._sleep(retry_after_seconds)
                 return
@@ -247,7 +222,7 @@ class PullHttpClient:
             sleep_seconds += random.uniform(0, retry_options.jitter_seconds)
         self._sleep(sleep_seconds)
 
-    def _parse_response(self, response: httpx.Response) -> PullResponse:
+    def __parse_response(self, response: httpx.Response) -> PullResponse:
         content_type = response.headers.get("content-type", "")
         data: Any = None
         content: bytes | None = response.content or None
@@ -257,7 +232,7 @@ class PullHttpClient:
                 data = response.json()
             except ValueError as exc:
                 raise PullHttpError("Source API returned invalid JSON", response=response) from exc
-        elif response.content and _is_text(content_type):
+        elif response.content and self.__is_text(content_type):
             data = response.text
 
         return PullResponse(
@@ -268,56 +243,35 @@ class PullHttpClient:
             content=content,
         )
 
-    def _headers(self, headers: Mapping[str, str] | None) -> dict[str, str]:
+    def __headers(self, headers: Mapping[str, str] | None) -> dict[str, str]:
         out = dict(self.default_headers)
         if headers:
             out.update(headers)
         return out
 
-    def _full_url(self, path_or_url: str) -> str:
+    def __full_url(self, path_or_url: str) -> str:
         if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
             return path_or_url
         return urljoin(self.base_url, path_or_url.lstrip("/"))
 
+    @staticmethod
+    def __is_text(content_type: str) -> bool:
+        return content_type.startswith("text/") or "xml" in content_type or "html" in content_type
 
-def _is_text(content_type: str) -> bool:
-    return content_type.startswith("text/") or "xml" in content_type or "html" in content_type
+    @staticmethod
+    def __retry_after_seconds(value: str | None) -> float | None:
+        if not value:
+            return None
+        try:
+            return max(0.0, float(value))
+        except ValueError:
+            pass
 
+        try:
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return None
 
-def _next_link_url(response: PullResponse) -> str | None:
-    return _parse_link_header_next(response.headers.get("link") or response.headers.get("Link"))
-
-
-def _parse_link_header_next(link_header: str | None) -> str | None:
-    if not link_header:
-        return None
-
-    for part in link_header.split(","):
-        segments = [segment.strip() for segment in part.strip().split(";")]
-        if not segments:
-            continue
-
-        rel_is_next = any(segment.lower() in {'rel="next"', "rel='next'", "rel=next"} for segment in segments[1:])
-        link = segments[0]
-        if rel_is_next and link.startswith("<") and ">" in link:
-            return link[1 : link.index(">")]
-
-    return None
-
-
-def _retry_after_seconds(value: str | None) -> float | None:
-    if not value:
-        return None
-    try:
-        return max(0.0, float(value))
-    except ValueError:
-        pass
-
-    try:
-        retry_at = parsedate_to_datetime(value)
-    except (TypeError, ValueError):
-        return None
-
-    if retry_at.tzinfo is None:
-        retry_at = retry_at.replace(tzinfo=timezone.utc)
-    return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())

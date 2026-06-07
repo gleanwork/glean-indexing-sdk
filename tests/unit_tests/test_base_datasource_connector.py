@@ -67,7 +67,7 @@ class TestBaseDatasourceConnector:
         assert config.url_regex == r"https://test\.example\.com/.*"
         assert config.trust_url_regex_for_view_activity is True
 
-    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    @patch("glean.indexing.push.uploader.api_client")
     def test_configure_datasource(self, mock_api_client):
         """Test datasource configuration."""
         mock_client = Mock()
@@ -130,7 +130,7 @@ class TestBaseDatasourceConnector:
         timestamp = connector._get_last_crawl_timestamp()
         assert timestamp is None
 
-    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    @patch("glean.indexing.push.uploader.api_client")
     def test_force_restart_upload(self, mock_api_client):
         """Test that force_restart option sets force_restart_upload on first batch."""
         mock_client = Mock()
@@ -171,7 +171,7 @@ class TestBaseDatasourceConnector:
         assert second_call_kwargs["is_first_page"] is False
         assert second_call_kwargs["is_last_page"] is True
 
-    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    @patch("glean.indexing.push.uploader.api_client")
     def test_normal_upload_no_force_restart(self, mock_api_client):
         """Test that normal upload does not set force_restart_upload."""
         mock_client = Mock()
@@ -198,7 +198,7 @@ class TestBaseDatasourceConnector:
         assert call_kwargs["is_first_page"] is True
         assert call_kwargs["is_last_page"] is True
 
-    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    @patch("glean.indexing.push.uploader.api_client")
     def test_disable_stale_deletion_check_on_last_page_only(self, mock_api_client):
         """Test that disable_stale_document_deletion_check is set only on the last batch."""
         mock_client = Mock()
@@ -232,7 +232,7 @@ class TestBaseDatasourceConnector:
         last_call_kwargs = mock_client.indexing.documents.bulk_index.call_args_list[1][1]
         assert last_call_kwargs["disable_stale_document_deletion_check"] is True
 
-    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    @patch("glean.indexing.push.uploader.api_client")
     def test_disable_stale_deletion_check_not_set_without_options(self, mock_api_client):
         """Test that disable_stale_document_deletion_check is not set when options are not provided."""
         mock_client = Mock()
@@ -249,7 +249,7 @@ class TestBaseDatasourceConnector:
         call_kwargs = mock_client.indexing.documents.bulk_index.call_args[1]
         assert call_kwargs["disable_stale_document_deletion_check"] is None
 
-    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    @patch("glean.indexing.push.uploader.api_client")
     def test_upload_timeout_ms_passed_to_bulk_index(self, mock_api_client):
         """Test that upload_timeout_ms is forwarded to every bulk_index call."""
         mock_client = Mock()
@@ -279,7 +279,7 @@ class TestBaseDatasourceConnector:
         for call in mock_client.indexing.documents.bulk_index.call_args_list:
             assert call[1]["timeout_ms"] == 120_000
 
-    @patch("glean.indexing.connectors.base_datasource_connector.api_client")
+    @patch("glean.indexing.push.uploader.api_client")
     def test_upload_timeout_ms_defaults_to_none(self, mock_api_client):
         """Test that timeout_ms is None when no options are provided (SDK default applies)."""
         mock_client = Mock()
@@ -294,4 +294,4 @@ class TestBaseDatasourceConnector:
         connector.index_data()
 
         call_kwargs = mock_client.indexing.documents.bulk_index.call_args[1]
-        assert call_kwargs["timeout_ms"] is None
+        assert call_kwargs.get("timeout_ms") is None

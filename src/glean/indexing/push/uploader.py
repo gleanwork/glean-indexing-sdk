@@ -13,7 +13,8 @@ from glean.api_client.models import (
     EmployeeInfoDefinition,
 )
 
-from glean.indexing.common import BatchProcessor, api_client
+from glean.indexing.common import BatchProcessor, DocumentBatchProcessor, api_client
+from glean.indexing.common.batch_processor import DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
 
 T = TypeVar("T")
 
@@ -79,11 +80,22 @@ class PushUploader:
         *,
         upload_id: Optional[str] = None,
         batch_size: int = 1000,
+        max_batch_bytes: Optional[int] = DEFAULT_DOCUMENT_BATCH_SIZE_BYTES,
         force_restart_upload: Optional[bool] = None,
         disable_stale_document_deletion_check: Optional[bool] = None,
     ) -> None:
         """Replace datasource documents using `/bulkindexdocuments`."""
-        batches = self._batches(documents, batch_size)
+        document_list = list(documents)
+        if not document_list:
+            return
+
+        batches = list(
+            DocumentBatchProcessor(
+                document_list,
+                batch_size=batch_size,
+                max_batch_bytes=max_batch_bytes,
+            )
+        )
         if not batches:
             return
 

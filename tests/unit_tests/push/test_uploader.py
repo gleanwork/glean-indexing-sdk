@@ -107,6 +107,34 @@ def test_bulk_index_documents_calls_generated_client():
     )
 
 
+def test_bulk_index_documents_splits_batches_by_byte_size():
+    uploader = PushUploader(datasource="test_datasource")
+    documents = [_document("doc-1"), _document("doc-2")]
+
+    with mock_glean_client() as client:
+        uploader.bulk_index_documents(
+            documents,
+            upload_id="upload-1",
+            batch_size=10,
+            max_batch_bytes=1,
+            force_restart_upload=True,
+            disable_stale_document_deletion_check=True,
+        )
+
+    calls = client.indexing.documents.bulk_index.call_args_list
+    assert len(calls) == 2
+    first_call = calls[0][1]
+    assert first_call["is_first_page"] is True
+    assert first_call["is_last_page"] is False
+    assert first_call["force_restart_upload"] is True
+    assert first_call["disable_stale_document_deletion_check"] is None
+    last_call = calls[1][1]
+    assert last_call["is_first_page"] is False
+    assert last_call["is_last_page"] is True
+    assert last_call["force_restart_upload"] is None
+    assert last_call["disable_stale_document_deletion_check"] is True
+
+
 def test_bulk_index_single_batch_upload_calls_generated_client():
     uploader = PushUploader(datasource="test_datasource")
     document = _document()

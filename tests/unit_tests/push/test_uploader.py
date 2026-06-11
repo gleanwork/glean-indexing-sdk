@@ -73,7 +73,7 @@ def test_get_document_status_calls_generated_client():
     )
 
 
-def test_get_document_statuses_calls_generated_client():
+def test_get_documents_status_calls_generated_client():
     status_client = StatusClient(datasource="test_datasource")
     documents = [
         DebugDocumentRequest(objectType="Article", docId="doc-1"),
@@ -81,7 +81,7 @@ def test_get_document_statuses_calls_generated_client():
     ]
 
     with mock_glean_client() as client:
-        status_client.get_document_statuses(documents)
+        status_client.get_documents_status(documents)
 
     client.indexing.documents.debug_many.assert_called_once_with(
         datasource="test_datasource",

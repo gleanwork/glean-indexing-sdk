@@ -65,7 +65,7 @@ class StatusClient:
                 **self._request_options(),
             )
 
-    def get_document_statuses(
+    def get_documents_status(
         self,
         documents: Sequence[DebugDocumentRequest],
     ) -> DebugDocumentsResponse:

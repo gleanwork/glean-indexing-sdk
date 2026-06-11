@@ -10,7 +10,9 @@ from glean.api_client.models import (
     DatasourceMembershipDefinition,
     DatasourceUserDefinition,
     DebugDatasourceStatusResponse,
+    DebugDocumentRequest,
     DebugDocumentResponse,
+    DebugDocumentsResponse,
     DocumentDefinition,
     EmployeeInfoDefinition,
 )
@@ -60,6 +62,18 @@ class StatusClient:
                 datasource=self.datasource,
                 object_type=object_type,
                 doc_id=document_id,
+                **self._request_options(),
+            )
+
+    def get_document_statuses(
+        self,
+        documents: Sequence[DebugDocumentRequest],
+    ) -> DebugDocumentsResponse:
+        """Get upload, indexing, and permission status for multiple documents."""
+        with api_client() as client:
+            return client.indexing.documents.debug_many(
+                datasource=self.datasource,
+                debug_documents=list(documents),
                 **self._request_options(),
             )
 

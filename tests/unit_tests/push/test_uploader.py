@@ -7,6 +7,7 @@ from glean.api_client.models import (
     DatasourceGroupDefinition,
     DatasourceMembershipDefinition,
     DatasourceUserDefinition,
+    DebugDocumentRequest,
     DocumentDefinition,
     EmployeeInfoDefinition,
 )
@@ -69,6 +70,22 @@ def test_get_document_status_calls_generated_client():
         datasource="test_datasource",
         object_type="Article",
         doc_id="doc-1",
+    )
+
+
+def test_get_document_statuses_calls_generated_client():
+    status_client = StatusClient(datasource="test_datasource")
+    documents = [
+        DebugDocumentRequest(objectType="Article", docId="doc-1"),
+        DebugDocumentRequest(objectType="Article", docId="doc-2"),
+    ]
+
+    with mock_glean_client() as client:
+        status_client.get_document_statuses(documents)
+
+    client.indexing.documents.debug_many.assert_called_once_with(
+        datasource="test_datasource",
+        debug_documents=documents,
     )
 
 

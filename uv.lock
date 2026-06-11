@@ -416,15 +416,16 @@ wheels = [
 
 [[package]]
 name = "glean-api-client"
-version = "0.6.3"
+version = "0.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "httpcore" },
     { name = "httpx" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/69/17/e243017591824e4d60acee8186535d6785dc173dfde0f51d5454ad659846/glean_api_client-0.6.3.tar.gz", hash = "sha256:f1c293e90f7441c96ec3fbf5a696f508d89239d625d26243c730d7b38a686128", size = 218760, upload-time = "2025-06-06T22:11:00.635Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/e2/d655c5b5fb4feeabeaf6d64ba0892e7d2a44191f9e76218eb11ad0c1586d/glean_api_client-0.13.0.tar.gz", hash = "sha256:c3720ee85137a4b8f27013da23967aa8947dbbe3f61938e0d518dbeb5c727a71", size = 293450, upload-time = "2026-06-05T16:55:55.345Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/26/4630e3cf98fcf11a959d678be5e3d91422a9544748acbeeae5a3a3321ae4/glean_api_client-0.6.3-py3-none-any.whl", hash = "sha256:a864da7dbefe198be571ebff94bb030a4310b53e57524e264b39d1210842bfc7", size = 462282, upload-time = "2025-06-06T22:10:59.088Z" },
+    { url = "https://files.pythonhosted.org/packages/82/41/b42ec32d5edccff8ac41a012560f297d09e0654dc374923fc9871d16ff19/glean_api_client-0.13.0-py3-none-any.whl", hash = "sha256:3fd09e89fa2e0f401f140d768c670140f86e158959fe545717a9ac2de697af84", size = 708332, upload-time = "2026-06-05T16:55:54.044Z" },
 ]
 
 [[package]]
@@ -470,7 +471,7 @@ dev = [
 requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "commitizen", marker = "extra == 'dev'", specifier = ">=4.4.1" },
-    { name = "glean-api-client", specifier = ">=0.6.3" },
+    { name = "glean-api-client", specifier = ">=0.12.24" },
     { name = "jinja2", specifier = ">=3.1.2" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.6.0" },
     { name = "pydantic", specifier = ">=2.0" },

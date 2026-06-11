@@ -11,7 +11,8 @@ from glean.api_client.models import (
     EmployeeInfoDefinition,
 )
 
-from glean.indexing.push import PushUploader
+from glean.indexing import StatusClient as TopLevelStatusClient
+from glean.indexing.push import PushUploader, StatusClient
 from glean.indexing.testing import mock_glean_client
 
 
@@ -43,6 +44,32 @@ def test_configure_datasource_calls_generated_client():
     assert call_args["display_name"] == "Test Datasource"
     assert call_args["url_regex"] == r"https://example\.com/.*"
     assert call_args["trust_url_regex_for_view_activity"] is True
+
+
+def test_status_client_is_exported_from_top_level_package():
+    assert TopLevelStatusClient is StatusClient
+
+
+def test_get_datasource_status_calls_generated_client():
+    status_client = StatusClient(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        status_client.get_datasource_status()
+
+    client.indexing.datasource.status.assert_called_once_with(datasource="test_datasource")
+
+
+def test_get_document_status_calls_generated_client():
+    status_client = StatusClient(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        status_client.get_document_status(object_type="Article", document_id="doc-1")
+
+    client.indexing.documents.debug.assert_called_once_with(
+        datasource="test_datasource",
+        object_type="Article",
+        doc_id="doc-1",
+    )
 
 
 def test_index_documents_calls_generated_client():
@@ -342,7 +369,29 @@ def test_bulk_index_employees_calls_generated_client():
     )
 
 
-def test_request_options_are_forwarded_when_configured():
+def test_status_request_options_are_forwarded_when_configured():
+    retries = {"strategy": "backoff"}
+    status_client = StatusClient(
+        datasource="test_datasource",
+        retries=retries,
+        server_url="https://example-be.glean.com",
+        timeout_ms=120_000,
+        http_headers={"X-Test": "true"},
+    )
+
+    with mock_glean_client() as client:
+        status_client.get_datasource_status()
+
+    client.indexing.datasource.status.assert_called_once_with(
+        datasource="test_datasource",
+        retries=retries,
+        server_url="https://example-be.glean.com",
+        timeout_ms=120_000,
+        http_headers={"X-Test": "true"},
+    )
+
+
+def test_uploader_request_options_are_forwarded_when_configured():
     retries = {"strategy": "backoff"}
     uploader = PushUploader(
         datasource="test_datasource",

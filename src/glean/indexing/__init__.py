@@ -36,7 +36,7 @@ from glean.indexing.models import (
     TSourceData,
 )
 from glean.indexing.observability.observability import ConnectorObservability
-from glean.indexing.push import PushUploader
+from glean.indexing.push import PushUploader, StatusClient
 from glean.indexing.testing import (
     MockGleanClient,
     StaticAsyncStreamingDataClient,
@@ -63,6 +63,7 @@ __all__ = [
     "ConnectorMetrics",
     "ConnectorObservability",
     "PushUploader",
+    "StatusClient",
     "DatasourceIdentityDefinitions",
     "IndexingMode",
     "TSourceData",

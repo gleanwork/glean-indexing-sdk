@@ -4,11 +4,15 @@ import uuid
 from typing import Any, Mapping, Optional, Sequence, TypeVar
 
 from glean.api_client.models import (
+    CheckDocumentAccessResponse,
     CustomDatasourceConfig,
     DatasourceBulkMembershipDefinition,
     DatasourceGroupDefinition,
     DatasourceMembershipDefinition,
     DatasourceUserDefinition,
+    DebugDatasourceStatusResponse,
+    DebugDocumentRequest,
+    DebugDocumentsResponse,
     DocumentDefinition,
     EmployeeInfoDefinition,
 )
@@ -17,6 +21,76 @@ from glean.indexing.common import BatchProcessor, DocumentBatchProcessor, api_cl
 from glean.indexing.common.batch_processor import DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
 
 T = TypeVar("T")
+
+
+class StatusClient:
+    """Read-only wrappers for datasource and document status APIs."""
+
+    def __init__(
+        self,
+        datasource: str,
+        *,
+        retries: Optional[Any] = None,
+        server_url: Optional[str] = None,
+        timeout_ms: Optional[int] = None,
+        http_headers: Optional[Mapping[str, str]] = None,
+    ) -> None:
+        """Initialize a status client for a datasource."""
+        self.datasource = datasource
+        self.retries = retries
+        self.server_url = server_url
+        self.timeout_ms = timeout_ms
+        self.http_headers = http_headers
+
+    def get_datasource_status(self) -> DebugDatasourceStatusResponse:
+        """Get overall datasource upload and processing status."""
+        with api_client() as client:
+            return client.indexing.datasource.status(
+                datasource=self.datasource,
+                **self._request_options(),
+            )
+
+    def get_documents_status(
+        self,
+        documents: Sequence[DebugDocumentRequest],
+    ) -> DebugDocumentsResponse:
+        """Get upload, indexing, and permission status for documents."""
+        with api_client() as client:
+            return client.indexing.documents.debug_many(
+                datasource=self.datasource,
+                debug_documents=list(documents),
+                **self._request_options(),
+            )
+
+    def check_document_access(
+        self,
+        *,
+        object_type: str,
+        document_id: str,
+        user_email: str,
+    ) -> CheckDocumentAccessResponse:
+        """Check whether a user has access to a document."""
+        with api_client() as client:
+            return client.indexing.documents.check_access(
+                datasource=self.datasource,
+                object_type=object_type,
+                doc_id=document_id,
+                user_email=user_email,
+                **self._request_options(),
+            )
+
+    def _request_options(self) -> dict[str, Any]:
+        """Return only generated-client request options explicitly configured."""
+        options: dict[str, Any] = {}
+        if self.retries is not None:
+            options["retries"] = self.retries
+        if self.server_url is not None:
+            options["server_url"] = self.server_url
+        if self.timeout_ms is not None:
+            options["timeout_ms"] = self.timeout_ms
+        if self.http_headers is not None:
+            options["http_headers"] = self.http_headers
+        return options
 
 
 class PushUploader:

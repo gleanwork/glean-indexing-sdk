@@ -83,33 +83,40 @@ class ConnectorObservability:
     def end_execution(self) -> None:
         """Mark the end of connector execution.
 
-        If called from a finally block while an exception is active, or if
-        fail_execution() was already called, this will not log a success event.
+        Safe to call from a ``finally`` block. If an exception is currently
+        propagating and ``fail_execution()`` has not already been called, this
+        method delegates to ``fail_execution()`` so the failure is always logged.
+        If ``fail_execution()`` was already called explicitly, this is a no-op.
         """
         import sys
 
-        if self.start_time and not self._execution_failed:
-            exc_info = sys.exc_info()
-            if exc_info[0] is not None:
-                return
+        if not self.start_time or self._execution_failed:
+            return
 
-            duration = time.time() - self.start_time
-            duration_ms = int(duration * 1000)
-            self.metrics["total_execution_time"] = duration
-            logger.info(
-                "Crawl completed successfully",
-                extra=self.get_common_fields(
-                    operation="crawl_completed",
-                    duration_ms=duration_ms,
-                    status="success",
-                ),
-            )
+        exc_info = sys.exc_info()
+        if exc_info[0] is not None:
+            self.fail_execution(exc_info[1])
+            return
+
+        duration = time.time() - self.start_time
+        duration_ms = int(duration * 1000)
+        self.metrics["total_execution_time"] = duration
+        self.start_time = None
+        logger.info(
+            "Crawl completed successfully",
+            extra=self.get_common_fields(
+                operation="crawl_completed",
+                duration_ms=duration_ms,
+                status="success",
+            ),
+        )
 
     def fail_execution(self, error: Exception) -> None:
         """Mark the execution as failed.
 
-        Records execution duration and sets terminal state to prevent
-        end_execution() from logging a success event.
+        Records execution duration, sets terminal state to prevent
+        end_execution() from logging a success event, and clears start_time
+        so the execution cannot be double-counted.
         """
         import sys
 
@@ -119,6 +126,7 @@ class ConnectorObservability:
             duration = time.time() - self.start_time
             duration_ms = int(duration * 1000)
             self.metrics["total_execution_time"] = duration
+            self.start_time = None
 
         exc_info = sys.exc_info()
         if exc_info[1] is not error:

@@ -190,6 +190,66 @@ class TestLifecycleEvents:
         assert log_data["error_message"] == "Test error message"
         assert log_data["level"] == "ERROR"
 
+    def test_fail_execution_clears_start_time(self, observability_with_logger):
+        """Test that fail_execution clears start_time to mark execution as terminal."""
+        obs, stream, logger = observability_with_logger
+
+        obs.start_execution()
+        assert obs.start_time is not None
+
+        obs.fail_execution(RuntimeError("boom"))
+
+        assert obs.start_time is None
+
+    def test_fail_execution_records_total_execution_time(self, observability_with_logger):
+        """Test that fail_execution records total_execution_time metric."""
+        obs, stream, logger = observability_with_logger
+
+        obs.start_execution()
+        obs.fail_execution(RuntimeError("boom"))
+
+        assert "total_execution_time" in obs.get_metrics_summary()
+
+    def test_end_execution_after_fail_execution_is_noop(self, observability_with_logger):
+        """Test that calling end_execution after fail_execution emits no additional events."""
+        obs, stream, logger = observability_with_logger
+
+        obs.start_execution()
+        obs.fail_execution(RuntimeError("already failed"))
+
+        stream.truncate(0)
+        stream.seek(0)
+
+        obs.end_execution()
+
+        stream.seek(0)
+        assert stream.read() == ""
+
+    def test_end_execution_delegates_to_fail_execution_on_active_exception(
+        self, observability_with_logger
+    ):
+        """Test that end_execution logs failure when called from a finally block with active exception."""
+        obs, stream, logger = observability_with_logger
+
+        obs.start_execution()
+        stream.truncate(0)
+        stream.seek(0)
+
+        try:
+            raise ValueError("unhandled error")
+        except ValueError:
+            obs.end_execution()
+
+        stream.seek(0)
+        lines = stream.read().strip().splitlines()
+        assert len(lines) == 1
+        log_data = json.loads(lines[0])
+
+        assert log_data["operation"] == "crawl_failed"
+        assert log_data["status"] == "failed"
+        assert log_data["error_type"] == "ValueError"
+        assert log_data["level"] == "ERROR"
+
     def test_log_data_fetch_started(self, observability_with_logger):
         """Test data_fetch_started event logging."""
         obs, stream, logger = observability_with_logger

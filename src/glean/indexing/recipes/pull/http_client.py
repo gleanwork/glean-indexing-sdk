@@ -11,6 +11,7 @@ from urllib.parse import urljoin
 
 import httpx
 
+from glean.indexing.recipes.pull.auth import AuthProvider
 from glean.indexing.recipes.pull.options import PullOptions
 from glean.indexing.recipes.pull.response import PullResponse
 
@@ -41,6 +42,7 @@ class PullHttpClient:
         *,
         base_url: str,
         headers: Mapping[str, str] | None = None,
+        auth: AuthProvider | None = None,
         options: PullOptions | None = None,
         client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
@@ -50,12 +52,14 @@ class PullHttpClient:
         Args:
             base_url: Base URL for relative request paths.
             headers: Default headers sent with each request.
+            auth: Optional auth provider for source API request headers.
             options: Request timeout, retry, redirect, and logging behavior.
             client: Optional preconfigured `httpx.Client`.
             sleep: Sleep function used for retry backoff.
         """
         self.base_url = base_url.rstrip("/") + "/"
         self.default_headers = dict(headers or {})
+        self.auth = auth
         self.options = options or PullOptions()
         self._client = client or httpx.Client(follow_redirects=self.options.follow_redirects)
         self._owns_client = client is None
@@ -83,7 +87,9 @@ class PullHttpClient:
         timeout_seconds: float | None = None,
     ) -> PullResponse:
         """Issue a GET request and parse the response."""
-        return self.request("GET", path_or_url, params=params, headers=headers, timeout_seconds=timeout_seconds)
+        return self.request(
+            "GET", path_or_url, params=params, headers=headers, timeout_seconds=timeout_seconds
+        )
 
     def post(
         self,
@@ -148,7 +154,9 @@ class PullHttpClient:
         Returns:
             A tuple of response bytes and content type.
         """
-        response = self.__request_raw("GET", path_or_url, headers=headers, timeout_seconds=timeout_seconds)
+        response = self.__request_raw(
+            "GET", path_or_url, headers=headers, timeout_seconds=timeout_seconds
+        )
         content = response.content if max_bytes is None else response.content[:max_bytes]
         if max_bytes is not None and len(response.content) > max_bytes:
             logger.warning("Downloaded source content was truncated to %s bytes", max_bytes)
@@ -174,7 +182,12 @@ class PullHttpClient:
         for attempt in range(1, attempts + 1):
             response: httpx.Response | None = None
             try:
-                logger.info("Pull %s %s params=%s", method, url, "***MASKED***" if self.options.mask_params else params)
+                logger.info(
+                    "Pull %s %s params=%s",
+                    method,
+                    url,
+                    "***MASKED***" if self.options.mask_params else params,
+                )
                 response = self._client.request(
                     method,
                     url,
@@ -182,12 +195,16 @@ class PullHttpClient:
                     json=json,
                     data=data,
                     headers=request_headers,
-                    timeout=timeout_seconds if timeout_seconds is not None else self.options.timeout_seconds,
+                    timeout=timeout_seconds
+                    if timeout_seconds is not None
+                    else self.options.timeout_seconds,
                 )
                 if response.status_code not in retry_options.retry_status_codes:
                     response.raise_for_status()
                     return response
-                last_error = PullHttpError(f"Retryable source API status {response.status_code}", response=response)
+                last_error = PullHttpError(
+                    f"Retryable source API status {response.status_code}", response=response
+                )
             except httpx.HTTPStatusError as exc:
                 raise PullHttpError(
                     f"Source API request failed with status {exc.response.status_code}",
@@ -216,7 +233,8 @@ class PullHttpClient:
 
         sleep_seconds = min(
             retry_options.max_backoff_seconds,
-            retry_options.initial_backoff_seconds * retry_options.backoff_multiplier ** (attempt - 1),
+            retry_options.initial_backoff_seconds
+            * retry_options.backoff_multiplier ** (attempt - 1),
         )
         if retry_options.jitter_seconds > 0:
             sleep_seconds += random.uniform(0, retry_options.jitter_seconds)
@@ -245,6 +263,8 @@ class PullHttpClient:
 
     def __headers(self, headers: Mapping[str, str] | None) -> dict[str, str]:
         out = dict(self.default_headers)
+        if self.auth is not None:
+            out.update(self.auth.headers())
         if headers:
             out.update(headers)
         return out

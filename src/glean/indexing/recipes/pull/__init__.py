@@ -1,16 +1,33 @@
 """Source-side pull recipes for connector data clients."""
 
-from glean.indexing.recipes.pull.data_client import BasePullHttpStreamingDataClient, PullPaginationMode
+from glean.indexing.recipes.pull.auth import (
+    ApiKeyAuth,
+    AuthProvider,
+    BasicAuth,
+    BearerTokenAuth,
+    RefreshingBearerTokenAuth,
+    TokenProvider,
+)
+from glean.indexing.recipes.pull.data_client import (
+    BasePullHttpStreamingDataClient,
+    PullPaginationMode,
+)
 from glean.indexing.recipes.pull.http_client import PullHttpClient, PullHttpError
 from glean.indexing.recipes.pull.options import PullOptions, PullRetryOptions
 from glean.indexing.recipes.pull.response import PullResponse
 
 __all__ = [
+    "ApiKeyAuth",
+    "AuthProvider",
     "BasePullHttpStreamingDataClient",
+    "BasicAuth",
+    "BearerTokenAuth",
     "PullPaginationMode",
     "PullHttpClient",
     "PullHttpError",
     "PullOptions",
     "PullResponse",
     "PullRetryOptions",
+    "RefreshingBearerTokenAuth",
+    "TokenProvider",
 ]

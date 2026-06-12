@@ -4,6 +4,7 @@ import uuid
 from typing import Any, Mapping, Optional, Sequence, TypeVar
 
 from glean.api_client.models import (
+    CheckDocumentAccessResponse,
     CustomDatasourceConfig,
     DatasourceBulkMembershipDefinition,
     DatasourceGroupDefinition,
@@ -11,7 +12,6 @@ from glean.api_client.models import (
     DatasourceUserDefinition,
     DebugDatasourceStatusResponse,
     DebugDocumentRequest,
-    DebugDocumentResponse,
     DebugDocumentsResponse,
     DocumentDefinition,
     EmployeeInfoDefinition,
@@ -50,30 +50,32 @@ class StatusClient:
                 **self._request_options(),
             )
 
-    def get_document_status(
-        self,
-        *,
-        object_type: str,
-        document_id: str,
-    ) -> DebugDocumentResponse:
-        """Get upload, indexing, and permission status for one document."""
-        with api_client() as client:
-            return client.indexing.documents.debug(
-                datasource=self.datasource,
-                object_type=object_type,
-                doc_id=document_id,
-                **self._request_options(),
-            )
-
     def get_documents_status(
         self,
         documents: Sequence[DebugDocumentRequest],
     ) -> DebugDocumentsResponse:
-        """Get upload, indexing, and permission status for multiple documents."""
+        """Get upload, indexing, and permission status for documents."""
         with api_client() as client:
             return client.indexing.documents.debug_many(
                 datasource=self.datasource,
                 debug_documents=list(documents),
+                **self._request_options(),
+            )
+
+    def check_document_access(
+        self,
+        *,
+        object_type: str,
+        document_id: str,
+        user_email: str,
+    ) -> CheckDocumentAccessResponse:
+        """Check whether a user has access to a document."""
+        with api_client() as client:
+            return client.indexing.documents.check_access(
+                datasource=self.datasource,
+                object_type=object_type,
+                doc_id=document_id,
+                user_email=user_email,
                 **self._request_options(),
             )
 

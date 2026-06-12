@@ -60,19 +60,6 @@ def test_get_datasource_status_calls_generated_client():
     client.indexing.datasource.status.assert_called_once_with(datasource="test_datasource")
 
 
-def test_get_document_status_calls_generated_client():
-    status_client = StatusClient(datasource="test_datasource")
-
-    with mock_glean_client() as client:
-        status_client.get_document_status(object_type="Article", document_id="doc-1")
-
-    client.indexing.documents.debug.assert_called_once_with(
-        datasource="test_datasource",
-        object_type="Article",
-        doc_id="doc-1",
-    )
-
-
 def test_get_documents_status_calls_generated_client():
     status_client = StatusClient(datasource="test_datasource")
     documents = [
@@ -86,6 +73,24 @@ def test_get_documents_status_calls_generated_client():
     client.indexing.documents.debug_many.assert_called_once_with(
         datasource="test_datasource",
         debug_documents=documents,
+    )
+
+
+def test_check_document_access_calls_generated_client():
+    status_client = StatusClient(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        status_client.check_document_access(
+            object_type="Article",
+            document_id="doc-1",
+            user_email="user@example.com",
+        )
+
+    client.indexing.documents.check_access.assert_called_once_with(
+        datasource="test_datasource",
+        object_type="Article",
+        doc_id="doc-1",
+        user_email="user@example.com",
     )
 
 

@@ -22,6 +22,7 @@ class PullOptions:
     """Default behavior for a source API HTTP client."""
 
     timeout_seconds: float = 30.0
+    rate_limit_timeout_seconds: float | None = None
     retries: PullRetryOptions = field(default_factory=PullRetryOptions)
     mask_params: bool = True
     follow_redirects: bool = True

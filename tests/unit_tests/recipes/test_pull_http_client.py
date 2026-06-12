@@ -15,8 +15,31 @@ from glean.indexing.recipes.pull import (
     PullHttpError,
     PullOptions,
     PullRetryOptions,
+    RateLimitExceededError,
     RefreshingBearerTokenAuth,
+    TokenBucketRateLimiter,
 )
+
+
+class MutableClock:
+    def __init__(self, now: float = 0.0) -> None:
+        self.now = now
+        self.sleeps: list[float] = []
+
+    def time(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class CountingRateLimiter:
+    def __init__(self) -> None:
+        self.timeout_seconds_by_call: list[float | None] = []
+
+    def acquire(self, tokens: float = 1.0, timeout_seconds: float | None = None) -> None:
+        self.timeout_seconds_by_call.append(timeout_seconds)
 
 
 def _fast_options(max_attempts: int = 2) -> PullOptions:
@@ -201,6 +224,85 @@ def test_get_bytes_uses_auth_headers(httpx_mock):
     assert request is not None
     assert request.headers["Authorization"] == "Bearer token-1"
     assert content == b"abc"
+
+
+def test_token_bucket_allows_initial_capacity_then_times_out():
+    clock = MutableClock()
+    limiter = TokenBucketRateLimiter(
+        rate_per_second=1,
+        capacity=2,
+        clock=clock.time,
+        sleep=clock.sleep,
+    )
+
+    limiter.acquire()
+    limiter.acquire()
+
+    with pytest.raises(RateLimitExceededError):
+        limiter.acquire(timeout_seconds=0)
+
+
+def test_token_bucket_refills_over_time_without_real_sleep():
+    clock = MutableClock()
+    limiter = TokenBucketRateLimiter(
+        rate_per_second=2,
+        capacity=5,
+        initial_tokens=0,
+        clock=clock.time,
+        sleep=clock.sleep,
+    )
+
+    limiter.acquire()
+
+    assert clock.sleeps == [0.5]
+    assert clock.now == 0.5
+
+
+def test_token_bucket_timeout_does_not_sleep_past_deadline():
+    clock = MutableClock()
+    limiter = TokenBucketRateLimiter(
+        rate_per_second=1,
+        capacity=1,
+        initial_tokens=0,
+        clock=clock.time,
+        sleep=clock.sleep,
+    )
+
+    with pytest.raises(RateLimitExceededError):
+        limiter.acquire(timeout_seconds=0.25)
+
+    assert clock.sleeps == []
+
+
+def test_token_bucket_rejects_invalid_configuration():
+    with pytest.raises(ValueError, match="rate_per_second"):
+        TokenBucketRateLimiter(rate_per_second=0, capacity=1)
+    with pytest.raises(ValueError, match="capacity"):
+        TokenBucketRateLimiter(rate_per_second=1, capacity=0)
+
+
+def test_http_client_uses_rate_limiter_for_each_attempt(httpx_mock):
+    limiter = CountingRateLimiter()
+    options = _fast_options(max_attempts=2)
+    options.rate_limit_timeout_seconds = 3
+    httpx_mock.add_response(url="https://example.com/v1/items", status_code=429)
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": [{"id": "item-1"}]},
+        headers={"Content-Type": "application/json"},
+    )
+
+    client = PullHttpClient(
+        base_url="https://example.com/v1",
+        options=options,
+        rate_limiter=limiter,
+        sleep=lambda _: None,
+    )
+
+    response = client.get("/items")
+
+    assert response.json_dict()["items"][0]["id"] == "item-1"
+    assert limiter.timeout_seconds_by_call == [3, 3]
 
 
 def test_http_client_uses_base_url_headers_and_parses_json(httpx_mock):

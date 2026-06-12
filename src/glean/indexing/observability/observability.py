@@ -47,12 +47,7 @@ class ConnectorObservability:
         Raises:
             ValueError: If kwargs contains reserved LogRecord attribute names
         """
-        reserved_attrs = {
-            "name", "msg", "args", "created", "filename", "funcName", "levelname",
-            "levelno", "lineno", "module", "msecs", "message", "pathname", "process",
-            "processName", "relativeCreated", "thread", "threadName", "asctime",
-            "exc_info", "exc_text", "stack_info",
-        }
+        reserved_attrs = set(logging.makeLogRecord({}).__dict__)
 
         conflicting_keys = set(kwargs.keys()) & reserved_attrs
         if conflicting_keys:
@@ -188,12 +183,14 @@ class ConnectorObservability:
         )
 
     def log_transform_started(self, item_count: int, **kwargs: Any) -> None:
-        """
-        Log the start of data transformation.
+        """Log the start of transforming crawled data into Glean document format.
+
+        Call this before iterating over raw source records and converting them to
+        ``DocumentDefinition`` objects.
 
         Args:
-            item_count: Number of items to transform
-            **kwargs: Additional fields to include
+            item_count: Number of raw items about to be transformed
+            **kwargs: Additional fields to include in the log event
         """
         logger.info(
             f"Transform started: {item_count} items",
@@ -205,14 +202,17 @@ class ConnectorObservability:
         )
 
     def log_transform_completed(self, input_count: int, output_count: int, duration_ms: int, **kwargs: Any) -> None:
-        """
-        Log successful completion of data transformation.
+        """Log successful completion of transforming crawled data into Glean document format.
+
+        Call this after all raw source records have been converted to ``DocumentDefinition``
+        objects. ``output_count`` may differ from ``input_count`` when items are filtered out
+        or expanded during transformation.
 
         Args:
-            input_count: Number of input items
-            output_count: Number of output items
-            duration_ms: Duration in milliseconds
-            **kwargs: Additional fields to include
+            input_count: Number of raw items that were processed
+            output_count: Number of ``DocumentDefinition`` objects produced
+            duration_ms: Elapsed time for the transformation phase in milliseconds
+            **kwargs: Additional fields to include in the log event
         """
         logger.info(
             f"Transform completed: {input_count} → {output_count} items",
@@ -320,6 +320,73 @@ class ConnectorObservability:
                 operation="batch_upload_failed",
                 batch_index=batch_index,
                 batch_count=batch_count,
+                entity_type=entity_type,
+                status="failed",
+                error_type=type(error).__name__,
+                error_message=str(error),
+                **kwargs,
+            ),
+            exc_info=exc_info,
+        )
+
+
+    def log_document_indexed(
+        self,
+        document_id: str,
+        entity_type: str = "document",
+        **kwargs: Any,
+    ) -> None:
+        """Log successful indexing of a single document (for streaming connectors).
+
+        Use this instead of the batch upload methods when your connector indexes
+        documents one at a time rather than in batches — for example, in a streaming
+        connector that yields items incrementally.
+
+        Args:
+            document_id: Identifier of the indexed document
+            entity_type: Type of entity indexed (document, user, group, etc.)
+            **kwargs: Additional fields to include in the log event
+        """
+        logger.info(
+            f"Document indexed: {document_id}",
+            extra=self.get_common_fields(
+                operation="document_indexed",
+                document_id=document_id,
+                entity_type=entity_type,
+                status="success",
+                **kwargs,
+            ),
+        )
+
+    def log_document_index_failed(
+        self,
+        document_id: str,
+        error: Exception,
+        entity_type: str = "document",
+        **kwargs: Any,
+    ) -> None:
+        """Log a failed attempt to index a single document (for streaming connectors).
+
+        Use this instead of ``log_batch_upload_failed`` when your connector indexes
+        documents one at a time rather than in batches.
+
+        Args:
+            document_id: Identifier of the document that failed to index
+            error: The exception that caused the failure
+            entity_type: Type of entity being indexed (document, user, group, etc.)
+            **kwargs: Additional fields to include in the log event
+        """
+        import sys
+
+        exc_info = sys.exc_info()
+        if exc_info[1] is not error:
+            exc_info = (type(error), error, None)
+
+        logger.error(
+            f"Document index failed: {document_id} - {error}",
+            extra=self.get_common_fields(
+                operation="document_index_failed",
+                document_id=document_id,
                 entity_type=entity_type,
                 status="failed",
                 error_type=type(error).__name__,

@@ -313,6 +313,39 @@ class TestLifecycleEvents:
         assert log_data["error_message"] == "Network timeout"
         assert log_data["level"] == "ERROR"
 
+    def test_log_document_indexed(self, observability_with_logger):
+        """Test document_indexed event logging for streaming connectors."""
+        obs, stream, logger = observability_with_logger
+
+        obs.log_document_indexed(document_id="doc-123", entity_type="document")
+
+        stream.seek(0)
+        log_data = json.loads(stream.read())
+
+        assert "doc-123" in log_data["message"]
+        assert log_data["operation"] == "document_indexed"
+        assert log_data["document_id"] == "doc-123"
+        assert log_data["entity_type"] == "document"
+        assert log_data["status"] == "success"
+
+    def test_log_document_index_failed(self, observability_with_logger):
+        """Test document_index_failed event logging for streaming connectors."""
+        obs, stream, logger = observability_with_logger
+
+        test_error = ValueError("Invalid document format")
+        obs.log_document_index_failed(document_id="doc-456", error=test_error)
+
+        stream.seek(0)
+        log_data = json.loads(stream.read())
+
+        assert "doc-456" in log_data["message"]
+        assert log_data["operation"] == "document_index_failed"
+        assert log_data["document_id"] == "doc-456"
+        assert log_data["status"] == "failed"
+        assert log_data["error_type"] == "ValueError"
+        assert log_data["error_message"] == "Invalid document format"
+        assert log_data["level"] == "ERROR"
+
 
 class TestBackwardCompatibility:
     """Tests ensuring backward compatibility with existing behavior."""

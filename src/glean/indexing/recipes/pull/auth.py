@@ -1,11 +1,23 @@
 """Authentication helpers for source-side pull recipes."""
 
 import base64
-from collections.abc import Callable, Mapping
+import json
+import os
+import tempfile
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 from typing import Protocol
 
+import httpx
+
 TokenProvider = Callable[[], str]
+
+
+class OAuth2TokenError(RuntimeError):
+    """Raised when OAuth2 token loading, storage, or refresh fails."""
 
 
 class AuthProvider(Protocol):
@@ -69,3 +81,279 @@ class RefreshingBearerTokenAuth:
     def headers(self) -> Mapping[str, str]:
         """Return a bearer header using the current token from the provider."""
         return {self.header_name: f"{self.scheme} {self.token_provider()}"}
+
+
+@dataclass(frozen=True)
+class OAuth2Token:
+    """OAuth2 token state for source API authentication.
+
+    Refresh tokens are secrets. File-backed storage is intended for local/demo
+    use only; production connectors should provide a secure token store.
+    """
+
+    access_token: str
+    refresh_token: str | None = None
+    expires_at: float | None = None
+    token_type: str = "Bearer"
+    scopes: tuple[str, ...] = ()
+
+    def is_expired(self, *, now: float | None = None, skew_seconds: float = 60.0) -> bool:
+        """Return whether the access token should be refreshed."""
+        if self.expires_at is None:
+            return False
+        current_time = time.time() if now is None else now
+        return current_time >= self.expires_at - skew_seconds
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize token state to JSON-compatible data."""
+        return {
+            "access_token": self.access_token,
+            "refresh_token": self.refresh_token,
+            "expires_at": self.expires_at,
+            "token_type": self.token_type,
+            "scopes": list(self.scopes),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "OAuth2Token":
+        """Deserialize token state from JSON-compatible data."""
+        access_token = data.get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise OAuth2TokenError("Stored OAuth2 token is missing access_token")
+
+        refresh_token = data.get("refresh_token")
+        if refresh_token is not None and not isinstance(refresh_token, str):
+            raise OAuth2TokenError("Stored OAuth2 token refresh_token must be a string")
+
+        expires_at = data.get("expires_at")
+        if expires_at is not None and not isinstance(expires_at, (int, float)):
+            raise OAuth2TokenError("Stored OAuth2 token expires_at must be a number")
+
+        token_type = data.get("token_type", "Bearer")
+        if not isinstance(token_type, str) or not token_type:
+            raise OAuth2TokenError("Stored OAuth2 token token_type must be a non-empty string")
+
+        scopes_value = data.get("scopes", [])
+        if isinstance(scopes_value, str):
+            scopes = tuple(scope for scope in scopes_value.split() if scope)
+        elif isinstance(scopes_value, Sequence):
+            scopes = tuple(scope for scope in scopes_value if isinstance(scope, str) and scope)
+        else:
+            raise OAuth2TokenError("Stored OAuth2 token scopes must be a list or string")
+
+        return cls(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_at=float(expires_at) if expires_at is not None else None,
+            token_type=token_type,
+            scopes=scopes,
+        )
+
+
+class OAuth2TokenStore(Protocol):
+    """Storage interface for OAuth2 token state."""
+
+    def load(self) -> OAuth2Token | None:
+        """Load token state, if present."""
+        ...
+
+    def save(self, token: OAuth2Token) -> None:
+        """Persist token state."""
+        ...
+
+
+class FileOAuth2TokenStore:
+    """File-backed OAuth2 token storage for local connector development."""
+
+    def __init__(self, path: str | os.PathLike[str]) -> None:
+        """Initialize the file store with an explicit token path."""
+        self.path = Path(path)
+
+    def load(self) -> OAuth2Token | None:
+        """Load token state from disk."""
+        if not self.path.exists():
+            return None
+
+        try:
+            with self.path.open(encoding="utf-8") as token_file:
+                data = json.load(token_file)
+        except json.JSONDecodeError as exc:
+            raise OAuth2TokenError(f"Stored OAuth2 token file is not valid JSON: {self.path}") from exc
+        except OSError as exc:
+            raise OAuth2TokenError(f"Could not read OAuth2 token file: {self.path}") from exc
+
+        if not isinstance(data, Mapping):
+            raise OAuth2TokenError("Stored OAuth2 token file must contain a JSON object")
+        return OAuth2Token.from_dict(data)
+
+    def save(self, token: OAuth2Token) -> None:
+        """Atomically save token state to disk."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=self.path.parent,
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temp_file:
+                temp_path = temp_file.name
+                json.dump(token.to_dict(), temp_file, indent=2, sort_keys=True)
+                temp_file.write("\n")
+
+            self._chmod_private(temp_path)
+            os.replace(temp_path, self.path)
+            self._chmod_private(self.path)
+        except OSError as exc:
+            raise OAuth2TokenError(f"Could not write OAuth2 token file: {self.path}") from exc
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+
+    @staticmethod
+    def _chmod_private(path: str | os.PathLike[str]) -> None:
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+
+class OAuth2TokenProvider:
+    """Callable OAuth2 access-token provider with refresh support."""
+
+    def __init__(
+        self,
+        *,
+        token_url: str,
+        client_id: str,
+        client_secret: str | None = None,
+        scopes: Sequence[str] | None = None,
+        refresh_token: str | None = None,
+        token_store: OAuth2TokenStore | None = None,
+        client: httpx.Client | None = None,
+        extra_token_params: Mapping[str, str] | None = None,
+        expiry_skew_seconds: float = 60.0,
+        clock: Callable[[], float] = time.time,
+    ) -> None:
+        """Initialize the provider.
+
+        Args:
+            token_url: OAuth2 token endpoint.
+            client_id: OAuth2 client ID.
+            client_secret: Optional OAuth2 client secret.
+            scopes: Optional requested scopes.
+            refresh_token: Optional bootstrap refresh token.
+            token_store: Optional persistent token storage.
+            client: Optional injected HTTP client.
+            extra_token_params: Extra form params for provider-specific token endpoints.
+            expiry_skew_seconds: Refresh tokens this many seconds before expiry.
+            clock: Clock used for expiry calculations.
+        """
+        self.token_url = token_url
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.scopes = tuple(scopes or ())
+        self.refresh_token = refresh_token
+        self.token_store = token_store
+        self._client = client or httpx.Client()
+        self._owns_client = client is None
+        self.extra_token_params = dict(extra_token_params or {})
+        self.expiry_skew_seconds = expiry_skew_seconds
+        self._clock = clock
+        self._token: OAuth2Token | None = None
+
+    def __call__(self) -> str:
+        """Return a valid access token, refreshing or minting as needed."""
+        token = self._current_token()
+        if token is not None and not token.is_expired(
+            now=self._clock(),
+            skew_seconds=self.expiry_skew_seconds,
+        ):
+            return token.access_token
+
+        refresh_token = (token.refresh_token if token else None) or self.refresh_token
+        if refresh_token:
+            token = self._fetch_token("refresh_token", refresh_token=refresh_token)
+        else:
+            token = self._fetch_token("client_credentials")
+
+        self._token = token
+        if self.token_store is not None:
+            self.token_store.save(token)
+        return token.access_token
+
+    def close(self) -> None:
+        """Close the underlying HTTP client if this provider owns it."""
+        if self._owns_client:
+            self._client.close()
+
+    def _current_token(self) -> OAuth2Token | None:
+        if self._token is not None:
+            return self._token
+        if self.token_store is None:
+            return None
+        self._token = self.token_store.load()
+        return self._token
+
+    def _fetch_token(self, grant_type: str, *, refresh_token: str | None = None) -> OAuth2Token:
+        data = {
+            "grant_type": grant_type,
+            "client_id": self.client_id,
+            **self.extra_token_params,
+        }
+        if self.client_secret is not None:
+            data["client_secret"] = self.client_secret
+        if self.scopes:
+            data["scope"] = " ".join(self.scopes)
+        if refresh_token is not None:
+            data["refresh_token"] = refresh_token
+
+        try:
+            response = self._client.post(self.token_url, data=data)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise OAuth2TokenError(f"OAuth2 token request failed: {exc}") from exc
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise OAuth2TokenError("OAuth2 token endpoint returned invalid JSON") from exc
+
+        if not isinstance(payload, Mapping):
+            raise OAuth2TokenError("OAuth2 token endpoint response must be a JSON object")
+
+        access_token = payload.get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise OAuth2TokenError("OAuth2 token endpoint response is missing access_token")
+
+        new_refresh_token = payload.get("refresh_token")
+        if new_refresh_token is not None and not isinstance(new_refresh_token, str):
+            raise OAuth2TokenError("OAuth2 token endpoint refresh_token must be a string")
+
+        token_type = payload.get("token_type", "Bearer")
+        if not isinstance(token_type, str) or not token_type:
+            raise OAuth2TokenError("OAuth2 token endpoint token_type must be a non-empty string")
+
+        expires_in = payload.get("expires_in")
+        if expires_in is not None and not isinstance(expires_in, (int, float)):
+            raise OAuth2TokenError("OAuth2 token endpoint expires_in must be a number")
+        expires_at = self._clock() + float(expires_in) if expires_in is not None else None
+
+        response_scope = payload.get("scope")
+        if isinstance(response_scope, str):
+            scopes = tuple(scope for scope in response_scope.split() if scope)
+        else:
+            scopes = self.scopes
+
+        return OAuth2Token(
+            access_token=access_token,
+            refresh_token=new_refresh_token or refresh_token,
+            expires_at=expires_at,
+            token_type=token_type,
+            scopes=scopes,
+        )

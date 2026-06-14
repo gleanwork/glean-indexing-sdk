@@ -1,5 +1,6 @@
 """Tests for source-side pull HTTP recipes."""
 
+import os
 from email.utils import formatdate
 from time import time
 
@@ -11,6 +12,10 @@ from glean.indexing.recipes.pull import (
     BasePullHttpStreamingDataClient,
     BasicAuth,
     BearerTokenAuth,
+    FileOAuth2TokenStore,
+    OAuth2Token,
+    OAuth2TokenError,
+    OAuth2TokenProvider,
     PullHttpClient,
     PullHttpError,
     PullOptions,
@@ -151,6 +156,205 @@ def test_refreshing_bearer_token_auth_uses_provider_per_request(httpx_mock):
     requests = httpx_mock.get_requests()
     assert requests[0].headers["Authorization"] == "Bearer access-1"
     assert requests[1].headers["Authorization"] == "Bearer access-2"
+
+
+def test_file_oauth2_token_store_missing_file_returns_none(tmp_path):
+    store = FileOAuth2TokenStore(tmp_path / ".tokens" / "source.oauth.json")
+
+    assert store.load() is None
+
+
+def test_file_oauth2_token_store_save_load_round_trips_fields(tmp_path):
+    store = FileOAuth2TokenStore(tmp_path / ".tokens" / "source.oauth.json")
+    token = OAuth2Token(
+        access_token="access-1",
+        refresh_token="refresh-1",
+        expires_at=12345.0,
+        token_type="Bearer",
+        scopes=("read", "write"),
+    )
+
+    store.save(token)
+
+    assert store.load() == token
+
+
+def test_file_oauth2_token_store_creates_parent_directory(tmp_path):
+    token_path = tmp_path / "nested" / ".tokens" / "source.oauth.json"
+    store = FileOAuth2TokenStore(token_path)
+
+    store.save(OAuth2Token(access_token="access-1"))
+
+    assert token_path.exists()
+
+
+def test_file_oauth2_token_store_invalid_json_raises_clear_error(tmp_path):
+    token_path = tmp_path / ".tokens" / "source.oauth.json"
+    token_path.parent.mkdir()
+    token_path.write_text("{not-json", encoding="utf-8")
+    store = FileOAuth2TokenStore(token_path)
+
+    with pytest.raises(OAuth2TokenError, match="not valid JSON"):
+        store.load()
+
+
+def test_file_oauth2_token_store_restricts_permissions_where_supported(tmp_path):
+    token_path = tmp_path / ".tokens" / "source.oauth.json"
+    store = FileOAuth2TokenStore(token_path)
+
+    store.save(OAuth2Token(access_token="access-1"))
+
+    if os.name != "nt":
+        assert token_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_oauth2_token_provider_reuses_cached_unexpired_token(tmp_path, httpx_mock):
+    store = FileOAuth2TokenStore(tmp_path / ".tokens" / "source.oauth.json")
+    store.save(OAuth2Token(access_token="cached-access", expires_at=time() + 3600))
+    provider = OAuth2TokenProvider(
+        token_url="https://auth.example.com/oauth/token",
+        client_id="client-1",
+        token_store=store,
+    )
+
+    assert provider() == "cached-access"
+    assert httpx_mock.get_requests() == []
+
+
+def test_oauth2_token_provider_refreshes_expired_token_and_preserves_refresh_token(tmp_path, httpx_mock):
+    token_url = "https://auth.example.com/oauth/token"
+    store = FileOAuth2TokenStore(tmp_path / ".tokens" / "source.oauth.json")
+    store.save(
+        OAuth2Token(
+            access_token="expired-access",
+            refresh_token="refresh-1",
+            expires_at=time() - 10,
+        )
+    )
+    httpx_mock.add_response(
+        url=token_url,
+        json={
+            "access_token": "fresh-access",
+            "expires_in": 3600,
+            "token_type": "Bearer",
+        },
+    )
+    provider = OAuth2TokenProvider(
+        token_url=token_url,
+        client_id="client-1",
+        client_secret="secret-1",
+        token_store=store,
+    )
+
+    assert provider() == "fresh-access"
+
+    request = httpx_mock.get_request()
+    assert request is not None
+    assert b"grant_type=refresh_token" in request.content
+    assert b"refresh_token=refresh-1" in request.content
+    stored_token = store.load()
+    assert stored_token is not None
+    assert stored_token.access_token == "fresh-access"
+    assert stored_token.refresh_token == "refresh-1"
+
+
+def test_oauth2_token_provider_saves_rotated_refresh_token(tmp_path, httpx_mock):
+    token_url = "https://auth.example.com/oauth/token"
+    store = FileOAuth2TokenStore(tmp_path / ".tokens" / "source.oauth.json")
+    store.save(
+        OAuth2Token(
+            access_token="expired-access",
+            refresh_token="refresh-1",
+            expires_at=time() - 10,
+        )
+    )
+    httpx_mock.add_response(
+        url=token_url,
+        json={
+            "access_token": "fresh-access",
+            "refresh_token": "refresh-2",
+            "expires_in": 3600,
+        },
+    )
+    provider = OAuth2TokenProvider(
+        token_url=token_url,
+        client_id="client-1",
+        token_store=store,
+    )
+
+    assert provider() == "fresh-access"
+
+    stored_token = store.load()
+    assert stored_token is not None
+    assert stored_token.refresh_token == "refresh-2"
+
+
+def test_oauth2_token_provider_mints_client_credentials_token_with_scopes(tmp_path, httpx_mock):
+    token_url = "https://auth.example.com/oauth/token"
+    store = FileOAuth2TokenStore(tmp_path / ".tokens" / "source.oauth.json")
+    httpx_mock.add_response(
+        url=token_url,
+        json={
+            "access_token": "service-access",
+            "expires_in": 1800,
+            "scope": "read write",
+        },
+    )
+    provider = OAuth2TokenProvider(
+        token_url=token_url,
+        client_id="client-1",
+        client_secret="secret-1",
+        scopes=("read", "write"),
+        token_store=store,
+    )
+
+    assert provider() == "service-access"
+
+    request = httpx_mock.get_request()
+    assert request is not None
+    assert b"grant_type=client_credentials" in request.content
+    assert b"client_id=client-1" in request.content
+    assert b"client_secret=secret-1" in request.content
+    assert b"scope=read+write" in request.content
+    stored_token = store.load()
+    assert stored_token is not None
+    assert stored_token.scopes == ("read", "write")
+
+
+def test_oauth2_token_provider_raises_clear_error_without_access_token(httpx_mock):
+    token_url = "https://auth.example.com/oauth/token"
+    httpx_mock.add_response(url=token_url, json={"expires_in": 1800})
+    provider = OAuth2TokenProvider(token_url=token_url, client_id="client-1")
+
+    with pytest.raises(OAuth2TokenError, match="missing access_token"):
+        provider()
+
+
+def test_refreshing_bearer_token_auth_works_with_oauth2_token_provider(httpx_mock):
+    token_url = "https://auth.example.com/oauth/token"
+    httpx_mock.add_response(
+        url=token_url,
+        json={
+            "access_token": "oauth-access",
+            "expires_in": 1800,
+        },
+    )
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": []},
+        headers={"Content-Type": "application/json"},
+    )
+    provider = OAuth2TokenProvider(token_url=token_url, client_id="client-1")
+    client = PullHttpClient(
+        base_url="https://example.com/v1",
+        auth=RefreshingBearerTokenAuth(provider),
+        options=_fast_options(),
+    )
+
+    client.get("/items")
+
+    source_request = httpx_mock.get_requests()[1]
+    assert source_request.headers["Authorization"] == "Bearer oauth-access"
 
 
 def test_http_client_auth_headers_override_default_headers_and_request_headers_override_auth(

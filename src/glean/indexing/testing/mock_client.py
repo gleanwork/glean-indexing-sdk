@@ -13,9 +13,9 @@ This module provides:
   first positional arg of the wrapped function.
 
 The facade only allows attribute access through to the underlying mock for a
-whitelisted set of names (`indexing`). Anything else raises `AttributeError`,
-so typos like `client.documnts_posted` fail loudly instead of silently
-creating an auto-mock.
+whitelisted set of generated SDK namespaces. Anything else raises
+`AttributeError`, so typos like `client.documnts_posted` fail loudly instead
+of silently creating an auto-mock.
 """
 
 import functools
@@ -32,7 +32,7 @@ from glean.indexing.testing._patch_targets import _PATCH_TARGETS, validate_patch
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
-_ALLOWED_PASSTHROUGH: FrozenSet[str] = frozenset({"indexing"})
+_ALLOWED_PASSTHROUGH: FrozenSet[str] = frozenset({"indexing", "troubleshooting"})
 
 _glean_spec: Optional[Glean] = None
 

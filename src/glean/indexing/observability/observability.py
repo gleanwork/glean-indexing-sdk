@@ -235,7 +235,7 @@ def setup_connector_logging(
     log_level: str = "INFO",
     log_format: Optional[str] = None,
     *,
-    use_structured_logging: bool = False,
+    use_structured_logging: bool = True,
     formatter: Optional[logging.Formatter] = None,
     extra_handlers: Optional[List[logging.Handler]] = None,
 ) -> None:
@@ -245,33 +245,37 @@ def setup_connector_logging(
     Args:
         connector_name: Name of the connector for log identification
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
-        log_format: Custom log format string (ignored if formatter is provided)
-        use_structured_logging: Enable structured JSON logging
+        log_format: Custom log format string; takes precedence over use_structured_logging
+        use_structured_logging: Enable structured JSON logging (default: True)
         formatter: Custom formatter instance (overrides use_structured_logging and log_format)
         extra_handlers: Additional handlers to add beyond the default StreamHandler
     """
-    for handler in logging.root.handlers[:]:
-        handler.flush()
-        handler.close()
-        logging.root.removeHandler(handler)
+    level = getattr(logging, log_level.upper())
 
-    logging.root.setLevel(getattr(logging, log_level.upper()))
+    glean_logger = logging.getLogger("glean")
+    for h in glean_logger.handlers[:]:
+        h.close()
+        glean_logger.removeHandler(h)
+    glean_logger.setLevel(level)
 
     if formatter is None:
-        if use_structured_logging:
+        if log_format is not None:
+            formatter = logging.Formatter(log_format)
+        elif use_structured_logging:
             formatter = StructuredFormatter()
         else:
-            if log_format is None:
-                log_format = f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
-            formatter = logging.Formatter(log_format)
+            formatter = logging.Formatter(
+                f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
+            )
 
     handlers = [logging.StreamHandler()]
     if extra_handlers:
         handlers.extend(extra_handlers)
 
     for handler in handlers:
-        handler.setFormatter(formatter)
-        logging.root.addHandler(handler)
+        if handler.formatter is None:
+            handler.setFormatter(formatter)
+        glean_logger.addHandler(handler)
 
     if isinstance(formatter, StructuredFormatter):
         logger.info(

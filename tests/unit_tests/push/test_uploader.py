@@ -73,6 +73,30 @@ def test_delete_document_calls_generated_client():
     )
 
 
+def test_get_document_lifecycle_events_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        response = uploader.get_document_lifecycle_events(
+            object_type="Article",
+            document_id="doc-1",
+            start_date="2025-05-01",
+            max_events=50,
+        )
+
+    assert (
+        response
+        == client.troubleshooting.post_api_index_v1_debug_datasource_document_events.return_value
+    )
+    client.troubleshooting.post_api_index_v1_debug_datasource_document_events.assert_called_once_with(
+        datasource="test_datasource",
+        object_type="Article",
+        doc_id="doc-1",
+        start_date="2025-05-01",
+        max_events=50,
+    )
+
+
 def test_bulk_index_documents_calls_generated_client():
     uploader = PushUploader(datasource="test_datasource")
     documents = [_document("doc-1"), _document("doc-2")]
@@ -171,6 +195,19 @@ def test_index_user_calls_generated_client():
         datasource="test_datasource",
         user=user,
         version=3,
+    )
+
+
+def test_debug_user_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        response = uploader.debug_user(email="user@example.com")
+
+    assert response == client.indexing.people.debug.return_value
+    client.indexing.people.debug.assert_called_once_with(
+        datasource="test_datasource",
+        email="user@example.com",
     )
 
 

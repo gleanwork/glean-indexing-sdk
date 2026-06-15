@@ -240,6 +240,7 @@ class ConnectorObservability:
         batch_count: int,
         batch_size: int,
         entity_type: str = "document",
+        upload_id: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -250,18 +251,21 @@ class ConnectorObservability:
             batch_count: Total number of batches
             batch_size: Number of items in this batch
             entity_type: Type of entity being uploaded (document, user, group, etc.)
+            upload_id: Optional identifier for correlating upload start/complete events
             **kwargs: Additional fields to include
         """
+        extra: Dict[str, Any] = dict(
+            batch_index=batch_index,
+            batch_count=batch_count,
+            batch_size=batch_size,
+            entity_type=entity_type,
+            **kwargs,
+        )
+        if upload_id is not None:
+            extra["upload_id"] = upload_id
         logger.info(
             f"Batch upload started: {batch_index + 1}/{batch_count} ({batch_size} {entity_type}s)",
-            extra=self.get_common_fields(
-                operation="batch_upload_started",
-                batch_index=batch_index,
-                batch_count=batch_count,
-                batch_size=batch_size,
-                entity_type=entity_type,
-                **kwargs,
-            ),
+            extra=self.get_common_fields(operation="batch_upload_started", **extra),
         )
 
     def log_batch_upload_completed(
@@ -271,6 +275,7 @@ class ConnectorObservability:
         batch_size: int,
         duration_ms: int,
         entity_type: str = "document",
+        upload_id: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -282,20 +287,23 @@ class ConnectorObservability:
             batch_size: Number of items uploaded
             duration_ms: Duration in milliseconds
             entity_type: Type of entity uploaded
+            upload_id: Optional identifier for correlating upload start/complete events
             **kwargs: Additional fields to include
         """
+        extra: Dict[str, Any] = dict(
+            batch_index=batch_index,
+            batch_count=batch_count,
+            batch_size=batch_size,
+            duration_ms=duration_ms,
+            entity_type=entity_type,
+            status="success",
+            **kwargs,
+        )
+        if upload_id is not None:
+            extra["upload_id"] = upload_id
         logger.info(
             f"Batch upload completed: {batch_index + 1}/{batch_count} ({batch_size} {entity_type}s)",
-            extra=self.get_common_fields(
-                operation="batch_upload_completed",
-                batch_index=batch_index,
-                batch_count=batch_count,
-                batch_size=batch_size,
-                duration_ms=duration_ms,
-                entity_type=entity_type,
-                status="success",
-                **kwargs,
-            ),
+            extra=self.get_common_fields(operation="batch_upload_completed", **extra),
         )
 
     def log_batch_upload_failed(
@@ -338,70 +346,68 @@ class ConnectorObservability:
         )
 
 
-    def log_document_indexed(
+    def log_document_upload_started(
         self,
-        document_id: str,
+        document_ids: List[str],
         entity_type: str = "document",
+        upload_id: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
-        """Log successful indexing of a single document (for streaming connectors).
+        """Log the start of a non-batched document upload (e.g. /indexdocuments).
 
-        Use this instead of the batch upload methods when your connector indexes
-        documents one at a time rather than in batches — for example, in a streaming
-        connector that yields items incrementally.
+        Use for connectors that call the indexing API with a list of documents
+        rather than going through the batch upload flow.
 
         Args:
-            document_id: Identifier of the indexed document
-            entity_type: Type of entity indexed (document, user, group, etc.)
+            document_ids: Identifiers of the documents being uploaded
+            entity_type: Type of entity being uploaded (document, user, group, etc.)
+            upload_id: Optional identifier for correlating start/complete events
             **kwargs: Additional fields to include in the log event
         """
+        extra: Dict[str, Any] = dict(
+            document_count=len(document_ids),
+            entity_type=entity_type,
+            **kwargs,
+        )
+        if upload_id is not None:
+            extra["upload_id"] = upload_id
         logger.info(
-            f"Document indexed: {document_id}",
-            extra=self.get_common_fields(
-                operation="document_indexed",
-                document_id=document_id,
-                entity_type=entity_type,
-                status="success",
-                **kwargs,
-            ),
+            f"Document upload started: {len(document_ids)} {entity_type}s",
+            extra=self.get_common_fields(operation="document_upload_started", **extra),
         )
 
-    def log_document_index_failed(
+    def log_document_upload_completed(
         self,
-        document_id: str,
-        error: Exception,
+        document_ids: List[str],
+        duration_ms: int,
         entity_type: str = "document",
+        upload_id: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
-        """Log a failed attempt to index a single document (for streaming connectors).
+        """Log successful completion of a non-batched document upload (e.g. /indexdocuments).
 
-        Use this instead of ``log_batch_upload_failed`` when your connector indexes
-        documents one at a time rather than in batches.
+        Use for connectors that call the indexing API with a list of documents
+        rather than going through the batch upload flow.
 
         Args:
-            document_id: Identifier of the document that failed to index
-            error: The exception that caused the failure
-            entity_type: Type of entity being indexed (document, user, group, etc.)
+            document_ids: Identifiers of the documents that were uploaded
+            duration_ms: Duration of the upload call in milliseconds
+            entity_type: Type of entity uploaded (document, user, group, etc.)
+            upload_id: Optional identifier for correlating start/complete events
             **kwargs: Additional fields to include in the log event
         """
-        import sys
-
-        exc_info = sys.exc_info()
-        if exc_info[1] is not error:
-            exc_info = (type(error), error, None)
-
-        logger.error(
-            f"Document index failed: {document_id} - {error}",
-            extra=self.get_common_fields(
-                operation="document_index_failed",
-                document_id=document_id,
-                entity_type=entity_type,
-                status="failed",
-                error_type=type(error).__name__,
-                error_message=str(error),
-                **kwargs,
-            ),
-            exc_info=exc_info,
+        extra: Dict[str, Any] = dict(
+            document_count=len(document_ids),
+            duration_ms=duration_ms,
+            entity_type=entity_type,
+            status="success",
+            **kwargs,
+        )
+        if upload_id is not None:
+            extra["upload_id"] = upload_id
+        logger.info(
+            f"Document upload completed: {len(document_ids)} {entity_type}s",
+            extra=self.get_common_fields(operation="document_upload_completed", **extra),
         )
 
 

@@ -329,6 +329,22 @@ class TestLifecycleEvents:
         assert log_data["batch_size"] == 50
         assert log_data["entity_type"] == "document"
 
+    def test_log_batch_upload_started_with_upload_id(self, observability_with_logger):
+        """Test batch_upload_started includes upload_id when provided."""
+        obs, stream, logger = observability_with_logger
+
+        obs.log_batch_upload_started(
+            batch_index=0,
+            batch_count=3,
+            batch_size=50,
+            upload_id="upload-abc-123",
+        )
+
+        stream.seek(0)
+        log_data = json.loads(stream.read())
+
+        assert log_data["upload_id"] == "upload-abc-123"
+
     def test_log_batch_upload_completed(self, observability_with_logger):
         """Test batch_upload_completed event logging."""
         obs, stream, logger = observability_with_logger
@@ -350,6 +366,23 @@ class TestLifecycleEvents:
         assert log_data["duration_ms"] == 3000
         assert log_data["entity_type"] == "user"
         assert log_data["status"] == "success"
+
+    def test_log_batch_upload_completed_with_upload_id(self, observability_with_logger):
+        """Test batch_upload_completed includes upload_id when provided."""
+        obs, stream, logger = observability_with_logger
+
+        obs.log_batch_upload_completed(
+            batch_index=0,
+            batch_count=1,
+            batch_size=10,
+            duration_ms=500,
+            upload_id="upload-xyz-789",
+        )
+
+        stream.seek(0)
+        log_data = json.loads(stream.read())
+
+        assert log_data["upload_id"] == "upload-xyz-789"
 
     def test_log_batch_upload_failed(self, observability_with_logger):
         """Test batch_upload_failed event logging."""
@@ -373,38 +406,55 @@ class TestLifecycleEvents:
         assert log_data["error_message"] == "Network timeout"
         assert log_data["level"] == "ERROR"
 
-    def test_log_document_indexed(self, observability_with_logger):
-        """Test document_indexed event logging for streaming connectors."""
+    def test_log_document_upload_started(self, observability_with_logger):
+        """Test document_upload_started event logging."""
         obs, stream, logger = observability_with_logger
 
-        obs.log_document_indexed(document_id="doc-123", entity_type="document")
+        obs.log_document_upload_started(
+            document_ids=["doc-1", "doc-2", "doc-3"],
+            entity_type="document",
+            upload_id="upload-abc",
+        )
 
         stream.seek(0)
         log_data = json.loads(stream.read())
 
-        assert "doc-123" in log_data["message"]
-        assert log_data["operation"] == "document_indexed"
-        assert log_data["document_id"] == "doc-123"
+        assert "3 documents" in log_data["message"]
+        assert log_data["operation"] == "document_upload_started"
+        assert log_data["document_count"] == 3
         assert log_data["entity_type"] == "document"
-        assert log_data["status"] == "success"
+        assert log_data["upload_id"] == "upload-abc"
 
-    def test_log_document_index_failed(self, observability_with_logger):
-        """Test document_index_failed event logging for streaming connectors."""
+    def test_log_document_upload_completed(self, observability_with_logger):
+        """Test document_upload_completed event logging."""
         obs, stream, logger = observability_with_logger
 
-        test_error = ValueError("Invalid document format")
-        obs.log_document_index_failed(document_id="doc-456", error=test_error)
+        obs.log_document_upload_completed(
+            document_ids=["doc-1", "doc-2"],
+            duration_ms=800,
+            upload_id="upload-abc",
+        )
 
         stream.seek(0)
         log_data = json.loads(stream.read())
 
-        assert "doc-456" in log_data["message"]
-        assert log_data["operation"] == "document_index_failed"
-        assert log_data["document_id"] == "doc-456"
-        assert log_data["status"] == "failed"
-        assert log_data["error_type"] == "ValueError"
-        assert log_data["error_message"] == "Invalid document format"
-        assert log_data["level"] == "ERROR"
+        assert "2 documents" in log_data["message"]
+        assert log_data["operation"] == "document_upload_completed"
+        assert log_data["document_count"] == 2
+        assert log_data["duration_ms"] == 800
+        assert log_data["status"] == "success"
+        assert log_data["upload_id"] == "upload-abc"
+
+    def test_log_document_upload_without_upload_id(self, observability_with_logger):
+        """Test document upload methods work without upload_id."""
+        obs, stream, logger = observability_with_logger
+
+        obs.log_document_upload_started(document_ids=["doc-1"])
+
+        stream.seek(0)
+        log_data = json.loads(stream.read())
+
+        assert "upload_id" not in log_data
 
 
 class TestBackwardCompatibility:

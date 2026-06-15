@@ -8,7 +8,7 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from .formatters import StructuredFormatter
-from .providers import InMemoryMetricsProvider, MetricsProvider, MetricType
+from .providers import InMemoryMetricsProvider, MetricsProvider, MetricType, NoOpMetricsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class ConnectorObservability:
         self.datasource = datasource or connector_name
         self.crawl_mode = crawl_mode
         self.run_id = run_id or str(uuid.uuid4())
-        self.metrics_provider = metrics_provider or InMemoryMetricsProvider()
+        self.metrics_provider = metrics_provider or NoOpMetricsProvider()
         self.metrics: Dict[str, Any] = defaultdict(int)
         self.timers: Dict[str, float] = {}
         self.start_time: Optional[float] = None

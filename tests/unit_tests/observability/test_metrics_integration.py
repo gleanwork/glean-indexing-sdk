@@ -6,6 +6,7 @@ from glean.indexing.observability import (
     InMemoryMetricsProvider,
     MetricsProvider,
     MetricType,
+    NoOpMetricsProvider,
 )
 
 
@@ -13,9 +14,9 @@ class TestConnectorObservabilityWithMetrics:
     """Tests for ConnectorObservability metrics integration."""
 
     def test_default_metrics_provider(self):
-        """Test that default metrics provider is InMemoryMetricsProvider."""
+        """Test that default metrics provider is NoOpMetricsProvider."""
         obs = ConnectorObservability("test_connector")
-        assert isinstance(obs.metrics_provider, InMemoryMetricsProvider)
+        assert isinstance(obs.metrics_provider, NoOpMetricsProvider)
 
     def test_custom_metrics_provider(self):
         """Test using a custom metrics provider."""
@@ -37,10 +38,9 @@ class TestConnectorObservabilityWithMetrics:
 
     def test_record_upload_batch_size(self):
         """Test recording upload batch size."""
-        obs = ConnectorObservability("test_connector", datasource="test_ds")
+        provider = InMemoryMetricsProvider()
+        obs = ConnectorObservability("test_connector", datasource="test_ds", metrics_provider=provider)
         obs.record_upload_batch_size(100)
-
-        provider = obs.metrics_provider
         history = provider.get_metric_history()
 
         assert len(history) == 1
@@ -52,10 +52,9 @@ class TestConnectorObservabilityWithMetrics:
 
     def test_record_upload_throughput(self):
         """Test recording upload throughput."""
-        obs = ConnectorObservability("test_connector")
+        provider = InMemoryMetricsProvider()
+        obs = ConnectorObservability("test_connector", metrics_provider=provider)
         obs.record_upload_throughput(50.5)
-
-        provider = obs.metrics_provider
         history = provider.get_metric_history()
 
         assert len(history) == 1
@@ -65,10 +64,9 @@ class TestConnectorObservabilityWithMetrics:
 
     def test_record_api_request_latency(self):
         """Test recording API request latency."""
-        obs = ConnectorObservability("test_connector")
+        provider = InMemoryMetricsProvider()
+        obs = ConnectorObservability("test_connector", metrics_provider=provider)
         obs.record_api_request_latency(150.5, "/api/users")
-
-        provider = obs.metrics_provider
         history = provider.get_metric_history()
 
         assert len(history) == 1
@@ -79,21 +77,20 @@ class TestConnectorObservabilityWithMetrics:
 
     def test_record_api_request_count(self):
         """Test recording API request count."""
-        obs = ConnectorObservability("test_connector")
+        provider = InMemoryMetricsProvider()
+        obs = ConnectorObservability("test_connector", metrics_provider=provider)
         obs.record_api_request_count("/api/documents")
         obs.record_api_request_count("/api/documents")
 
-        provider = obs.metrics_provider
         metrics = provider.get_metrics()
 
         assert metrics["api_request_count"] == 2.0
 
     def test_record_api_request_error(self):
         """Test recording API request errors."""
-        obs = ConnectorObservability("test_connector")
+        provider = InMemoryMetricsProvider()
+        obs = ConnectorObservability("test_connector", metrics_provider=provider)
         obs.record_api_request_error("/api/upload", "TimeoutError")
-
-        provider = obs.metrics_provider
         history = provider.get_metric_history()
 
         assert len(history) == 1
@@ -103,21 +100,20 @@ class TestConnectorObservabilityWithMetrics:
 
     def test_record_retry(self):
         """Test recording retry attempts."""
-        obs = ConnectorObservability("test_connector")
+        provider = InMemoryMetricsProvider()
+        obs = ConnectorObservability("test_connector", metrics_provider=provider)
         obs.record_retry("api_call")
         obs.record_retry("api_call")
 
-        provider = obs.metrics_provider
         metrics = provider.get_metrics()
 
         assert metrics["retry_count"] == 2.0
 
     def test_record_crawl_success(self):
         """Test recording crawl success."""
-        obs = ConnectorObservability("test_connector", crawl_mode="full")
+        provider = InMemoryMetricsProvider()
+        obs = ConnectorObservability("test_connector", crawl_mode="full", metrics_provider=provider)
         obs.record_crawl_success()
-
-        provider = obs.metrics_provider
         history = provider.get_metric_history()
 
         assert len(history) == 1
@@ -127,10 +123,9 @@ class TestConnectorObservabilityWithMetrics:
 
     def test_record_crawl_failure(self):
         """Test recording crawl failure."""
-        obs = ConnectorObservability("test_connector", crawl_mode="incremental")
+        provider = InMemoryMetricsProvider()
+        obs = ConnectorObservability("test_connector", crawl_mode="incremental", metrics_provider=provider)
         obs.record_crawl_failure("NetworkError")
-
-        provider = obs.metrics_provider
         history = provider.get_metric_history()
 
         assert len(history) == 1
@@ -162,7 +157,8 @@ class TestConnectorObservabilityWithMetrics:
 
     def test_multiple_metrics_in_lifecycle(self):
         """Test emitting multiple metrics during connector lifecycle."""
-        obs = ConnectorObservability("test_connector", datasource="test_ds", crawl_mode="full")
+        provider = InMemoryMetricsProvider()
+        obs = ConnectorObservability("test_connector", datasource="test_ds", crawl_mode="full", metrics_provider=provider)
 
         obs.start_execution()
         obs.record_api_request_count("/api/fetch")
@@ -172,29 +168,30 @@ class TestConnectorObservabilityWithMetrics:
         obs.record_crawl_success()
         obs.end_execution()
 
-        provider = obs.metrics_provider
         history = provider.get_metric_history()
 
-        assert len(history) == 5
+        assert len(history) == 6
         metric_names = [h["name"] for h in history]
         assert "api_request_count" in metric_names
         assert "api_request_latency_ms" in metric_names
         assert "upload_batch_size" in metric_names
         assert "upload_throughput" in metric_names
         assert "crawl_success" in metric_names
+        assert "connector_execution_duration_ms" in metric_names
 
     def test_metrics_labels_include_connector_context(self):
         """Test that all metrics include connector context in labels."""
+        provider = InMemoryMetricsProvider()
         obs = ConnectorObservability(
             connector_name="my_connector",
             datasource="my_datasource",
             crawl_mode="incremental",
+            metrics_provider=provider,
         )
 
         obs.record_upload_batch_size(100)
         obs.record_api_request_count("/api/test")
 
-        provider = obs.metrics_provider
         history = provider.get_metric_history()
 
         for metric in history:
@@ -220,13 +217,14 @@ class TestBackwardCompatibilityWithMetrics:
 
     def test_metrics_provider_independent_of_metrics_dict(self):
         """Test that MetricsProvider and metrics dict are independent."""
-        obs = ConnectorObservability("test_connector")
+        provider = InMemoryMetricsProvider()
+        obs = ConnectorObservability("test_connector", metrics_provider=provider)
 
         obs.record_metric("dict_metric", 100)
         obs.record_upload_batch_size(50)
 
         metrics_dict = obs.get_metrics_summary()
-        provider_history = obs.metrics_provider.get_metric_history()
+        provider_history = provider.get_metric_history()
 
         assert "dict_metric" in metrics_dict
         assert metrics_dict["dict_metric"] == 100
@@ -242,6 +240,4 @@ class TestBackwardCompatibilityWithMetrics:
         obs.record_upload_batch_size(100)
         obs.end_execution()
 
-        assert isinstance(obs.metrics_provider, InMemoryMetricsProvider)
-        provider_metrics = obs.metrics_provider.get_metrics()
-        assert provider_metrics["upload_batch_size"] == 100.0
+        assert isinstance(obs.metrics_provider, NoOpMetricsProvider)

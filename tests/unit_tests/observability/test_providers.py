@@ -6,6 +6,7 @@ from glean.indexing.observability import (
     InMemoryMetricsProvider,
     MetricsProvider,
     MetricType,
+    NoOpMetricsProvider,
 )
 
 
@@ -103,6 +104,24 @@ class TestInMemoryMetricsProvider:
         assert metrics["upload_batch_size"] == 100.0
         assert metrics["upload_throughput"] == 50.0
         assert metrics["api_request_count"] == 1.0
+
+
+class TestNoOpMetricsProvider:
+    """Tests for NoOpMetricsProvider."""
+
+    def test_emit_metric_does_nothing(self):
+        """Test that emit_metric is a no-op."""
+        provider = NoOpMetricsProvider()
+        provider.emit_metric("some_metric", 42.0, MetricType.GAUGE, {"label": "value"})
+
+    def test_flush_does_nothing(self):
+        """Test that flush is a no-op."""
+        provider = NoOpMetricsProvider()
+        provider.flush()
+
+    def test_implements_metrics_provider(self):
+        """Test that NoOpMetricsProvider implements MetricsProvider."""
+        assert isinstance(NoOpMetricsProvider(), MetricsProvider)
 
 
 class TestMetricsProviderInterface:

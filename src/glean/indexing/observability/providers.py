@@ -155,11 +155,29 @@ class MetricsProvider(ABC):
         pass
 
 
+class NoOpMetricsProvider(MetricsProvider):
+    """No-op metrics provider (default).
+
+    Silently discards all metrics. Use when no metrics backend is configured.
+    """
+
+    def emit_metric(
+        self,
+        name: str,
+        value: float,
+        metric_type: MetricType = MetricType.GAUGE,
+        labels: Optional[Dict[str, str]] = None,
+    ) -> None:
+        pass
+
+    def flush(self) -> None:
+        pass
+
+
 class InMemoryMetricsProvider(MetricsProvider):
-    """Default in-memory metrics provider (zero-config).
+    """In-memory metrics provider for testing and development.
 
     Stores metrics in memory for later retrieval via get_metrics().
-    Maintains backward compatibility with existing ConnectorObservability behavior.
     """
 
     def __init__(self):

@@ -16,6 +16,7 @@ from glean.indexing.observability.providers import (
     InMemoryMetricsProvider,
     MetricsProvider,
     MetricType,
+    NoOpMetricsProvider,
 )
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "InMemoryMetricsProvider",
     "MetricsProvider",
     "MetricType",
+    "NoOpMetricsProvider",
     "PerformanceTracker",
     "ProgressCallback",
     "StructuredFormatter",

@@ -168,9 +168,11 @@ class NoOpMetricsProvider(MetricsProvider):
         metric_type: MetricType = MetricType.GAUGE,
         labels: Optional[Dict[str, str]] = None,
     ) -> None:
+        """No-op: discard the metric silently."""
         pass
 
     def flush(self) -> None:
+        """No-op: nothing to flush."""
         pass
 
 

@@ -8,7 +8,7 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from .formatters import StructuredFormatter
-from .providers import InMemoryMetricsProvider, MetricsProvider, MetricType, NoOpMetricsProvider
+from .providers import MetricsProvider, MetricType, NoOpMetricsProvider
 
 logger = logging.getLogger(__name__)
 

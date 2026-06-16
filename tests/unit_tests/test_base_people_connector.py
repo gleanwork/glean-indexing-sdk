@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from glean.api_client.models import EmployeeInfoDefinition
+
 from glean.indexing.connectors.base_people_connector import BasePeopleConnector
 from glean.indexing.models import ConnectorOptions
 from tests.unit_tests.common.mock_clients import MockPeopleClient
@@ -50,7 +50,7 @@ def test_index_data_batches_and_uploads():
     client = MagicMock()
     client.get_source_data.return_value = MockPeopleClient().get_all_people()
     connector = DummyPeopleConnector("test_people", client)
-    with patch("glean.indexing.connectors.base_people_connector.api_client") as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.people.bulk_index
         connector.index_data()
         assert bulk_index.call_count == 1
@@ -64,7 +64,7 @@ def test_index_data_empty():
     client = MagicMock()
     client.get_source_data.return_value = []
     connector = DummyPeopleConnector("test_people", client)
-    with patch("glean.indexing.connectors.base_people_connector.api_client") as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.people.bulk_index
         connector.index_data()
         assert bulk_index.call_count == 0
@@ -74,7 +74,7 @@ def test_index_data_error_handling():
     client = MagicMock()
     client.get_source_data.return_value = MockPeopleClient().get_all_people()
     connector = DummyPeopleConnector("test_people", client)
-    with patch("glean.indexing.connectors.base_people_connector.api_client") as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.people.bulk_index
         bulk_index.side_effect = Exception("upload failed")
         with pytest.raises(Exception):
@@ -89,7 +89,7 @@ def test_force_restart_upload():
     connector = DummyPeopleConnector("test_people", client)
     connector.batch_size = 2
 
-    with patch("glean.indexing.connectors.base_people_connector.api_client") as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.people.bulk_index
         connector.index_data(options=ConnectorOptions(force_restart=True))
 
@@ -113,7 +113,7 @@ def test_disable_stale_deletion_check_on_last_page_only():
     connector = DummyPeopleConnector("test_people", client)
     connector.batch_size = 2
 
-    with patch("glean.indexing.connectors.base_people_connector.api_client") as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.people.bulk_index
         connector.index_data(options=ConnectorOptions(disable_stale_deletion_check=True))
 
@@ -138,7 +138,7 @@ def test_upload_timeout_ms_passed_to_bulk_index():
     connector = DummyPeopleConnector("test_people", client)
     connector.batch_size = 2
 
-    with patch("glean.indexing.connectors.base_people_connector.api_client") as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.people.bulk_index
         connector.index_data(options=ConnectorOptions(upload_timeout_ms=120_000))
 
@@ -154,8 +154,8 @@ def test_upload_timeout_ms_defaults_to_none():
     client.get_source_data.return_value = MockPeopleClient().get_all_people()
     connector = DummyPeopleConnector("test_people", client)
 
-    with patch("glean.indexing.connectors.base_people_connector.api_client") as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.people.bulk_index
         connector.index_data()
 
-        assert bulk_index.call_args[1]["timeout_ms"] is None
+        assert bulk_index.call_args[1].get("timeout_ms") is None

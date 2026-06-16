@@ -1,7 +1,6 @@
 from unittest.mock import patch
 
 import pytest
-
 from glean.api_client.models.contentdefinition import ContentDefinition
 from glean.api_client.models.customdatasourceconfig import (
     CustomDatasourceConfig,
@@ -10,6 +9,7 @@ from glean.api_client.models.customdatasourceconfig import (
 )
 from glean.api_client.models.documentdefinition import DocumentDefinition
 from glean.api_client.models.userreferencedefinition import UserReferenceDefinition
+
 from glean.indexing.connectors import BaseDataClient, BaseDatasourceConnector
 from tests.unit_tests.common.mock_clients import MockDataSourceClient
 
@@ -51,7 +51,7 @@ def test_custom_datasource_connector_index_data():
     items = MockDataSourceClient().get_all_items()
     connector = CustomDatasourceConnector("custom_ds", MockClient(items))
 
-    with patch("glean.indexing.connectors.base_datasource_connector.api_client") as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
 
@@ -65,7 +65,7 @@ def test_custom_datasource_connector_index_data():
 def test_custom_datasource_connector_empty_data():
     connector = CustomDatasourceConnector("custom_ds", MockClient([]))
 
-    with patch("glean.indexing.connectors.base_datasource_connector.api_client") as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
 
@@ -76,7 +76,7 @@ def test_custom_datasource_connector_api_error():
     items = MockDataSourceClient().get_all_items()
     connector = CustomDatasourceConnector("custom_ds", MockClient(items))
 
-    with patch("glean.indexing.connectors.base_datasource_connector.api_client") as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         bulk_index.side_effect = Exception("upload failed")
 

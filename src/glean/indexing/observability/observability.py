@@ -6,9 +6,10 @@ import time
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
+from .formatters import StructuredFormatter
+
 logger = logging.getLogger(__name__)
 
-# Type variable for decorated classes
 T = TypeVar("T")
 
 
@@ -93,7 +94,6 @@ def with_observability(
                 method_name = method.__name__
                 class_name = self.__class__.__name__
 
-                # Log method start
                 if include_args:
                     logger.info(
                         f"[{class_name}] {method_name} started with args={args}, kwargs={kwargs}"
@@ -107,7 +107,6 @@ def with_observability(
                     result = method(self, *args, **kwargs)
                     duration = time.time() - start_time
 
-                    # Log successful completion
                     if include_return:
                         logger.info(
                             f"[{class_name}] {method_name} completed in {duration:.3f}s with result={result}"
@@ -115,7 +114,6 @@ def with_observability(
                     else:
                         logger.info(f"[{class_name}] {method_name} completed in {duration:.3f}s")
 
-                    # Record timing metric if observability is available
                     if hasattr(self, "_observability"):
                         self._observability.record_metric(f"{method_name}_duration", duration)
 
@@ -125,7 +123,6 @@ def with_observability(
                     duration = time.time() - start_time
                     logger.error(f"[{class_name}] {method_name} failed after {duration:.3f}s: {e}")
 
-                    # Record error metric if observability is available
                     if hasattr(self, "_observability"):
                         self._observability.increment_counter(f"{method_name}_errors")
 
@@ -133,7 +130,6 @@ def with_observability(
 
             return wrapped_method
 
-        # Apply the wrapper to all public methods
         for attr_name, attr_value in cls.__dict__.items():
             if callable(attr_value) and not attr_name.startswith("_"):
                 setattr(cls, attr_name, wrap_method(attr_value))
@@ -154,7 +150,6 @@ def track_crawl_progress(method: Callable[..., Any]) -> Callable[..., Any]:
     def wrapper(self, *args: Any, **kwargs: Any) -> Any:
         result = method(self, *args, **kwargs)
 
-        # Track item count if result is a sequence
         if hasattr(result, "__len__"):
             item_count = len(result)
             if hasattr(self, "_observability"):
@@ -236,27 +231,56 @@ class ProgressCallback:
 
 
 def setup_connector_logging(
-    connector_name: str, log_level: str = "INFO", log_format: Optional[str] = None
-):
+    connector_name: str,
+    log_level: str = "INFO",
+    log_format: Optional[str] = None,
+    *,
+    use_structured_logging: bool = True,
+    formatter: Optional[logging.Formatter] = None,
+    extra_handlers: Optional[List[logging.Handler]] = None,
+) -> None:
     """
     Set up standardized logging for a connector.
 
     Args:
         connector_name: Name of the connector for log identification
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
-        log_format: Custom log format string
+        log_format: Custom log format string; takes precedence over use_structured_logging
+        use_structured_logging: Enable structured JSON logging (default: True)
+        formatter: Custom formatter instance (overrides use_structured_logging and log_format)
+        extra_handlers: Additional handlers to add beyond the default StreamHandler
     """
-    if log_format is None:
-        log_format = f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
+    level = getattr(logging, log_level.upper())
 
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format=log_format,
-        handlers=[
-            logging.StreamHandler(),
-            # Add file handler if needed
-            # logging.FileHandler(f"{connector_name}.log")
-        ],
-    )
+    glean_logger = logging.getLogger("glean")
+    for h in glean_logger.handlers[:]:
+        h.close()
+        glean_logger.removeHandler(h)
+    glean_logger.setLevel(level)
 
-    logger.info(f"Logging configured for connector: {connector_name}")
+    if formatter is None:
+        if log_format is not None:
+            formatter = logging.Formatter(log_format)
+        elif use_structured_logging:
+            formatter = StructuredFormatter()
+        else:
+            formatter = logging.Formatter(
+                f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
+            )
+
+    handlers = [logging.StreamHandler()]
+    if extra_handlers:
+        handlers.extend(extra_handlers)
+
+    for handler in handlers:
+        if handler.formatter is None:
+            handler.setFormatter(formatter)
+        glean_logger.addHandler(handler)
+
+    if isinstance(formatter, StructuredFormatter):
+        logger.info(
+            "Structured logging configured",
+            extra={"connector": connector_name, "log_level": log_level},
+        )
+    else:
+        logger.info(f"Logging configured for connector: {connector_name}")

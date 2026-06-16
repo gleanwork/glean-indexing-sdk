@@ -11,8 +11,10 @@ from glean.api_client.models import (
     DatasourceMembershipDefinition,
     DatasourceUserDefinition,
     DebugDatasourceStatusResponse,
+    DebugDocumentLifecycleResponse,
     DebugDocumentRequest,
     DebugDocumentsResponse,
+    DebugUserResponse,
     DocumentDefinition,
     EmployeeInfoDefinition,
 )
@@ -228,6 +230,25 @@ class PushUploader:
                 **self._request_options(),
             )
 
+    def get_document_lifecycle_events(
+        self,
+        *,
+        object_type: str,
+        document_id: str,
+        start_date: Optional[str] = None,
+        max_events: Optional[int] = None,
+    ) -> DebugDocumentLifecycleResponse:
+        """Get lifecycle events for a datasource document using `/debug/{datasource}/document/events`."""
+        with api_client() as client:
+            return client.troubleshooting.post_api_index_v1_debug_datasource_document_events(
+                datasource=self.datasource,
+                object_type=object_type,
+                doc_id=document_id,
+                start_date=start_date,
+                max_events=max_events,
+                **self._request_options(),
+            )
+
     def index_user(
         self,
         user: DatasourceUserDefinition,
@@ -240,6 +261,19 @@ class PushUploader:
                 datasource=self.datasource,
                 user=user,
                 version=version,
+                **self._request_options(),
+            )
+
+    def debug_user(
+        self,
+        *,
+        email: str,
+    ) -> DebugUserResponse:
+        """Get debug information for a datasource user using `/debug/{datasource}/user`."""
+        with api_client() as client:
+            return client.indexing.people.debug(
+                datasource=self.datasource,
+                email=email,
                 **self._request_options(),
             )
 

@@ -41,7 +41,24 @@ class ConnectorObservability:
         self._execution_failed: bool = False
 
     def get_common_fields(self, operation: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
-        """Get common fields for structured logging."""
+        """Get common fields for structured logging.
+
+        Args:
+            operation: Optional operation name
+            **kwargs: Additional fields to include
+
+        Raises:
+            ValueError: If kwargs contains reserved LogRecord attribute names
+        """
+        reserved_attrs = set(logging.makeLogRecord({}).__dict__)
+
+        conflicting_keys = set(kwargs.keys()) & reserved_attrs
+        if conflicting_keys:
+            raise ValueError(
+                f"Cannot use reserved LogRecord attribute names in extra fields: {conflicting_keys}. "
+                f"Please rename these fields to avoid conflicts with Python logging."
+            )
+
         fields = {
             "connector": self.connector_name,
             "datasource": self.datasource,
@@ -78,29 +95,50 @@ class ConnectorObservability:
         )
 
     def end_execution(self) -> None:
-        """Mark the end of connector execution."""
-        if self.start_time and not self._execution_failed:
-            duration = time.time() - self.start_time
-            duration_ms = int(duration * 1000)
-            self.metrics["total_execution_time"] = duration
-            self.metrics_provider.emit_metric(
-                "connector_execution_duration_ms",
-                float(duration_ms),
-                MetricType.HISTOGRAM,
-                self._get_metric_labels(),
-            )
-            logger.info(
-                "Crawl completed successfully",
-                extra=self.get_common_fields(
-                    operation="crawl_completed",
-                    duration_ms=duration_ms,
-                    status="success",
-                ),
-            )
+        """Mark the end of connector execution.
+
+        Safe to call from a ``finally`` block. If an exception is currently
+        propagating and ``fail_execution()`` has not already been called, this
+        method delegates to ``fail_execution()`` so the failure is always logged.
+        If ``fail_execution()`` was already called explicitly, this is a no-op.
+        """
+        import sys
+
+        if not self.start_time or self._execution_failed:
+            return
+
+        exc_info = sys.exc_info()
+        if exc_info[0] is not None:
+            self.fail_execution(exc_info[1])
+            return
+
+        duration = time.time() - self.start_time
+        duration_ms = int(duration * 1000)
+        self.metrics["total_execution_time"] = duration
+        self.start_time = None
+        self.metrics_provider.emit_metric(
+            "connector_execution_duration_ms",
+            float(duration_ms),
+            MetricType.HISTOGRAM,
+            self._get_metric_labels(),
+        )
+        logger.info(
+            "Crawl completed successfully",
+            extra=self.get_common_fields(
+                operation="crawl_completed",
+                duration_ms=duration_ms,
+                status="success",
+            ),
+        )
         self.metrics_provider.flush()
 
     def fail_execution(self, error: Exception) -> None:
-        """Mark the execution as failed."""
+        """Mark the execution as failed.
+
+        Records execution duration, sets terminal state to prevent
+        end_execution() from logging a success event, and clears start_time
+        so the execution cannot be double-counted.
+        """
         import sys
 
         self._execution_failed = True
@@ -108,6 +146,8 @@ class ConnectorObservability:
         if self.start_time:
             duration = time.time() - self.start_time
             duration_ms = int(duration * 1000)
+            self.metrics["total_execution_time"] = duration
+            self.start_time = None
             self.metrics_provider.emit_metric(
                 "connector_execution_duration_ms",
                 float(duration_ms),
@@ -179,12 +219,14 @@ class ConnectorObservability:
         )
 
     def log_transform_started(self, item_count: int, **kwargs: Any) -> None:
-        """
-        Log the start of data transformation.
+        """Log the start of transforming crawled data into Glean document format.
+
+        Call this before iterating over raw source records and converting them to
+        ``DocumentDefinition`` objects.
 
         Args:
-            item_count: Number of items to transform
-            **kwargs: Additional fields to include
+            item_count: Number of raw items about to be transformed
+            **kwargs: Additional fields to include in the log event
         """
         logger.info(
             f"Transform started: {item_count} items",
@@ -196,14 +238,17 @@ class ConnectorObservability:
         )
 
     def log_transform_completed(self, input_count: int, output_count: int, duration_ms: int, **kwargs: Any) -> None:
-        """
-        Log successful completion of data transformation.
+        """Log successful completion of transforming crawled data into Glean document format.
+
+        Call this after all raw source records have been converted to ``DocumentDefinition``
+        objects. ``output_count`` may differ from ``input_count`` when items are filtered out
+        or expanded during transformation.
 
         Args:
-            input_count: Number of input items
-            output_count: Number of output items
-            duration_ms: Duration in milliseconds
-            **kwargs: Additional fields to include
+            input_count: Number of raw items that were processed
+            output_count: Number of ``DocumentDefinition`` objects produced
+            duration_ms: Elapsed time for the transformation phase in milliseconds
+            **kwargs: Additional fields to include in the log event
         """
         logger.info(
             f"Transform completed: {input_count} → {output_count} items",
@@ -222,6 +267,7 @@ class ConnectorObservability:
         batch_index: int,
         batch_count: int,
         batch_size: int,
+        upload_id: str,
         entity_type: str = "document",
         **kwargs: Any,
     ) -> None:
@@ -232,6 +278,7 @@ class ConnectorObservability:
             batch_index: Current batch number (0-indexed)
             batch_count: Total number of batches
             batch_size: Number of items in this batch
+            upload_id: Identifier for correlating upload start/complete/failed events
             entity_type: Type of entity being uploaded (document, user, group, etc.)
             **kwargs: Additional fields to include
         """
@@ -242,6 +289,7 @@ class ConnectorObservability:
                 batch_index=batch_index,
                 batch_count=batch_count,
                 batch_size=batch_size,
+                upload_id=upload_id,
                 entity_type=entity_type,
                 **kwargs,
             ),
@@ -253,6 +301,7 @@ class ConnectorObservability:
         batch_count: int,
         batch_size: int,
         duration_ms: int,
+        upload_id: str,
         entity_type: str = "document",
         **kwargs: Any,
     ) -> None:
@@ -264,6 +313,7 @@ class ConnectorObservability:
             batch_count: Total number of batches
             batch_size: Number of items uploaded
             duration_ms: Duration in milliseconds
+            upload_id: Identifier for correlating upload start/complete/failed events
             entity_type: Type of entity uploaded
             **kwargs: Additional fields to include
         """
@@ -275,6 +325,7 @@ class ConnectorObservability:
                 batch_count=batch_count,
                 batch_size=batch_size,
                 duration_ms=duration_ms,
+                upload_id=upload_id,
                 entity_type=entity_type,
                 status="success",
                 **kwargs,
@@ -286,6 +337,7 @@ class ConnectorObservability:
         batch_index: int,
         batch_count: int,
         error: Exception,
+        upload_id: str,
         entity_type: str = "document",
         **kwargs: Any,
     ) -> None:
@@ -296,6 +348,7 @@ class ConnectorObservability:
             batch_index: Current batch number (0-indexed)
             batch_count: Total number of batches
             error: The exception that caused the failure
+            upload_id: Identifier for correlating upload start/complete/failed events
             entity_type: Type of entity being uploaded
             **kwargs: Additional fields to include
         """
@@ -311,6 +364,7 @@ class ConnectorObservability:
                 operation="batch_upload_failed",
                 batch_index=batch_index,
                 batch_count=batch_count,
+                upload_id=upload_id,
                 entity_type=entity_type,
                 status="failed",
                 error_type=type(error).__name__,
@@ -318,6 +372,70 @@ class ConnectorObservability:
                 **kwargs,
             ),
             exc_info=exc_info,
+        )
+
+    def log_document_upload_started(
+        self,
+        document_ids: List[str],
+        entity_type: str = "document",
+        upload_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
+        """Log the start of a non-batched document upload (e.g. /indexdocuments).
+
+        Use for connectors that call the indexing API with a list of documents
+        rather than going through the batch upload flow.
+
+        Args:
+            document_ids: Identifiers of the documents being uploaded
+            entity_type: Type of entity being uploaded (document, user, group, etc.)
+            upload_id: Optional identifier for correlating start/complete events
+            **kwargs: Additional fields to include in the log event
+        """
+        extra: Dict[str, Any] = dict(
+            document_count=len(document_ids),
+            entity_type=entity_type,
+            **kwargs,
+        )
+        if upload_id is not None:
+            extra["upload_id"] = upload_id
+        logger.info(
+            f"Document upload started: {len(document_ids)} {entity_type}s",
+            extra=self.get_common_fields(operation="document_upload_started", **extra),
+        )
+
+    def log_document_upload_completed(
+        self,
+        document_ids: List[str],
+        duration_ms: int,
+        entity_type: str = "document",
+        upload_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
+        """Log successful completion of a non-batched document upload (e.g. /indexdocuments).
+
+        Use for connectors that call the indexing API with a list of documents
+        rather than going through the batch upload flow.
+
+        Args:
+            document_ids: Identifiers of the documents that were uploaded
+            duration_ms: Duration of the upload call in milliseconds
+            entity_type: Type of entity uploaded (document, user, group, etc.)
+            upload_id: Optional identifier for correlating start/complete events
+            **kwargs: Additional fields to include in the log event
+        """
+        extra: Dict[str, Any] = dict(
+            document_count=len(document_ids),
+            duration_ms=duration_ms,
+            entity_type=entity_type,
+            status="success",
+            **kwargs,
+        )
+        if upload_id is not None:
+            extra["upload_id"] = upload_id
+        logger.info(
+            f"Document upload completed: {len(document_ids)} {entity_type}s",
+            extra=self.get_common_fields(operation="document_upload_completed", **extra),
         )
 
     def record_upload_batch_size(self, batch_size: int) -> None:

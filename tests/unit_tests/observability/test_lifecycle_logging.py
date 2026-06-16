@@ -121,12 +121,14 @@ class TestLifecycleEvents:
         handler.setFormatter(StructuredFormatter())
 
         logger = logging.getLogger("glean.indexing.observability.observability")
+        original_level = logger.level
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
 
         yield obs, stream, logger
 
         logger.removeHandler(handler)
+        logger.setLevel(original_level)
 
     def test_start_execution_emits_event(self, observability_with_logger):
         """Test that start_execution emits crawl_started event."""
@@ -186,6 +188,66 @@ class TestLifecycleEvents:
         assert log_data["status"] == "failed"
         assert log_data["error_type"] == "ValueError"
         assert log_data["error_message"] == "Test error message"
+        assert log_data["level"] == "ERROR"
+
+    def test_fail_execution_clears_start_time(self, observability_with_logger):
+        """Test that fail_execution clears start_time to mark execution as terminal."""
+        obs, stream, logger = observability_with_logger
+
+        obs.start_execution()
+        assert obs.start_time is not None
+
+        obs.fail_execution(RuntimeError("boom"))
+
+        assert obs.start_time is None
+
+    def test_fail_execution_records_total_execution_time(self, observability_with_logger):
+        """Test that fail_execution records total_execution_time metric."""
+        obs, stream, logger = observability_with_logger
+
+        obs.start_execution()
+        obs.fail_execution(RuntimeError("boom"))
+
+        assert "total_execution_time" in obs.get_metrics_summary()
+
+    def test_end_execution_after_fail_execution_is_noop(self, observability_with_logger):
+        """Test that calling end_execution after fail_execution emits no additional events."""
+        obs, stream, logger = observability_with_logger
+
+        obs.start_execution()
+        obs.fail_execution(RuntimeError("already failed"))
+
+        stream.truncate(0)
+        stream.seek(0)
+
+        obs.end_execution()
+
+        stream.seek(0)
+        assert stream.read() == ""
+
+    def test_end_execution_delegates_to_fail_execution_on_active_exception(
+        self, observability_with_logger
+    ):
+        """Test that end_execution logs failure when called from a finally block with active exception."""
+        obs, stream, logger = observability_with_logger
+
+        obs.start_execution()
+        stream.truncate(0)
+        stream.seek(0)
+
+        try:
+            raise ValueError("unhandled error")
+        except ValueError:
+            obs.end_execution()
+
+        stream.seek(0)
+        lines = stream.read().strip().splitlines()
+        assert len(lines) == 1
+        log_data = json.loads(lines[0])
+
+        assert log_data["operation"] == "crawl_failed"
+        assert log_data["status"] == "failed"
+        assert log_data["error_type"] == "ValueError"
         assert log_data["level"] == "ERROR"
 
     def test_log_data_fetch_started(self, observability_with_logger):
@@ -253,6 +315,7 @@ class TestLifecycleEvents:
             batch_index=2,
             batch_count=10,
             batch_size=50,
+            upload_id="upload-abc-123",
             entity_type="document",
         )
 
@@ -265,6 +328,7 @@ class TestLifecycleEvents:
         assert log_data["batch_index"] == 2
         assert log_data["batch_count"] == 10
         assert log_data["batch_size"] == 50
+        assert log_data["upload_id"] == "upload-abc-123"
         assert log_data["entity_type"] == "document"
 
     def test_log_batch_upload_completed(self, observability_with_logger):
@@ -276,6 +340,7 @@ class TestLifecycleEvents:
             batch_count=5,
             batch_size=100,
             duration_ms=3000,
+            upload_id="upload-xyz-789",
             entity_type="user",
         )
 
@@ -286,6 +351,7 @@ class TestLifecycleEvents:
         assert "100 users" in log_data["message"]
         assert log_data["operation"] == "batch_upload_completed"
         assert log_data["duration_ms"] == 3000
+        assert log_data["upload_id"] == "upload-xyz-789"
         assert log_data["entity_type"] == "user"
         assert log_data["status"] == "success"
 
@@ -298,6 +364,7 @@ class TestLifecycleEvents:
             batch_index=1,
             batch_count=3,
             error=test_error,
+            upload_id="upload-fail-456",
             entity_type="document",
         )
 
@@ -306,10 +373,61 @@ class TestLifecycleEvents:
 
         assert "2/3" in log_data["message"]
         assert log_data["operation"] == "batch_upload_failed"
+        assert log_data["upload_id"] == "upload-fail-456"
         assert log_data["status"] == "failed"
         assert log_data["error_type"] == "ConnectionError"
         assert log_data["error_message"] == "Network timeout"
         assert log_data["level"] == "ERROR"
+
+    def test_log_document_upload_started(self, observability_with_logger):
+        """Test document_upload_started event logging."""
+        obs, stream, logger = observability_with_logger
+
+        obs.log_document_upload_started(
+            document_ids=["doc-1", "doc-2", "doc-3"],
+            entity_type="document",
+            upload_id="upload-abc",
+        )
+
+        stream.seek(0)
+        log_data = json.loads(stream.read())
+
+        assert "3 documents" in log_data["message"]
+        assert log_data["operation"] == "document_upload_started"
+        assert log_data["document_count"] == 3
+        assert log_data["entity_type"] == "document"
+        assert log_data["upload_id"] == "upload-abc"
+
+    def test_log_document_upload_completed(self, observability_with_logger):
+        """Test document_upload_completed event logging."""
+        obs, stream, logger = observability_with_logger
+
+        obs.log_document_upload_completed(
+            document_ids=["doc-1", "doc-2"],
+            duration_ms=800,
+            upload_id="upload-abc",
+        )
+
+        stream.seek(0)
+        log_data = json.loads(stream.read())
+
+        assert "2 documents" in log_data["message"]
+        assert log_data["operation"] == "document_upload_completed"
+        assert log_data["document_count"] == 2
+        assert log_data["duration_ms"] == 800
+        assert log_data["status"] == "success"
+        assert log_data["upload_id"] == "upload-abc"
+
+    def test_log_document_upload_without_upload_id(self, observability_with_logger):
+        """Test document upload methods work without upload_id."""
+        obs, stream, logger = observability_with_logger
+
+        obs.log_document_upload_started(document_ids=["doc-1"])
+
+        stream.seek(0)
+        log_data = json.loads(stream.read())
+
+        assert "upload_id" not in log_data
 
 
 class TestBackwardCompatibility:
@@ -379,12 +497,13 @@ class TestIntegrationWithStructuredFormatter:
             obs.log_data_fetch_completed(item_count=50, duration_ms=1000)
             obs.log_transform_started(item_count=50)
             obs.log_transform_completed(input_count=50, output_count=48, duration_ms=500)
-            obs.log_batch_upload_started(batch_index=0, batch_count=1, batch_size=48)
+            obs.log_batch_upload_started(batch_index=0, batch_count=1, batch_size=48, upload_id="up-001")
             obs.log_batch_upload_completed(
                 batch_index=0,
                 batch_count=1,
                 batch_size=48,
                 duration_ms=2000,
+                upload_id="up-001",
             )
             obs.end_execution()
 
@@ -421,7 +540,7 @@ class TestIntegrationWithStructuredFormatter:
 
             obs.start_execution()
             obs.log_data_fetch_completed(item_count=10, duration_ms=100)
-            obs.log_batch_upload_started(batch_index=0, batch_count=1, batch_size=10)
+            obs.log_batch_upload_started(batch_index=0, batch_count=1, batch_size=10, upload_id="up-001")
             obs.end_execution()
 
             stream.seek(0)

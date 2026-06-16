@@ -315,6 +315,7 @@ class TestLifecycleEvents:
             batch_index=2,
             batch_count=10,
             batch_size=50,
+            upload_id="upload-abc-123",
             entity_type="document",
         )
 
@@ -327,23 +328,8 @@ class TestLifecycleEvents:
         assert log_data["batch_index"] == 2
         assert log_data["batch_count"] == 10
         assert log_data["batch_size"] == 50
-        assert log_data["entity_type"] == "document"
-
-    def test_log_batch_upload_started_with_upload_id(self, observability_with_logger):
-        """Test batch_upload_started includes upload_id when provided."""
-        obs, stream, logger = observability_with_logger
-
-        obs.log_batch_upload_started(
-            batch_index=0,
-            batch_count=3,
-            batch_size=50,
-            upload_id="upload-abc-123",
-        )
-
-        stream.seek(0)
-        log_data = json.loads(stream.read())
-
         assert log_data["upload_id"] == "upload-abc-123"
+        assert log_data["entity_type"] == "document"
 
     def test_log_batch_upload_completed(self, observability_with_logger):
         """Test batch_upload_completed event logging."""
@@ -354,6 +340,7 @@ class TestLifecycleEvents:
             batch_count=5,
             batch_size=100,
             duration_ms=3000,
+            upload_id="upload-xyz-789",
             entity_type="user",
         )
 
@@ -364,25 +351,9 @@ class TestLifecycleEvents:
         assert "100 users" in log_data["message"]
         assert log_data["operation"] == "batch_upload_completed"
         assert log_data["duration_ms"] == 3000
+        assert log_data["upload_id"] == "upload-xyz-789"
         assert log_data["entity_type"] == "user"
         assert log_data["status"] == "success"
-
-    def test_log_batch_upload_completed_with_upload_id(self, observability_with_logger):
-        """Test batch_upload_completed includes upload_id when provided."""
-        obs, stream, logger = observability_with_logger
-
-        obs.log_batch_upload_completed(
-            batch_index=0,
-            batch_count=1,
-            batch_size=10,
-            duration_ms=500,
-            upload_id="upload-xyz-789",
-        )
-
-        stream.seek(0)
-        log_data = json.loads(stream.read())
-
-        assert log_data["upload_id"] == "upload-xyz-789"
 
     def test_log_batch_upload_failed(self, observability_with_logger):
         """Test batch_upload_failed event logging."""
@@ -393,6 +364,7 @@ class TestLifecycleEvents:
             batch_index=1,
             batch_count=3,
             error=test_error,
+            upload_id="upload-fail-456",
             entity_type="document",
         )
 
@@ -401,6 +373,7 @@ class TestLifecycleEvents:
 
         assert "2/3" in log_data["message"]
         assert log_data["operation"] == "batch_upload_failed"
+        assert log_data["upload_id"] == "upload-fail-456"
         assert log_data["status"] == "failed"
         assert log_data["error_type"] == "ConnectionError"
         assert log_data["error_message"] == "Network timeout"
@@ -524,12 +497,13 @@ class TestIntegrationWithStructuredFormatter:
             obs.log_data_fetch_completed(item_count=50, duration_ms=1000)
             obs.log_transform_started(item_count=50)
             obs.log_transform_completed(input_count=50, output_count=48, duration_ms=500)
-            obs.log_batch_upload_started(batch_index=0, batch_count=1, batch_size=48)
+            obs.log_batch_upload_started(batch_index=0, batch_count=1, batch_size=48, upload_id="up-001")
             obs.log_batch_upload_completed(
                 batch_index=0,
                 batch_count=1,
                 batch_size=48,
                 duration_ms=2000,
+                upload_id="up-001",
             )
             obs.end_execution()
 
@@ -566,7 +540,7 @@ class TestIntegrationWithStructuredFormatter:
 
             obs.start_execution()
             obs.log_data_fetch_completed(item_count=10, duration_ms=100)
-            obs.log_batch_upload_started(batch_index=0, batch_count=1, batch_size=10)
+            obs.log_batch_upload_started(batch_index=0, batch_count=1, batch_size=10, upload_id="up-001")
             obs.end_execution()
 
             stream.seek(0)

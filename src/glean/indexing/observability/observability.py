@@ -239,8 +239,8 @@ class ConnectorObservability:
         batch_index: int,
         batch_count: int,
         batch_size: int,
+        upload_id: str,
         entity_type: str = "document",
-        upload_id: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -250,22 +250,21 @@ class ConnectorObservability:
             batch_index: Current batch number (0-indexed)
             batch_count: Total number of batches
             batch_size: Number of items in this batch
+            upload_id: Identifier for correlating upload start/complete/failed events
             entity_type: Type of entity being uploaded (document, user, group, etc.)
-            upload_id: Optional identifier for correlating upload start/complete events
             **kwargs: Additional fields to include
         """
-        extra: Dict[str, Any] = dict(
-            batch_index=batch_index,
-            batch_count=batch_count,
-            batch_size=batch_size,
-            entity_type=entity_type,
-            **kwargs,
-        )
-        if upload_id is not None:
-            extra["upload_id"] = upload_id
         logger.info(
             f"Batch upload started: {batch_index + 1}/{batch_count} ({batch_size} {entity_type}s)",
-            extra=self.get_common_fields(operation="batch_upload_started", **extra),
+            extra=self.get_common_fields(
+                operation="batch_upload_started",
+                batch_index=batch_index,
+                batch_count=batch_count,
+                batch_size=batch_size,
+                upload_id=upload_id,
+                entity_type=entity_type,
+                **kwargs,
+            ),
         )
 
     def log_batch_upload_completed(
@@ -274,8 +273,8 @@ class ConnectorObservability:
         batch_count: int,
         batch_size: int,
         duration_ms: int,
+        upload_id: str,
         entity_type: str = "document",
-        upload_id: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -286,24 +285,23 @@ class ConnectorObservability:
             batch_count: Total number of batches
             batch_size: Number of items uploaded
             duration_ms: Duration in milliseconds
+            upload_id: Identifier for correlating upload start/complete/failed events
             entity_type: Type of entity uploaded
-            upload_id: Optional identifier for correlating upload start/complete events
             **kwargs: Additional fields to include
         """
-        extra: Dict[str, Any] = dict(
-            batch_index=batch_index,
-            batch_count=batch_count,
-            batch_size=batch_size,
-            duration_ms=duration_ms,
-            entity_type=entity_type,
-            status="success",
-            **kwargs,
-        )
-        if upload_id is not None:
-            extra["upload_id"] = upload_id
         logger.info(
             f"Batch upload completed: {batch_index + 1}/{batch_count} ({batch_size} {entity_type}s)",
-            extra=self.get_common_fields(operation="batch_upload_completed", **extra),
+            extra=self.get_common_fields(
+                operation="batch_upload_completed",
+                batch_index=batch_index,
+                batch_count=batch_count,
+                batch_size=batch_size,
+                duration_ms=duration_ms,
+                upload_id=upload_id,
+                entity_type=entity_type,
+                status="success",
+                **kwargs,
+            ),
         )
 
     def log_batch_upload_failed(
@@ -311,6 +309,7 @@ class ConnectorObservability:
         batch_index: int,
         batch_count: int,
         error: Exception,
+        upload_id: str,
         entity_type: str = "document",
         **kwargs: Any,
     ) -> None:
@@ -321,6 +320,7 @@ class ConnectorObservability:
             batch_index: Current batch number (0-indexed)
             batch_count: Total number of batches
             error: The exception that caused the failure
+            upload_id: Identifier for correlating upload start/complete/failed events
             entity_type: Type of entity being uploaded
             **kwargs: Additional fields to include
         """
@@ -336,6 +336,7 @@ class ConnectorObservability:
                 operation="batch_upload_failed",
                 batch_index=batch_index,
                 batch_count=batch_count,
+                upload_id=upload_id,
                 entity_type=entity_type,
                 status="failed",
                 error_type=type(error).__name__,

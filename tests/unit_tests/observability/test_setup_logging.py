@@ -13,48 +13,60 @@ from glean.indexing.observability import (
 )
 
 
+def _glean_logger() -> logging.Logger:
+    return logging.getLogger("glean")
+
+
 class TestSetupConnectorLogging:
     """Tests for setup_connector_logging configuration function."""
 
     def teardown_method(self):
-        """Clean up logging configuration after each test."""
-        logging.root.handlers = []
-        logging.root.setLevel(logging.WARNING)
+        """Clean up the glean logger after each test."""
+        gl = _glean_logger()
+        for h in gl.handlers[:]:
+            h.close()
+            gl.removeHandler(h)
+        gl.setLevel(logging.NOTSET)
 
     def test_default_configuration(self):
-        """Test default human-readable logging configuration."""
+        """Test default structured logging configuration."""
         setup_connector_logging("test_connector")
 
-        logger = logging.getLogger("test_module")
-        assert logger.level == logging.NOTSET
-        assert logging.root.level == logging.INFO
-        assert len(logging.root.handlers) > 0
+        gl = _glean_logger()
+        assert gl.level == logging.INFO
+        assert len(gl.handlers) > 0
+
+    def test_default_is_structured(self):
+        """Test that default logging produces structured JSON output."""
+        setup_connector_logging("test_connector")
 
         stream = StringIO()
-        for handler in logging.root.handlers:
+        for handler in _glean_logger().handlers:
             if isinstance(handler, logging.StreamHandler):
                 handler.stream = stream
 
-        logger.info("Test message")
+        logging.getLogger("glean.test").info("Test")
 
         stream.seek(0)
-        output = stream.read()
-        assert "test_connector" in output or "Test message" in output
+        output = stream.read().strip().splitlines()[-1]
+        log_data = json.loads(output)
+        assert log_data["message"] == "Test"
 
     def test_structured_logging_enabled(self):
         """Test enabling structured JSON logging."""
         setup_connector_logging("test_connector", use_structured_logging=True)
 
         stream = StringIO()
-        for handler in logging.root.handlers:
+        for handler in _glean_logger().handlers:
             if isinstance(handler, logging.StreamHandler):
                 handler.stream = stream
 
-        logger = logging.getLogger("test_module")
-        logger.info("Test structured message", extra={"custom_field": "custom_value"})
+        logging.getLogger("glean.test").info(
+            "Test structured message", extra={"custom_field": "custom_value"}
+        )
 
         stream.seek(0)
-        output = stream.read().strip()
+        output = stream.read().strip().splitlines()[-1]
         log_data = json.loads(output)
 
         assert log_data["message"] == "Test structured message"
@@ -66,18 +78,17 @@ class TestSetupConnectorLogging:
         """Test setting custom log level."""
         setup_connector_logging("test_connector", log_level="DEBUG")
 
-        assert logging.root.level == logging.DEBUG
+        assert _glean_logger().level == logging.DEBUG
 
         stream = StringIO()
-        for handler in logging.root.handlers:
+        for handler in _glean_logger().handlers:
             if isinstance(handler, logging.StreamHandler):
                 handler.stream = stream
 
-        logger = logging.getLogger("test_module")
-        logger.debug("Debug message")
+        logging.getLogger("glean.test").debug("Debug message")
 
         stream.seek(0)
-        output = stream.read()
+        output = stream.read().strip().splitlines()[-1]
         assert "Debug message" in output
 
     def test_custom_formatter(self):
@@ -86,16 +97,15 @@ class TestSetupConnectorLogging:
         setup_connector_logging("test_connector", formatter=custom_formatter)
 
         stream = StringIO()
-        for handler in logging.root.handlers:
+        for handler in _glean_logger().handlers:
             if isinstance(handler, logging.StreamHandler):
                 handler.stream = stream
                 assert isinstance(handler.formatter, CompactStructuredFormatter)
 
-        logger = logging.getLogger("test_module")
-        logger.info("Test", extra={"keep": "value", "omit": ""})
+        logging.getLogger("glean.test").info("Test", extra={"keep": "value", "omit": ""})
 
         stream.seek(0)
-        log_data = json.loads(stream.read().strip())
+        log_data = json.loads(stream.read().strip().splitlines()[-1])
         assert "keep" in log_data
         assert "omit" not in log_data
 
@@ -106,17 +116,36 @@ class TestSetupConnectorLogging:
 
         setup_connector_logging("test_connector", extra_handlers=[extra_handler])
 
-        assert len(logging.root.handlers) >= 2
+        assert len(_glean_logger().handlers) >= 2
 
-        logger = logging.getLogger("test_module")
-        logger.info("Test message")
+        logging.getLogger("glean.test").info("Test message")
 
         extra_stream.seek(0)
-        output = extra_stream.read()
+        output = extra_stream.read().strip().splitlines()[-1]
         assert "Test message" in output
 
+    def test_extra_handler_without_formatter_gets_sdk_formatter(self):
+        """Test that an extra handler without a formatter receives the SDK formatter."""
+        extra_stream = StringIO()
+        extra_handler = logging.StreamHandler(extra_stream)
+
+        setup_connector_logging("test_connector", use_structured_logging=True, extra_handlers=[extra_handler])
+
+        assert isinstance(extra_handler.formatter, StructuredFormatter)
+
+    def test_extra_handler_with_existing_formatter_is_not_overwritten(self):
+        """Test that a pre-configured extra handler keeps its own formatter."""
+        extra_stream = StringIO()
+        extra_handler = logging.StreamHandler(extra_stream)
+        custom_fmt = logging.Formatter("%(levelname)s %(message)s")
+        extra_handler.setFormatter(custom_fmt)
+
+        setup_connector_logging("test_connector", use_structured_logging=True, extra_handlers=[extra_handler])
+
+        assert extra_handler.formatter is custom_fmt
+
     def test_structured_logging_with_extra_handlers(self):
-        """Test structured logging with multiple handlers."""
+        """Test structured logging with multiple handlers, all without pre-set formatters."""
         extra_stream = StringIO()
         extra_handler = logging.StreamHandler(extra_stream)
 
@@ -126,28 +155,28 @@ class TestSetupConnectorLogging:
             extra_handlers=[extra_handler],
         )
 
-        for handler in logging.root.handlers:
+        for handler in _glean_logger().handlers:
             assert isinstance(handler.formatter, StructuredFormatter)
 
         extra_stream.truncate(0)
         extra_stream.seek(0)
 
-        logger = logging.getLogger("test_module")
-        logger.info("Test")
+        logging.getLogger("glean.test").info("Test")
 
         extra_stream.seek(0)
-        log_data = json.loads(extra_stream.read().strip())
+        log_data = json.loads(extra_stream.read().strip().splitlines()[-1])
         assert log_data["message"] == "Test"
 
-    def test_force_reconfiguration(self):
-        """Test that setup_connector_logging overrides existing configuration."""
-        logging.basicConfig(level=logging.ERROR)
-        initial_level = logging.root.level
+    def test_does_not_touch_root_handlers(self):
+        """Test that setup_connector_logging never modifies root logger handlers."""
+        root_handler = logging.StreamHandler()
+        logging.root.addHandler(root_handler)
 
-        setup_connector_logging("test_connector", log_level="INFO")
-
-        assert logging.root.level == logging.INFO
-        assert logging.root.level != initial_level
+        try:
+            setup_connector_logging("test_connector", log_level="INFO")
+            assert root_handler in logging.root.handlers
+        finally:
+            logging.root.removeHandler(root_handler)
 
     def test_structured_logging_confirmation_message(self):
         """Test that structured logging emits confirmation with structured fields."""
@@ -155,15 +184,14 @@ class TestSetupConnectorLogging:
 
         setup_connector_logging("test_connector", use_structured_logging=True)
 
-        for handler in logging.root.handlers:
+        for handler in _glean_logger().handlers:
             if isinstance(handler, logging.StreamHandler):
                 handler.stream = stream
 
         stream.truncate(0)
         stream.seek(0)
 
-        logger = logging.getLogger("glean.indexing.observability.observability")
-        logger.info(
+        logging.getLogger("glean.indexing.observability.observability").info(
             "Structured logging configured",
             extra={"connector": "test_connector", "log_level": "INFO"},
         )
@@ -177,83 +205,78 @@ class TestSetupConnectorLogging:
 
     def test_case_insensitive_log_level(self):
         """Test that log level is case-insensitive."""
-        test_cases = ["debug", "DEBUG", "DeBuG"]
-
-        for log_level in test_cases:
-            logging.root.handlers = []
+        for log_level in ["debug", "DEBUG", "DeBuG"]:
+            gl = _glean_logger()
+            for h in gl.handlers[:]:
+                h.close()
+                gl.removeHandler(h)
             setup_connector_logging("test_connector", log_level=log_level)
-            assert logging.root.level == logging.DEBUG
+            assert _glean_logger().level == logging.DEBUG
 
     def test_invalid_log_level_raises_error(self):
-        """Test that invalid log level raises AttributeError."""
+        """Test that invalid log level raises AttributeError before mutating any state."""
+        gl = _glean_logger()
+        original_handlers = list(gl.handlers)
+
         with pytest.raises(AttributeError):
             setup_connector_logging("test_connector", log_level="INVALID_LEVEL")
+
+        assert list(gl.handlers) == original_handlers
 
 
 class TestBackwardCompatibilitySetupLogging:
     """Tests ensuring backward compatibility of setup_connector_logging."""
 
     def teardown_method(self):
-        """Clean up logging configuration after each test."""
-        logging.root.handlers = []
-        logging.root.setLevel(logging.WARNING)
+        """Clean up the glean logger after each test."""
+        gl = _glean_logger()
+        for h in gl.handlers[:]:
+            h.close()
+            gl.removeHandler(h)
+        gl.setLevel(logging.NOTSET)
 
     def test_original_signature_still_works(self):
         """Test that original function signature still works."""
-        # Original signature: setup_connector_logging(connector_name, log_level, log_format)
-        # All new parameters have defaults, so old code should work
         setup_connector_logging("old_connector")
         setup_connector_logging("old_connector", "DEBUG")
 
-        # Should not raise any errors
-        assert logging.root.level == logging.DEBUG
+        assert _glean_logger().level == logging.DEBUG
 
     def test_third_positional_argument_log_format(self):
-        """Test that 3rd positional argument (log_format) works for backward compatibility."""
-        logging.root.handlers = []
+        """Test that explicit log_format overrides use_structured_logging."""
+        gl = _glean_logger()
+        for h in gl.handlers[:]:
+            h.close()
+            gl.removeHandler(h)
 
         custom_format = "%(levelname)s - %(message)s"
         setup_connector_logging("test_connector", "INFO", custom_format)
 
         stream = StringIO()
-        for handler in logging.root.handlers:
+        for handler in _glean_logger().handlers:
             if isinstance(handler, logging.StreamHandler):
                 handler.stream = stream
 
-        logger = logging.getLogger("test")
-        logger.info("Test message")
+        logging.getLogger("glean.test").info("Test message")
 
         stream.seek(0)
-        output = stream.read().strip()
+        output = stream.read().strip().splitlines()[-1]
         assert output == "INFO - Test message"
-
-    def test_default_is_human_readable(self):
-        """Test that default logging is NOT structured (backward compatible)."""
-        setup_connector_logging("test_connector")
-
-        stream = StringIO()
-        for handler in logging.root.handlers:
-            if isinstance(handler, logging.StreamHandler):
-                handler.stream = stream
-
-        logger = logging.getLogger("test")
-        logger.info("Test")
-
-        stream.seek(0)
-        output = stream.read()
-
-        with pytest.raises(json.JSONDecodeError):
-            json.loads(output)
 
     def test_no_breaking_changes_to_existing_usage(self):
         """Verify existing usage patterns continue to work."""
         setup_connector_logging("connector1")
-        assert logging.root.level == logging.INFO
+        assert _glean_logger().level == logging.INFO
 
-        logging.root.handlers = []
+        gl = _glean_logger()
+        for h in gl.handlers[:]:
+            h.close()
+            gl.removeHandler(h)
         setup_connector_logging("connector2", log_level="WARNING")
-        assert logging.root.level == logging.WARNING
+        assert _glean_logger().level == logging.WARNING
 
-        logging.root.handlers = []
+        for h in gl.handlers[:]:
+            h.close()
+            gl.removeHandler(h)
         setup_connector_logging("connector3", "ERROR")
-        assert logging.root.level == logging.ERROR
+        assert _glean_logger().level == logging.ERROR

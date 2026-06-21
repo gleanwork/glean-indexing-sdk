@@ -136,7 +136,7 @@ class PushUploader:
             if name in config.model_fields_set
         }
         with api_client() as client:
-            client.indexing.datasources.add(**kwargs)
+            self._call_api("datasources.add", lambda: client.indexing.datasources.add(**kwargs))
 
     def index_documents(
         self,
@@ -196,7 +196,7 @@ class PushUploader:
         for i, batch in enumerate(batches):
             is_first_page = i == 0
             is_last_page = i == len(batches) - 1
-            self._bulk_index_document_batch(
+            self.bulk_index_single_batch_upload(
                 documents=list(batch),
                 upload_id=upload_id,
                 is_first_page=is_first_page,
@@ -216,95 +216,59 @@ class PushUploader:
         upload_id: str,
         is_first_page: Optional[bool] = None,
         is_last_page: Optional[bool] = None,
+        batch_index: int = 0,
+        batch_count: int = 1,
         force_restart_upload: Optional[bool] = None,
         disable_stale_document_deletion_check: Optional[bool] = None,
     ) -> None:
         """Upload one pre-batched `/bulkindexdocuments` page."""
-        self._bulk_index_document_batch(
-            documents=documents,
-            upload_id=upload_id,
-            is_first_page=is_first_page,
-            is_last_page=is_last_page,
-            batch_index=0,
-            batch_count=1,
-            force_restart_upload=force_restart_upload,
-            disable_stale_document_deletion_check=disable_stale_document_deletion_check,
-        )
-
-    def _bulk_index_document_batch(
-        self,
-        documents: Sequence[DocumentDefinition],
-        *,
-        upload_id: str,
-        is_first_page: Optional[bool],
-        is_last_page: Optional[bool],
-        batch_index: int,
-        batch_count: int,
-        force_restart_upload: Optional[bool],
-        disable_stale_document_deletion_check: Optional[bool],
-    ) -> None:
         document_list = list(documents)
-        self._log_batch_upload_started(
-            batch_index=batch_index,
-            batch_count=batch_count,
-            batch_size=len(document_list),
-            upload_id=upload_id,
-            entity_type="document",
-        )
+        if self.observability:
+            self.observability.log_batch_upload_started(
+                batch_index=batch_index,
+                batch_count=batch_count,
+                batch_size=len(document_list),
+                upload_id=upload_id,
+                entity_type="document",
+            )
+            self.observability.record_upload_batch_size(len(document_list))
         start_time = time.time()
         try:
-            self._bulk_index_single_batch_upload(
-                document_list,
-                upload_id=upload_id,
-                is_first_page=is_first_page,
-                is_last_page=is_last_page,
-                force_restart_upload=force_restart_upload,
-                disable_stale_document_deletion_check=disable_stale_document_deletion_check,
-            )
+            with api_client() as client:
+                self._call_api(
+                    "documents.bulk_index",
+                    lambda: client.indexing.documents.bulk_index(
+                        datasource=self.datasource,
+                        documents=document_list,
+                        upload_id=upload_id,
+                        is_first_page=is_first_page,
+                        is_last_page=is_last_page,
+                        force_restart_upload=force_restart_upload,
+                        disable_stale_document_deletion_check=disable_stale_document_deletion_check,
+                        **self._request_options(),
+                    ),
+                )
         except Exception as error:
-            self._log_batch_upload_failed(
-                batch_index=batch_index,
-                batch_count=batch_count,
-                error=error,
-                upload_id=upload_id,
-                entity_type="document",
-                batch_size=len(document_list),
-            )
+            if self.observability:
+                self.observability.log_batch_upload_failed(
+                    batch_index=batch_index,
+                    batch_count=batch_count,
+                    error=error,
+                    upload_id=upload_id,
+                    entity_type="document",
+                    batch_size=len(document_list),
+                )
             raise
         else:
-            self._log_batch_upload_completed(
-                batch_index=batch_index,
-                batch_count=batch_count,
-                batch_size=len(document_list),
-                duration_ms=self._elapsed_ms(start_time),
-                upload_id=upload_id,
-                entity_type="document",
-            )
-
-    def _bulk_index_single_batch_upload(
-        self,
-        documents: Sequence[DocumentDefinition],
-        *,
-        upload_id: str,
-        is_first_page: Optional[bool] = None,
-        is_last_page: Optional[bool] = None,
-        force_restart_upload: Optional[bool] = None,
-        disable_stale_document_deletion_check: Optional[bool] = None,
-    ) -> None:
-        with api_client() as client:
-            self._call_api(
-                "documents.bulk_index",
-                lambda: client.indexing.documents.bulk_index(
-                    datasource=self.datasource,
-                    documents=list(documents),
+            if self.observability:
+                self.observability.log_batch_upload_completed(
+                    batch_index=batch_index,
+                    batch_count=batch_count,
+                    batch_size=len(document_list),
+                    duration_ms=self._elapsed_ms(start_time),
                     upload_id=upload_id,
-                    is_first_page=is_first_page,
-                    is_last_page=is_last_page,
-                    force_restart_upload=force_restart_upload,
-                    disable_stale_document_deletion_check=disable_stale_document_deletion_check,
-                    **self._request_options(),
-                ),
-            )
+                    entity_type="document",
+                )
 
     def delete_document(
         self,
@@ -565,65 +529,6 @@ class PushUploader:
         finally:
             if self.observability:
                 self.observability.record_api_request_latency(self._elapsed_ms(start_time), endpoint)
-
-    def _log_batch_upload_started(
-        self,
-        *,
-        batch_index: int,
-        batch_count: int,
-        batch_size: int,
-        upload_id: str,
-        entity_type: str,
-    ) -> None:
-        if self.observability:
-            self.observability.log_batch_upload_started(
-                batch_index=batch_index,
-                batch_count=batch_count,
-                batch_size=batch_size,
-                upload_id=upload_id,
-                entity_type=entity_type,
-            )
-            self.observability.record_upload_batch_size(batch_size)
-
-    def _log_batch_upload_completed(
-        self,
-        *,
-        batch_index: int,
-        batch_count: int,
-        batch_size: int,
-        duration_ms: int,
-        upload_id: str,
-        entity_type: str,
-    ) -> None:
-        if self.observability:
-            self.observability.log_batch_upload_completed(
-                batch_index=batch_index,
-                batch_count=batch_count,
-                batch_size=batch_size,
-                duration_ms=duration_ms,
-                upload_id=upload_id,
-                entity_type=entity_type,
-            )
-
-    def _log_batch_upload_failed(
-        self,
-        *,
-        batch_index: int,
-        batch_count: int,
-        error: Exception,
-        upload_id: str,
-        entity_type: str,
-        batch_size: int,
-    ) -> None:
-        if self.observability:
-            self.observability.log_batch_upload_failed(
-                batch_index=batch_index,
-                batch_count=batch_count,
-                error=error,
-                upload_id=upload_id,
-                entity_type=entity_type,
-                batch_size=batch_size,
-            )
 
     @staticmethod
     def _elapsed_ms(start_time: float) -> int:

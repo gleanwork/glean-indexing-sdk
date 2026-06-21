@@ -81,11 +81,7 @@ class RefreshingBearerTokenAuth:
 
 @dataclass(frozen=True)
 class OAuth2Token:
-    """OAuth2 token state for source API authentication.
-
-    Refresh tokens are secrets. Connector authors should provide an
-    `OAuth2TokenStore` backed by storage appropriate for their runtime.
-    """
+    """OAuth2 token state for source API authentication."""
 
     access_token: str
     refresh_token: str | None = None

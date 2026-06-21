@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from typing import cast
 
 import pytest
-from glean.api_client.models import DocumentDefinition
+from glean.api_client.models import DatasourceGroupDefinition, DatasourceUserDefinition, DocumentDefinition
 
 from glean.indexing.observability import ConnectorObservability
 from glean.indexing.push import PushUploader
@@ -68,6 +68,14 @@ def _doc(doc_id: str) -> DocumentDefinition:
         datasource="test_datasource",
         view_url=f"https://example.com/{doc_id}",
     )
+
+
+def _user(email: str) -> DatasourceUserDefinition:
+    return DatasourceUserDefinition(email=email, name=email)
+
+
+def _group(name: str) -> DatasourceGroupDefinition:
+    return DatasourceGroupDefinition(name=name)
 
 
 def _observability_arg(observability: RecordingObservability) -> ConnectorObservability:
@@ -137,3 +145,55 @@ def test_index_documents_records_document_upload_lifecycle_and_api_metrics():
     assert observability.document_completions[0]["upload_id"] == "upload-1"
     assert observability.api_counts == ["documents.index"]
     assert observability.api_latencies == ["documents.index"]
+
+
+def test_bulk_user_upload_records_batch_lifecycle_and_api_metrics():
+    client = MagicMock()
+    observability = RecordingObservability()
+
+    with patch("glean.indexing.push.uploader.api_client", return_value=ClientContext(client)):
+        PushUploader("test_datasource", observability=_observability_arg(observability)).bulk_index_users(
+            [_user("a@example.com"), _user("b@example.com"), _user("c@example.com")],
+            upload_id="upload-1",
+            batch_size=2,
+        )
+
+    assert client.indexing.permissions.bulk_index_users.call_count == 2
+    assert [event["entity_type"] for event in observability.batch_starts] == ["user", "user"]
+    assert [event["batch_size"] for event in observability.batch_starts] == [2, 1]
+    assert observability.batch_sizes == [2, 1]
+    assert observability.api_counts == ["permissions.bulk_index_users", "permissions.bulk_index_users"]
+    assert observability.api_latencies == ["permissions.bulk_index_users", "permissions.bulk_index_users"]
+
+
+def test_bulk_group_upload_records_failure_event_and_error_metric():
+    client = MagicMock()
+    error = RuntimeError("group upload failed")
+    client.indexing.permissions.bulk_index_groups.side_effect = error
+    observability = RecordingObservability()
+
+    with patch("glean.indexing.push.uploader.api_client", return_value=ClientContext(client)):
+        with pytest.raises(RuntimeError, match="group upload failed"):
+            PushUploader("test_datasource", observability=_observability_arg(observability)).bulk_index_groups(
+                [_group("group-1")],
+                upload_id="upload-1",
+            )
+
+    assert observability.batch_failures[0]["entity_type"] == "group"
+    assert observability.batch_failures[0]["error"] is error
+    assert observability.api_errors == [("permissions.bulk_index_groups", "RuntimeError")]
+
+
+def test_single_and_delete_permission_calls_record_api_metrics():
+    client = MagicMock()
+    observability = RecordingObservability()
+
+    with patch("glean.indexing.push.uploader.api_client", return_value=ClientContext(client)):
+        uploader = PushUploader("test_datasource", observability=_observability_arg(observability))
+        uploader.index_user(_user("a@example.com"))
+        uploader.delete_user(email="a@example.com")
+
+    client.indexing.permissions.index_user.assert_called_once()
+    client.indexing.permissions.delete_user.assert_called_once()
+    assert observability.api_counts == ["permissions.index_user", "permissions.delete_user"]
+    assert observability.api_latencies == ["permissions.index_user", "permissions.delete_user"]

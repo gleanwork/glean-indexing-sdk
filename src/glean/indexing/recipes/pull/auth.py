@@ -1,13 +1,9 @@
 """Authentication helpers for source-side pull recipes."""
 
 import base64
-import json
-import os
-import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 from typing import Protocol
 
@@ -87,8 +83,8 @@ class RefreshingBearerTokenAuth:
 class OAuth2Token:
     """OAuth2 token state for source API authentication.
 
-    Refresh tokens are secrets. File-backed storage is intended for local/demo
-    use only; production connectors should provide a secure token store.
+    Refresh tokens are secrets. Connector authors should provide an
+    `OAuth2TokenStore` backed by storage appropriate for their runtime.
     """
 
     access_token: str
@@ -160,67 +156,6 @@ class OAuth2TokenStore(Protocol):
     def save(self, token: OAuth2Token) -> None:
         """Persist token state."""
         ...
-
-
-class FileOAuth2TokenStore:
-    """File-backed OAuth2 token storage for local connector development."""
-
-    def __init__(self, path: str | os.PathLike[str]) -> None:
-        """Initialize the file store with an explicit token path."""
-        self.path = Path(path)
-
-    def load(self) -> OAuth2Token | None:
-        """Load token state from disk."""
-        if not self.path.exists():
-            return None
-
-        try:
-            with self.path.open(encoding="utf-8") as token_file:
-                data = json.load(token_file)
-        except json.JSONDecodeError as exc:
-            raise OAuth2TokenError(f"Stored OAuth2 token file is not valid JSON: {self.path}") from exc
-        except OSError as exc:
-            raise OAuth2TokenError(f"Could not read OAuth2 token file: {self.path}") from exc
-
-        if not isinstance(data, Mapping):
-            raise OAuth2TokenError("Stored OAuth2 token file must contain a JSON object")
-        return OAuth2Token.from_dict(data)
-
-    def save(self, token: OAuth2Token) -> None:
-        """Atomically save token state to disk."""
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path: str | None = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                "w",
-                encoding="utf-8",
-                dir=self.path.parent,
-                prefix=f".{self.path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as temp_file:
-                temp_path = temp_file.name
-                json.dump(token.to_dict(), temp_file, indent=2, sort_keys=True)
-                temp_file.write("\n")
-
-            self._chmod_private(temp_path)
-            os.replace(temp_path, self.path)
-            self._chmod_private(self.path)
-        except OSError as exc:
-            raise OAuth2TokenError(f"Could not write OAuth2 token file: {self.path}") from exc
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                try:
-                    os.unlink(temp_path)
-                except OSError:
-                    pass
-
-    @staticmethod
-    def _chmod_private(path: str | os.PathLike[str]) -> None:
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
 
 
 class OAuth2TokenProvider:

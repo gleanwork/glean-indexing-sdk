@@ -177,4 +177,3 @@ cython_debug/
 
 # Project specific
 .ruff_cache/
-.tokens/

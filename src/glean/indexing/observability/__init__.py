@@ -4,6 +4,10 @@ from glean.indexing.observability.formatters import (
     CompactStructuredFormatter,
     StructuredFormatter,
 )
+from glean.indexing.observability.logging import (
+    ConsoleLoggerProvider,
+    LoggerProvider,
+)
 from glean.indexing.observability.observability import (
     ConnectorObservability,
     PerformanceTracker,
@@ -22,7 +26,9 @@ from glean.indexing.observability.providers import (
 __all__ = [
     "CompactStructuredFormatter",
     "ConnectorObservability",
+    "ConsoleLoggerProvider",
     "InMemoryMetricsProvider",
+    "LoggerProvider",
     "MetricsProvider",
     "MetricType",
     "NoOpMetricsProvider",

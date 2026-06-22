@@ -188,3 +188,98 @@ def test_apply_missing_config_shows_error(runner, tmp_path):
     result = runner.invoke(cli, ["apply", "--config", str(tmp_path / "missing.yaml")])
     assert result.exit_code != 0
     assert "not found" in result.output or "Error" in result.output
+
+
+# ---------------------------------------------------------------------------
+# build
+# ---------------------------------------------------------------------------
+
+
+def test_build_invokes_docker_build(runner, tmp_path, gcp_deployment_yaml):
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(
+            cli,
+            ["build", "--config", str(gcp_deployment_yaml)],
+        )
+        assert result.exit_code == 0, result.output
+        build_call = mock_run.call_args_list[0]
+        assert "docker" in build_call.args[0]
+        assert "build" in build_call.args[0]
+
+
+def test_build_uses_config_parent_as_cwd(runner, tmp_path, gcp_deployment_yaml):
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        runner.invoke(cli, ["build", "--config", str(gcp_deployment_yaml)])
+        build_call = mock_run.call_args_list[0]
+        assert build_call.kwargs.get("cwd") == gcp_deployment_yaml.parent
+
+
+def test_build_push_calls_docker_push(runner, tmp_path, gcp_deployment_yaml):
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(
+            cli,
+            ["build", "--push", "--config", str(gcp_deployment_yaml)],
+        )
+        assert result.exit_code == 0, result.output
+        assert mock_run.call_count == 2
+        push_call = mock_run.call_args_list[1]
+        assert "docker" in push_call.args[0]
+        assert "push" in push_call.args[0]
+
+
+def test_build_missing_config_shows_error(runner, tmp_path):
+    result = runner.invoke(cli, ["build", "--config", str(tmp_path / "missing.yaml")])
+    assert result.exit_code != 0
+    assert "not found" in result.output or "Error" in result.output
+
+
+# ---------------------------------------------------------------------------
+# logs
+# ---------------------------------------------------------------------------
+
+
+def test_logs_fetches_latest_job_then_logs(runner, tmp_path, gcp_deployment_yaml):
+    def _side_effect(cmd, **kwargs):
+        if "get" in cmd and "jobs" in cmd:
+            mock = MagicMock(returncode=0, stdout="my-salesforce-28123456")
+            return mock
+        return MagicMock(returncode=0)
+
+    with patch("subprocess.run", side_effect=_side_effect):
+        result = runner.invoke(cli, ["logs", "--config", str(gcp_deployment_yaml)])
+        assert result.exit_code == 0, result.output
+        assert "my-salesforce-28123456" in result.output
+
+
+def test_logs_no_jobs_shows_error(runner, tmp_path, gcp_deployment_yaml):
+    def _side_effect(cmd, **kwargs):
+        if "get" in cmd and "jobs" in cmd:
+            return MagicMock(returncode=0, stdout="")
+        return MagicMock(returncode=0)
+
+    with patch("subprocess.run", side_effect=_side_effect):
+        result = runner.invoke(cli, ["logs", "--config", str(gcp_deployment_yaml)])
+        assert result.exit_code != 0
+        assert "No jobs found" in result.output or "Error" in result.output
+
+
+# ---------------------------------------------------------------------------
+# status
+# ---------------------------------------------------------------------------
+
+
+def test_status_shows_cronjob_and_jobs(runner, tmp_path, gcp_deployment_yaml):
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(cli, ["status", "--config", str(gcp_deployment_yaml)])
+        assert result.exit_code == 0, result.output
+        assert mock_run.call_count == 2
+        # First call: kubectl get cronjob
+        assert "cronjob" in mock_run.call_args_list[0].args[0]
+        # Second call: kubectl get jobs with label selector
+        jobs_cmd = mock_run.call_args_list[1].args[0]
+        assert "jobs" in jobs_cmd
+        assert any("app=" in arg for arg in jobs_cmd)

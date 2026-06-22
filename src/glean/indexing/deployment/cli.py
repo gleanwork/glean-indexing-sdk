@@ -112,9 +112,10 @@ def build(push: bool, tag: str, config_path: str) -> None:
     """Build (and optionally push) the connector container image."""
     config = _load_config(Path(config_path))
     image = f"{config.image_name}:{tag}"
+    build_dir = Path(config_path).resolve().parent
 
     click.echo(f"Building image: {image}")
-    if subprocess.run(["docker", "build", "-t", image, "."], check=False).returncode != 0:
+    if subprocess.run(["docker", "build", "-t", image, "."], cwd=build_dir, check=False).returncode != 0:
         raise click.ClickException("docker build failed.")
 
     if push:
@@ -162,6 +163,7 @@ def secrets_upload(env_file: str, config_path: str) -> None:
 @click.option("--terraform-dir", default="terraform", show_default=True, type=click.Path(file_okay=False))
 def apply(config_path: str, terraform_dir: str) -> None:
     """Apply generated Terraform to deploy the connector CronJob."""
+    _load_config(Path(config_path))
     tf_dir = Path(terraform_dir)
     if not tf_dir.exists():
         raise click.ClickException(f"Terraform directory not found: {tf_dir}. Run `glean-deploy init` first.")
@@ -181,11 +183,29 @@ def apply(config_path: str, terraform_dir: str) -> None:
 def logs(follow: bool, config_path: str) -> None:
     """Show logs from the most recent connector job run."""
     config = _load_config(Path(config_path))
-    cmd = ["kubectl", "logs", f"job/{config.connector_name}", "-n", config.namespace, "--tail=200"]
+
+    jobs_result = subprocess.run(
+        [
+            "kubectl", "get", "jobs",
+            "-n", config.namespace,
+            "-l", f"app={config.connector_name}",
+            "--sort-by=.metadata.creationTimestamp",
+            "-o", "jsonpath={.items[-1].metadata.name}",
+        ],
+        check=False, capture_output=True, text=True,
+    )
+    job_name = jobs_result.stdout.strip()
+    if not job_name:
+        raise click.ClickException(
+            f"No jobs found for connector '{config.connector_name}' in namespace '{config.namespace}'. "
+            "Has the CronJob run at least once? Use `glean-deploy status` to check."
+        )
+
+    cmd = ["kubectl", "logs", f"job/{job_name}", "-n", config.namespace, "--tail=200"]
     if follow:
         cmd.append("-f")
 
-    click.echo(f"Fetching logs for job/{config.connector_name} in namespace {config.namespace}...")
+    click.echo(f"Fetching logs for {job_name} in namespace {config.namespace}...")
     result = subprocess.run(cmd, check=False)
     if result.returncode != 0:
         click.echo("\nTip: Use `glean-deploy status` to see job history.", err=True)
@@ -212,6 +232,7 @@ def status(config_path: str) -> None:
 @click.confirmation_option(prompt="This will destroy the connector deployment. Are you sure?")
 def destroy(config_path: str, terraform_dir: str) -> None:
     """Tear down the connector deployment via terraform destroy."""
+    _load_config(Path(config_path))
     tf_dir = Path(terraform_dir)
     if not tf_dir.exists():
         raise click.ClickException(f"Terraform directory not found: {tf_dir}.")

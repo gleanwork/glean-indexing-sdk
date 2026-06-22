@@ -8,7 +8,8 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from .formatters import StructuredFormatter
-from .providers import MetricsProvider, MetricType, NoOpMetricsProvider
+from .logging import LoggerProvider
+from .providers import InMemoryMetricsProvider, MetricsProvider, MetricType, NoOpMetricsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -684,6 +685,7 @@ def setup_connector_logging(
     use_structured_logging: bool = True,
     formatter: Optional[logging.Formatter] = None,
     extra_handlers: Optional[List[logging.Handler]] = None,
+    logger_provider: Optional[LoggerProvider] = None,
 ) -> None:
     """
     Set up standardized logging for a connector.
@@ -695,6 +697,7 @@ def setup_connector_logging(
         use_structured_logging: Enable structured JSON logging (default: True)
         formatter: Custom formatter instance (overrides use_structured_logging and log_format)
         extra_handlers: Additional handlers to add beyond the default StreamHandler
+        logger_provider: Optional cloud logging provider (e.g., CloudWatchLogsProvider)
     """
     level = getattr(logging, log_level.upper())
 
@@ -714,7 +717,11 @@ def setup_connector_logging(
                 f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
             )
 
-    handlers = [logging.StreamHandler()]
+    if logger_provider is not None:
+        handlers = [logger_provider.setup_handler(connector_name, level)]
+    else:
+        handlers = [logging.StreamHandler()]
+
     if extra_handlers:
         handlers.extend(extra_handlers)
 

@@ -10,7 +10,7 @@ FROM python:3.11-slim
 
 # Install AWS SDK for secret loading at runtime.
 # Reference: https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
-RUN pip install --no-cache-dir boto3>=1.26.0
+RUN pip install --no-cache-dir "boto3>=1.26.0"
 
 # Create a non-root user for security (no privileged mode required).
 RUN useradd --create-home --shell /bin/bash connector

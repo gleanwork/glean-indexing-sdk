@@ -67,7 +67,7 @@ class DeploymentConfig(BaseModel):
     @classmethod
     def from_yaml(cls, path: Path) -> "DeploymentConfig":
         """Load and validate a DeploymentConfig from a YAML file."""
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return cls.model_validate(data)
 
@@ -75,8 +75,13 @@ class DeploymentConfig(BaseModel):
         """Write this config to a YAML file."""
         path.parent.mkdir(parents=True, exist_ok=True)
         data = self.model_dump(exclude_none=True)
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
             yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+    @property
+    def k8s_name(self) -> str:
+        """Kubernetes-safe name derived from connector_name (underscores → hyphens)."""
+        return self.connector_name.replace("_", "-")
 
     @property
     def image_name(self) -> str:
@@ -94,7 +99,7 @@ class DeploymentConfig(BaseModel):
 
     @property
     def effective_service_account(self) -> str:
-        """GCP service account or AWS IAM role name, with connector_name-based default."""
+        """GCP service account or AWS IAM role name, with k8s_name-based default."""
         if self.cloud == "gcp":
-            return self.service_account_name or f"{self.connector_name}-sa"
-        return self.iam_role_name or f"{self.connector_name}-role"
+            return self.service_account_name or f"{self.k8s_name}-sa"
+        return self.iam_role_name or f"{self.k8s_name}-role"

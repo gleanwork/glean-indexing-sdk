@@ -67,12 +67,17 @@ def generate_artifacts(config: DeploymentConfig, output_dir: Path | None = None)
         for rel_path, content in rendered.items():
             dest = output_dir / rel_path
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(content)
+            dest.write_text(content, encoding="utf-8", newline="\n")
 
     return rendered
 
 
 def list_generated_files(cloud: str) -> list[str]:
     """Return the relative output paths that would be generated for a given cloud target."""
-    cloud_artifacts = _GCP_ARTIFACTS if cloud == "gcp" else _AWS_ARTIFACTS
+    if cloud == "gcp":
+        cloud_artifacts = _GCP_ARTIFACTS
+    elif cloud == "aws":
+        cloud_artifacts = _AWS_ARTIFACTS
+    else:
+        raise ValueError(f"Unsupported cloud target: {cloud!r}. Must be 'gcp' or 'aws'.")
     return [path for path, _ in cloud_artifacts + _COMMON_ARTIFACTS]

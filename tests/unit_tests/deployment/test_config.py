@@ -115,6 +115,7 @@ def test_connector_name_with_hyphen_valid():
 def test_connector_name_with_underscore_valid():
     config = DeploymentConfig(**{**GCP_KWARGS, "connector_name": "my_connector"})
     assert config.connector_name == "my_connector"
+    assert config.k8s_name == "my-connector"
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +140,8 @@ def test_secret_prefix_uppercase():
 
 def test_effective_service_account_gcp_default():
     config = DeploymentConfig(**GCP_KWARGS)
-    assert config.effective_service_account == "my_salesforce-sa"
+    # k8s_name is used: underscores → hyphens
+    assert config.effective_service_account == "my-salesforce-sa"
 
 
 def test_effective_service_account_gcp_custom():
@@ -149,7 +151,8 @@ def test_effective_service_account_gcp_custom():
 
 def test_effective_service_account_aws_default():
     config = DeploymentConfig(**AWS_KWARGS)
-    assert config.effective_service_account == "my_salesforce-role"
+    # k8s_name is used: underscores → hyphens
+    assert config.effective_service_account == "my-salesforce-role"
 
 
 # ---------------------------------------------------------------------------

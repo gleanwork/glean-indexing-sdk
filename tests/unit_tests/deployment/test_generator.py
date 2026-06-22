@@ -1,5 +1,6 @@
 """Unit tests for deployment artifact generator."""
 
+import pytest
 
 from glean.indexing.deployment.config import DeploymentConfig
 from glean.indexing.deployment.generator import generate_artifacts, list_generated_files
@@ -228,3 +229,8 @@ def test_list_generated_files_aws():
     files = list_generated_files("aws")
     assert "Dockerfile" in files
     assert "terraform/main.tf" in files
+
+
+def test_list_generated_files_invalid_cloud_raises():
+    with pytest.raises(ValueError, match="Unsupported cloud target"):
+        list_generated_files("azure")

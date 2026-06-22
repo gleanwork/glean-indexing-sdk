@@ -10,7 +10,7 @@ FROM python:3.11-slim
 
 # Install GCP Secret Manager client for secret loading at runtime.
 # Reference: https://cloud.google.com/secret-manager/docs/reference/libraries
-RUN pip install --no-cache-dir google-cloud-secret-manager>=2.0.0
+RUN pip install --no-cache-dir "google-cloud-secret-manager>=2.0.0"
 
 # Create a non-root user for security (no privileged mode required).
 RUN useradd --create-home --shell /bin/bash connector

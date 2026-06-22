@@ -31,12 +31,18 @@ test = [
     "python-dotenv>=1.1.0",
     "pytest-socket>=0.7.0",
     "pytest-watcher>=0.3.4",
+    "boto3>=1.34.0,<2",
+    "watchtower>=3.3.0,<4",
 ]
 lint = [
     "ruff>=0.5",
 ]
 typing = [
     "pyright>=1.1.370",
+]
+aws = [
+    "boto3>=1.34.0,<2",
+    "watchtower>=3.3.0,<4",
 ]
 [project.urls]
 "Source Code" = "https://github.com/glean-io/glean-indexing-sdk"

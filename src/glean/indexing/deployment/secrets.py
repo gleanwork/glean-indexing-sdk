@@ -25,10 +25,15 @@ _REDLIST: frozenset[str] = frozenset(
 
 
 def parse_env_file(env_file: Path) -> dict[str, str]:
-    """Parse a .env file and return key-value pairs (comments and blank lines excluded)."""
+    """Parse a .env file and return key-value pairs (comments and blank lines excluded).
+
+    Keys present without a value (e.g. ``FOO`` with no ``=``) are omitted rather than
+    mapped to ``None``, keeping the return type strictly ``dict[str, str]``.
+    """
     from dotenv import dotenv_values
 
-    return dict(dotenv_values(env_file))
+    raw = dotenv_values(env_file)
+    return {k: v for k, v in raw.items() if v is not None}
 
 
 def filter_secrets(env_vars: dict[str, str]) -> dict[str, str]:
@@ -47,9 +52,16 @@ def upload_secrets_gcp(config: "DeploymentConfig", env_file: Path) -> dict[str, 
     Idempotent: updates existing secrets, creates missing ones.
     Ref: https://cloud.google.com/secret-manager/docs
     """
-    from google.cloud import secretmanager  # type: ignore[import-untyped]
+    if not config.project_id:
+        raise ValueError("project_id is required for GCP secret upload")
 
     env_vars = filter_secrets(parse_env_file(env_file))
+    if not env_vars:
+        return {}
+
+    from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
+    from google.cloud import secretmanager  # type: ignore[import-untyped]
+
     client = secretmanager.SecretManagerServiceClient()
     parent = f"projects/{config.project_id}"
     results: dict[str, str] = {}
@@ -59,10 +71,12 @@ def upload_secrets_gcp(config: "DeploymentConfig", env_file: Path) -> dict[str, 
         secret_name = f"{parent}/secrets/{secret_id}"
         payload = value.encode("utf-8")
 
-        # Create secret resource if it doesn't exist yet.
+        # Check if the secret already exists.
+        secret_existed = True
         try:
             client.get_secret(request={"name": secret_name})
-        except Exception:
+        except NotFound:
+            secret_existed = False
             client.create_secret(
                 request={
                     "parent": parent,
@@ -78,7 +92,7 @@ def upload_secrets_gcp(config: "DeploymentConfig", env_file: Path) -> dict[str, 
                 "payload": {"data": payload},
             }
         )
-        results[secret_id] = "created"
+        results[secret_id] = "updated" if secret_existed else "created"
 
     return results
 
@@ -89,10 +103,13 @@ def upload_secrets_aws(config: "DeploymentConfig", env_file: Path) -> dict[str, 
     Idempotent: updates existing secrets, creates missing ones.
     Ref: https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html
     """
+    env_vars = filter_secrets(parse_env_file(env_file))
+    if not env_vars:
+        return {}
+
     import boto3  # type: ignore[import-untyped]
     from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 
-    env_vars = filter_secrets(parse_env_file(env_file))
     client = boto3.client("secretsmanager", region_name=config.region)
     results: dict[str, str] = {}
 

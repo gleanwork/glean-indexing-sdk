@@ -1,7 +1,6 @@
 """Unit tests for glean-deploy secrets module."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -174,21 +173,82 @@ def test_upload_secrets_dispatches_to_aws(aws_config, env_file):
 
 
 def test_upload_secrets_gcp_calls_secret_manager(gcp_config, env_file):
+    """Test GCP upload creates secrets when they don't exist yet."""
+
+    class _FakeNotFound(Exception):
+        pass
+
     mock_client = MagicMock()
-    mock_client.get_secret.side_effect = Exception("not found")
+    mock_client.get_secret.side_effect = _FakeNotFound("not found")
 
     mock_sm_module = MagicMock()
     mock_sm_module.SecretManagerServiceClient.return_value = mock_client
 
-    with patch.dict("sys.modules", {"google.cloud.secretmanager": mock_sm_module, "google.cloud": MagicMock()}):
-        from glean.indexing.deployment.secrets import upload_secrets_gcp
+    # google.cloud is a namespace package — explicitly wire secretmanager so
+    # `from google.cloud import secretmanager` resolves to mock_sm_module.
+    mock_google_cloud = MagicMock()
+    mock_google_cloud.secretmanager = mock_sm_module
 
-        result = upload_secrets_gcp(gcp_config, env_file)
+    mock_api_core_exc = MagicMock()
+    mock_api_core_exc.NotFound = _FakeNotFound
 
-    # Both API_KEY and OAUTH_TOKEN should be returned
+    with patch.dict(
+        "sys.modules",
+        {
+            "google": MagicMock(),
+            "google.cloud": mock_google_cloud,
+            "google.cloud.secretmanager": mock_sm_module,
+            "google.api_core": MagicMock(),
+            "google.api_core.exceptions": mock_api_core_exc,
+        },
+    ):
+        from glean.indexing.deployment import secrets as secrets_mod
+        import importlib
+        importlib.reload(secrets_mod)
+        result = secrets_mod.upload_secrets_gcp(gcp_config, env_file)
+
     assert len(result) == 2
     for v in result.values():
         assert v == "created"
+
+
+def test_upload_secrets_gcp_returns_updated_for_existing_secrets(gcp_config, env_file):
+    """Test GCP upload returns 'updated' when secret already exists."""
+
+    class _FakeNotFound(Exception):
+        pass
+
+    mock_client = MagicMock()
+    # get_secret succeeds (no exception) → secret already exists
+    mock_client.get_secret.return_value = MagicMock()
+
+    mock_sm_module = MagicMock()
+    mock_sm_module.SecretManagerServiceClient.return_value = mock_client
+
+    mock_google_cloud = MagicMock()
+    mock_google_cloud.secretmanager = mock_sm_module
+
+    mock_api_core_exc = MagicMock()
+    mock_api_core_exc.NotFound = _FakeNotFound
+
+    with patch.dict(
+        "sys.modules",
+        {
+            "google": MagicMock(),
+            "google.cloud": mock_google_cloud,
+            "google.cloud.secretmanager": mock_sm_module,
+            "google.api_core": MagicMock(),
+            "google.api_core.exceptions": mock_api_core_exc,
+        },
+    ):
+        from glean.indexing.deployment import secrets as secrets_mod
+        import importlib
+        importlib.reload(secrets_mod)
+        result = secrets_mod.upload_secrets_gcp(gcp_config, env_file)
+
+    assert len(result) == 2
+    for v in result.values():
+        assert v == "updated"
 
 
 def test_upload_secrets_aws_creates_new_secret(aws_config, env_file):
@@ -227,3 +287,22 @@ def test_upload_secrets_empty_env_file_no_calls(gcp_config, tmp_path):
         mock_gcp.return_value = {}
         result = upload_secrets(gcp_config, empty_env)
         assert result == {}
+
+
+def test_upload_secrets_gcp_empty_env_returns_early(gcp_config, tmp_path):
+    """GCP upload returns empty dict without importing GCP SDK when no secrets."""
+    empty_env = tmp_path / ".env"
+    empty_env.write_text("")
+
+    # If the SDK were imported, this would raise because we haven't mocked it.
+    result = __import__("glean.indexing.deployment.secrets", fromlist=["upload_secrets_gcp"]).upload_secrets_gcp(gcp_config, empty_env)
+    assert result == {}
+
+
+def test_upload_secrets_aws_empty_env_returns_early(aws_config, tmp_path):
+    """AWS upload returns empty dict without importing boto3 when no secrets."""
+    empty_env = tmp_path / ".env"
+    empty_env.write_text("")
+
+    result = __import__("glean.indexing.deployment.secrets", fromlist=["upload_secrets_aws"]).upload_secrets_aws(aws_config, empty_env)
+    assert result == {}

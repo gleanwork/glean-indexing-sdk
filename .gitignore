@@ -177,4 +177,4 @@ cython_debug/
 .llm/
 
 # Project specific
-.ruff_cache/ 
+.ruff_cache/

@@ -9,8 +9,10 @@ import httpx
 
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
 from glean.indexing.models import TSourceData
+from glean.indexing.observability import ConnectorObservability
 from glean.indexing.recipes.pull.http_client import PullHttpClient
 from glean.indexing.recipes.pull.options import PullOptions
+from glean.indexing.recipes.pull.rate_limit import RateLimiter
 from glean.indexing.recipes.pull.response import PullResponse
 
 PullPaginationMode = Literal["link", "offset", "cursor", "none"]
@@ -41,6 +43,8 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
         initial_cursor: str | None = None,
         headers: Mapping[str, str] | None = None,
         options: PullOptions | None = None,
+        rate_limiter: RateLimiter | None = None,
+        observability: ConnectorObservability | None = None,
         client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
         timeout_seconds: float | None = None,
@@ -66,36 +70,55 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
         self.cursor_key = cursor_key
         self.initial_cursor = initial_cursor
         self.timeout_seconds = timeout_seconds
+        self.observability = observability
         self.http = PullHttpClient(
             base_url=base_url,
             headers=headers,
             options=options,
+            rate_limiter=rate_limiter,
+            observability=observability,
             client=client,
             sleep=sleep,
         )
 
     def get_source_data(self, **kwargs: Any) -> Generator[TSourceData, None, None]:
         """Yield source data from the configured HTTP endpoint."""
-        if self.max_items == 0:
-            return
+        start_time = time.time()
+        item_count = 0
+        success = False
+        if self.observability:
+            self.observability.log_data_fetch_started(path=self.path, pagination=self.pagination)
 
-        params = self.__params(kwargs)
+        try:
+            if self.max_items == 0:
+                success = True
+                return
 
-        if self.pagination == "link":
-            yield from self.__link_items(params)
-            return
+            params = self.__params(kwargs)
 
-        if self.pagination == "offset":
-            yield from self.__offset_items(params)
-            return
+            if self.pagination == "link":
+                items = self.__link_items(params)
+            elif self.pagination == "offset":
+                items = self.__offset_items(params)
+            elif self.pagination == "cursor":
+                items = self.__cursor_items(params)
+            else:
+                response = self.http.get(self.path, params=params, timeout_seconds=self.timeout_seconds)
+                fetched_items, _, _ = self.__limited_items(response, items_yielded=0)
+                items = iter(fetched_items)
 
-        if self.pagination == "cursor":
-            yield from self.__cursor_items(params)
-            return
-
-        response = self.http.get(self.path, params=params, timeout_seconds=self.timeout_seconds)
-        items, _, _ = self.__limited_items(response, items_yielded=0)
-        yield from items
+            for item in items:
+                item_count += 1
+                yield item
+            success = True
+        finally:
+            if success and self.observability:
+                self.observability.log_data_fetch_completed(
+                    item_count=item_count,
+                    duration_ms=int((time.time() - start_time) * 1000),
+                    path=self.path,
+                    pagination=self.pagination,
+                )
 
     def close(self) -> None:
         """Close the underlying HTTP client."""

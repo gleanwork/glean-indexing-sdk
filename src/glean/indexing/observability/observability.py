@@ -5,10 +5,11 @@ import logging
 import time
 import uuid
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar, cast
 
 from .formatters import StructuredFormatter
 from .providers import MetricsProvider, MetricType, NoOpMetricsProvider
+from .logging import LoggerProvider
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ class ConnectorObservability:
 
         exc_info = sys.exc_info()
         if exc_info[0] is not None:
-            self.fail_execution(exc_info[1])
+            self.fail_execution(cast(Exception, exc_info[1]))
             return
 
         duration = time.time() - self.start_time
@@ -684,6 +685,7 @@ def setup_connector_logging(
     use_structured_logging: bool = True,
     formatter: Optional[logging.Formatter] = None,
     extra_handlers: Optional[List[logging.Handler]] = None,
+    logger_provider: Optional[LoggerProvider] = None,
 ) -> None:
     """
     Set up standardized logging for a connector.
@@ -695,6 +697,7 @@ def setup_connector_logging(
         use_structured_logging: Enable structured JSON logging (default: True)
         formatter: Custom formatter instance (overrides use_structured_logging and log_format)
         extra_handlers: Additional handlers to add beyond the default StreamHandler
+        logger_provider: Optional cloud logging provider (e.g., CloudWatchLogsProvider)
     """
     level = getattr(logging, log_level.upper())
 
@@ -714,7 +717,12 @@ def setup_connector_logging(
                 f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
             )
 
-    handlers = [logging.StreamHandler()]
+    handlers: List[logging.Handler]
+    if logger_provider is not None:
+        handlers = [logger_provider.setup_handler(connector_name, level)]
+    else:
+        handlers = [logging.StreamHandler()]
+
     if extra_handlers:
         handlers.extend(extra_handlers)
 

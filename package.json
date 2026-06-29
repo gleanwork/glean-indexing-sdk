@@ -1,0 +1,25 @@
+{
+  "name": "@gleanwork/glean-indexing-sdk-agent-plugin",
+  "version": "0.1.0",
+  "description": "Agent plugin sources for building Glean Indexing SDK connectors.",
+  "license": "MIT",
+  "author": {
+    "name": "Glean",
+    "email": "support@glean.com",
+    "url": "https://glean.com"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "build:plugins": "pluginpack build",
+    "clean:plugins": "pluginpack clean",
+    "validate:plugins": "pluginpack validate --target claude --dir dist/claude && pluginpack validate --target cursor --dir dist/cursor",
+    "test:plugins": "npm run build:plugins && npm run validate:plugins"
+  },
+  "devDependencies": {
+    "@gleanwork/pluginpack": "^0.6.0"
+  }
+}

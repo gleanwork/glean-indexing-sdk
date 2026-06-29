@@ -12,6 +12,7 @@ from urllib.parse import urljoin
 import httpx
 
 from glean.indexing.recipes.pull.options import PullOptions
+from glean.indexing.recipes.pull.rate_limit import RateLimiter
 from glean.indexing.recipes.pull.response import PullResponse
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ class PullHttpClient:
         base_url: str,
         headers: Mapping[str, str] | None = None,
         options: PullOptions | None = None,
+        rate_limiter: RateLimiter | None = None,
         client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -51,12 +53,14 @@ class PullHttpClient:
             base_url: Base URL for relative request paths.
             headers: Default headers sent with each request.
             options: Request timeout, retry, redirect, and logging behavior.
+            rate_limiter: Optional source API rate limiter.
             client: Optional preconfigured `httpx.Client`.
             sleep: Sleep function used for retry backoff.
         """
         self.base_url = base_url.rstrip("/") + "/"
         self.default_headers = dict(headers or {})
         self.options = options or PullOptions()
+        self.rate_limiter = rate_limiter
         self._client = client or httpx.Client(follow_redirects=self.options.follow_redirects)
         self._owns_client = client is None
         self._sleep = sleep
@@ -174,6 +178,8 @@ class PullHttpClient:
         for attempt in range(1, attempts + 1):
             response: httpx.Response | None = None
             try:
+                if self.rate_limiter is not None:
+                    self.rate_limiter.acquire(timeout_seconds=self.options.rate_limit_timeout_seconds)
                 logger.info("Pull %s %s params=%s", method, url, "***MASKED***" if self.options.mask_params else params)
                 response = self._client.request(
                     method,

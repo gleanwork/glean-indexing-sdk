@@ -1,7 +1,8 @@
 """First-class wrappers for push indexing APIs."""
 
+import time
 import uuid
-from typing import Any, Mapping, Optional, Sequence, TypeVar
+from typing import Any, Callable, Mapping, Optional, Sequence, TypeVar
 
 from glean.api_client.models import (
     CheckDocumentAccessResponse,
@@ -21,6 +22,7 @@ from glean.api_client.models import (
 
 from glean.indexing.common import BatchProcessor, DocumentBatchProcessor, api_client
 from glean.indexing.common.batch_processor import DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
+from glean.indexing.observability import ConnectorObservability
 
 T = TypeVar("T")
 
@@ -106,6 +108,7 @@ class PushUploader:
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
+        observability: Optional[ConnectorObservability] = None,
     ) -> None:
         """Initialize an uploader for a datasource.
 
@@ -115,12 +118,14 @@ class PushUploader:
             server_url: Optional per-call server URL override.
             timeout_ms: Optional per-call timeout override in milliseconds.
             http_headers: Optional per-call HTTP headers.
+            observability: Optional observability instance for upload logs and metrics.
         """
         self.datasource = datasource
         self.retries = retries
         self.server_url = server_url
         self.timeout_ms = timeout_ms
         self.http_headers = http_headers
+        self.observability = observability
 
     def configure_datasource(self, config: CustomDatasourceConfig) -> None:
         """Configure a datasource using `datasources.add()`."""
@@ -133,7 +138,7 @@ class PushUploader:
             if name in config.model_fields_set
         }
         with api_client() as client:
-            client.indexing.datasources.add(**kwargs)
+            self._call_api("datasources.add", lambda: client.indexing.datasources.add(**kwargs))
 
     def index_documents(
         self,
@@ -142,12 +147,26 @@ class PushUploader:
         upload_id: Optional[str] = None,
     ) -> None:
         """Add or update multiple documents using `/indexdocuments`."""
+        document_list = list(documents)
+        document_ids = [document.id for document in document_list if document.id]
+        start_time = time.time()
+        if self.observability:
+            self.observability.log_document_upload_started(document_ids, upload_id=upload_id)
         with api_client() as client:
-            client.indexing.documents.index(
-                datasource=self.datasource,
-                documents=list(documents),
+            self._call_api(
+                "documents.index",
+                lambda: client.indexing.documents.index(
+                    datasource=self.datasource,
+                    documents=document_list,
+                    upload_id=upload_id,
+                    **self._request_options(),
+                ),
+            )
+        if self.observability:
+            self.observability.log_document_upload_completed(
+                document_ids,
+                duration_ms=self._elapsed_ms(start_time),
                 upload_id=upload_id,
-                **self._request_options(),
             )
 
     def bulk_index_documents(
@@ -184,6 +203,8 @@ class PushUploader:
                 upload_id=upload_id,
                 is_first_page=is_first_page,
                 is_last_page=is_last_page,
+                batch_index=i,
+                batch_count=len(batches),
                 force_restart_upload=self._first_page_value(force_restart_upload, is_first_page),
                 disable_stale_document_deletion_check=self._last_page_value(
                     disable_stale_document_deletion_check, is_last_page
@@ -197,21 +218,59 @@ class PushUploader:
         upload_id: str,
         is_first_page: Optional[bool] = None,
         is_last_page: Optional[bool] = None,
+        batch_index: int = 0,
+        batch_count: int = 1,
         force_restart_upload: Optional[bool] = None,
         disable_stale_document_deletion_check: Optional[bool] = None,
     ) -> None:
         """Upload one pre-batched `/bulkindexdocuments` page."""
-        with api_client() as client:
-            client.indexing.documents.bulk_index(
-                datasource=self.datasource,
-                documents=list(documents),
+        document_list = list(documents)
+        if self.observability:
+            self.observability.log_batch_upload_started(
+                batch_index=batch_index,
+                batch_count=batch_count,
+                batch_size=len(document_list),
                 upload_id=upload_id,
-                is_first_page=is_first_page,
-                is_last_page=is_last_page,
-                force_restart_upload=force_restart_upload,
-                disable_stale_document_deletion_check=disable_stale_document_deletion_check,
-                **self._request_options(),
+                entity_type="document",
             )
+            self.observability.record_upload_batch_size(len(document_list))
+        start_time = time.time()
+        try:
+            with api_client() as client:
+                self._call_api(
+                    "documents.bulk_index",
+                    lambda: client.indexing.documents.bulk_index(
+                        datasource=self.datasource,
+                        documents=document_list,
+                        upload_id=upload_id,
+                        is_first_page=is_first_page,
+                        is_last_page=is_last_page,
+                        force_restart_upload=force_restart_upload,
+                        disable_stale_document_deletion_check=disable_stale_document_deletion_check,
+                        **self._request_options(),
+                    ),
+                )
+        except Exception as error:
+            if self.observability:
+                self.observability.log_batch_upload_failed(
+                    batch_index=batch_index,
+                    batch_count=batch_count,
+                    error=error,
+                    upload_id=upload_id,
+                    entity_type="document",
+                    batch_size=len(document_list),
+                )
+            raise
+        else:
+            if self.observability:
+                self.observability.log_batch_upload_completed(
+                    batch_index=batch_index,
+                    batch_count=batch_count,
+                    batch_size=len(document_list),
+                    duration_ms=self._elapsed_ms(start_time),
+                    upload_id=upload_id,
+                    entity_type="document",
+                )
 
     def delete_document(
         self,
@@ -222,12 +281,15 @@ class PushUploader:
     ) -> None:
         """Delete a document using `/deletedocument`."""
         with api_client() as client:
-            client.indexing.documents.delete(
-                datasource=self.datasource,
-                object_type=object_type,
-                id=document_id,
-                version=version,
-                **self._request_options(),
+            self._call_api(
+                "documents.delete",
+                lambda: client.indexing.documents.delete(
+                    datasource=self.datasource,
+                    object_type=object_type,
+                    id=document_id,
+                    version=version,
+                    **self._request_options(),
+                ),
             )
 
     def get_document_lifecycle_events(
@@ -257,11 +319,14 @@ class PushUploader:
     ) -> None:
         """Add or update a datasource user using `/indexuser`."""
         with api_client() as client:
-            client.indexing.permissions.index_user(
-                datasource=self.datasource,
-                user=user,
-                version=version,
-                **self._request_options(),
+            self._call_api(
+                "permissions.index_user",
+                lambda: client.indexing.permissions.index_user(
+                    datasource=self.datasource,
+                    user=user,
+                    version=version,
+                    **self._request_options(),
+                ),
             )
 
     def debug_user(
@@ -296,20 +361,56 @@ class PushUploader:
             for i, batch in enumerate(batches):
                 is_first_page = i == 0
                 is_last_page = i == len(batches) - 1
-                client.indexing.permissions.bulk_index_users(
-                    datasource=self.datasource,
-                    users=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_page,
-                    is_last_page=is_last_page,
-                    force_restart_upload=self._first_page_value(
-                        force_restart_upload, is_first_page
-                    ),
-                    disable_stale_data_deletion_check=self._last_page_value(
-                        disable_stale_data_deletion_check, is_last_page
-                    ),
-                    **self._request_options(),
-                )
+                user_batch = list(batch)
+                if self.observability:
+                    self.observability.log_batch_upload_started(
+                        batch_index=i,
+                        batch_count=len(batches),
+                        batch_size=len(user_batch),
+                        upload_id=upload_id,
+                        entity_type="user",
+                    )
+                    self.observability.record_upload_batch_size(len(user_batch))
+                start_time = time.time()
+                try:
+                    self._call_api(
+                        "permissions.bulk_index_users",
+                        lambda: client.indexing.permissions.bulk_index_users(
+                            datasource=self.datasource,
+                            users=user_batch,
+                            upload_id=upload_id,
+                            is_first_page=is_first_page,
+                            is_last_page=is_last_page,
+                            force_restart_upload=self._first_page_value(
+                                force_restart_upload, is_first_page
+                            ),
+                            disable_stale_data_deletion_check=self._last_page_value(
+                                disable_stale_data_deletion_check, is_last_page
+                            ),
+                            **self._request_options(),
+                        ),
+                    )
+                except Exception as error:
+                    if self.observability:
+                        self.observability.log_batch_upload_failed(
+                            batch_index=i,
+                            batch_count=len(batches),
+                            error=error,
+                            upload_id=upload_id,
+                            entity_type="user",
+                            batch_size=len(user_batch),
+                        )
+                    raise
+                else:
+                    if self.observability:
+                        self.observability.log_batch_upload_completed(
+                            batch_index=i,
+                            batch_count=len(batches),
+                            batch_size=len(user_batch),
+                            duration_ms=self._elapsed_ms(start_time),
+                            upload_id=upload_id,
+                            entity_type="user",
+                        )
 
     def index_group(
         self,
@@ -319,11 +420,14 @@ class PushUploader:
     ) -> None:
         """Add or update a datasource group using `/indexgroup`."""
         with api_client() as client:
-            client.indexing.permissions.index_group(
-                datasource=self.datasource,
-                group=group,
-                version=version,
-                **self._request_options(),
+            self._call_api(
+                "permissions.index_group",
+                lambda: client.indexing.permissions.index_group(
+                    datasource=self.datasource,
+                    group=group,
+                    version=version,
+                    **self._request_options(),
+                ),
             )
 
     def bulk_index_groups(
@@ -345,20 +449,56 @@ class PushUploader:
             for i, batch in enumerate(batches):
                 is_first_page = i == 0
                 is_last_page = i == len(batches) - 1
-                client.indexing.permissions.bulk_index_groups(
-                    datasource=self.datasource,
-                    groups=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_page,
-                    is_last_page=is_last_page,
-                    force_restart_upload=self._first_page_value(
-                        force_restart_upload, is_first_page
-                    ),
-                    disable_stale_data_deletion_check=self._last_page_value(
-                        disable_stale_data_deletion_check, is_last_page
-                    ),
-                    **self._request_options(),
-                )
+                group_batch = list(batch)
+                if self.observability:
+                    self.observability.log_batch_upload_started(
+                        batch_index=i,
+                        batch_count=len(batches),
+                        batch_size=len(group_batch),
+                        upload_id=upload_id,
+                        entity_type="group",
+                    )
+                    self.observability.record_upload_batch_size(len(group_batch))
+                start_time = time.time()
+                try:
+                    self._call_api(
+                        "permissions.bulk_index_groups",
+                        lambda: client.indexing.permissions.bulk_index_groups(
+                            datasource=self.datasource,
+                            groups=group_batch,
+                            upload_id=upload_id,
+                            is_first_page=is_first_page,
+                            is_last_page=is_last_page,
+                            force_restart_upload=self._first_page_value(
+                                force_restart_upload, is_first_page
+                            ),
+                            disable_stale_data_deletion_check=self._last_page_value(
+                                disable_stale_data_deletion_check, is_last_page
+                            ),
+                            **self._request_options(),
+                        ),
+                    )
+                except Exception as error:
+                    if self.observability:
+                        self.observability.log_batch_upload_failed(
+                            batch_index=i,
+                            batch_count=len(batches),
+                            error=error,
+                            upload_id=upload_id,
+                            entity_type="group",
+                            batch_size=len(group_batch),
+                        )
+                    raise
+                else:
+                    if self.observability:
+                        self.observability.log_batch_upload_completed(
+                            batch_index=i,
+                            batch_count=len(batches),
+                            batch_size=len(group_batch),
+                            duration_ms=self._elapsed_ms(start_time),
+                            upload_id=upload_id,
+                            entity_type="group",
+                        )
 
     def index_membership(
         self,
@@ -368,11 +508,14 @@ class PushUploader:
     ) -> None:
         """Add or update a datasource membership using `/indexmembership`."""
         with api_client() as client:
-            client.indexing.permissions.index_membership(
-                datasource=self.datasource,
-                membership=membership,
-                version=version,
-                **self._request_options(),
+            self._call_api(
+                "permissions.index_membership",
+                lambda: client.indexing.permissions.index_membership(
+                    datasource=self.datasource,
+                    membership=membership,
+                    version=version,
+                    **self._request_options(),
+                ),
             )
 
     def bulk_index_memberships(
@@ -394,18 +537,54 @@ class PushUploader:
             for i, batch in enumerate(batches):
                 is_first_page = i == 0
                 is_last_page = i == len(batches) - 1
-                client.indexing.permissions.bulk_index_memberships(
-                    datasource=self.datasource,
-                    memberships=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_page,
-                    is_last_page=is_last_page,
-                    force_restart_upload=self._first_page_value(
-                        force_restart_upload, is_first_page
-                    ),
-                    group=group,
-                    **self._request_options(),
-                )
+                membership_batch = list(batch)
+                if self.observability:
+                    self.observability.log_batch_upload_started(
+                        batch_index=i,
+                        batch_count=len(batches),
+                        batch_size=len(membership_batch),
+                        upload_id=upload_id,
+                        entity_type="membership",
+                    )
+                    self.observability.record_upload_batch_size(len(membership_batch))
+                start_time = time.time()
+                try:
+                    self._call_api(
+                        "permissions.bulk_index_memberships",
+                        lambda: client.indexing.permissions.bulk_index_memberships(
+                            datasource=self.datasource,
+                            memberships=membership_batch,
+                            upload_id=upload_id,
+                            is_first_page=is_first_page,
+                            is_last_page=is_last_page,
+                            force_restart_upload=self._first_page_value(
+                                force_restart_upload, is_first_page
+                            ),
+                            group=group,
+                            **self._request_options(),
+                        ),
+                    )
+                except Exception as error:
+                    if self.observability:
+                        self.observability.log_batch_upload_failed(
+                            batch_index=i,
+                            batch_count=len(batches),
+                            error=error,
+                            upload_id=upload_id,
+                            entity_type="membership",
+                            batch_size=len(membership_batch),
+                        )
+                    raise
+                else:
+                    if self.observability:
+                        self.observability.log_batch_upload_completed(
+                            batch_index=i,
+                            batch_count=len(batches),
+                            batch_size=len(membership_batch),
+                            duration_ms=self._elapsed_ms(start_time),
+                            upload_id=upload_id,
+                            entity_type="membership",
+                        )
 
     def delete_user(
         self,
@@ -415,11 +594,14 @@ class PushUploader:
     ) -> None:
         """Delete a datasource user using `/deleteuser`."""
         with api_client() as client:
-            client.indexing.permissions.delete_user(
-                datasource=self.datasource,
-                email=email,
-                version=version,
-                **self._request_options(),
+            self._call_api(
+                "permissions.delete_user",
+                lambda: client.indexing.permissions.delete_user(
+                    datasource=self.datasource,
+                    email=email,
+                    version=version,
+                    **self._request_options(),
+                ),
             )
 
     def delete_group(
@@ -430,11 +612,14 @@ class PushUploader:
     ) -> None:
         """Delete a datasource group using `/deletegroup`."""
         with api_client() as client:
-            client.indexing.permissions.delete_group(
-                datasource=self.datasource,
-                group_name=group_name,
-                version=version,
-                **self._request_options(),
+            self._call_api(
+                "permissions.delete_group",
+                lambda: client.indexing.permissions.delete_group(
+                    datasource=self.datasource,
+                    group_name=group_name,
+                    version=version,
+                    **self._request_options(),
+                ),
             )
 
     def delete_membership(
@@ -445,11 +630,14 @@ class PushUploader:
     ) -> None:
         """Delete a datasource membership using `/deletemembership`."""
         with api_client() as client:
-            client.indexing.permissions.delete_membership(
-                datasource=self.datasource,
-                membership=membership,
-                version=version,
-                **self._request_options(),
+            self._call_api(
+                "permissions.delete_membership",
+                lambda: client.indexing.permissions.delete_membership(
+                    datasource=self.datasource,
+                    membership=membership,
+                    version=version,
+                    **self._request_options(),
+                ),
             )
 
     def bulk_index_employees(
@@ -471,25 +659,79 @@ class PushUploader:
             for i, batch in enumerate(batches):
                 is_first_page = i == 0
                 is_last_page = i == len(batches) - 1
-                client.indexing.people.bulk_index(
-                    employees=list(batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_page,
-                    is_last_page=is_last_page,
-                    force_restart_upload=self._first_page_value(
-                        force_restart_upload, is_first_page
-                    ),
-                    disable_stale_data_deletion_check=self._last_page_value(
-                        disable_stale_data_deletion_check, is_last_page
-                    ),
-                    **self._request_options(),
-                )
+                employee_batch = list(batch)
+                if self.observability:
+                    self.observability.log_batch_upload_started(
+                        batch_index=i,
+                        batch_count=len(batches),
+                        batch_size=len(employee_batch),
+                        upload_id=upload_id,
+                        entity_type="employee",
+                    )
+                    self.observability.record_upload_batch_size(len(employee_batch))
+                start_time = time.time()
+                try:
+                    self._call_api(
+                        "people.bulk_index",
+                        lambda: client.indexing.people.bulk_index(
+                            employees=employee_batch,
+                            upload_id=upload_id,
+                            is_first_page=is_first_page,
+                            is_last_page=is_last_page,
+                            force_restart_upload=self._first_page_value(
+                                force_restart_upload, is_first_page
+                            ),
+                            disable_stale_data_deletion_check=self._last_page_value(
+                                disable_stale_data_deletion_check, is_last_page
+                            ),
+                            **self._request_options(),
+                        ),
+                    )
+                except Exception as error:
+                    if self.observability:
+                        self.observability.log_batch_upload_failed(
+                            batch_index=i,
+                            batch_count=len(batches),
+                            error=error,
+                            upload_id=upload_id,
+                            entity_type="employee",
+                            batch_size=len(employee_batch),
+                        )
+                    raise
+                else:
+                    if self.observability:
+                        self.observability.log_batch_upload_completed(
+                            batch_index=i,
+                            batch_count=len(batches),
+                            batch_size=len(employee_batch),
+                            duration_ms=self._elapsed_ms(start_time),
+                            upload_id=upload_id,
+                            entity_type="employee",
+                        )
 
     def _batches(self, items: Sequence[T], batch_size: int) -> list[Sequence[T]]:
         """Split items using the SDK's shared batching utility."""
         if batch_size <= 0:
             raise ValueError("batch_size must be greater than 0")
         return list(BatchProcessor(list(items), batch_size=batch_size))
+
+    def _call_api(self, endpoint: str, call: Callable[[], Any]) -> Any:
+        start_time = time.time()
+        if self.observability:
+            self.observability.record_api_request_count(endpoint)
+        try:
+            return call()
+        except Exception as error:
+            if self.observability:
+                self.observability.record_api_request_error(endpoint, type(error).__name__)
+            raise
+        finally:
+            if self.observability:
+                self.observability.record_api_request_latency(self._elapsed_ms(start_time), endpoint)
+
+    @staticmethod
+    def _elapsed_ms(start_time: float) -> int:
+        return int((time.time() - start_time) * 1000)
 
     def _upload_id(self, upload_id: Optional[str]) -> str:
         return upload_id or str(uuid.uuid4())

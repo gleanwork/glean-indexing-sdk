@@ -5,11 +5,11 @@ import logging
 import time
 import uuid
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar, cast
 
 from .formatters import StructuredFormatter
+from .providers import MetricsProvider, MetricType, NoOpMetricsProvider
 from .logging import LoggerProvider
-from .providers import InMemoryMetricsProvider, MetricsProvider, MetricType, NoOpMetricsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ class ConnectorObservability:
 
         exc_info = sys.exc_info()
         if exc_info[0] is not None:
-            self.fail_execution(exc_info[1])
+            self.fail_execution(cast(Exception, exc_info[1]))
             return
 
         duration = time.time() - self.start_time
@@ -717,6 +717,7 @@ def setup_connector_logging(
                 f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
             )
 
+    handlers: List[logging.Handler]
     if logger_provider is not None:
         handlers = [logger_provider.setup_handler(connector_name, level)]
     else:

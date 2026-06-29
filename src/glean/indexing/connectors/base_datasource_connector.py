@@ -193,6 +193,7 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                 PushUploader(
                     datasource=self.name,
                     timeout_ms=options.upload_timeout_ms if options else None,
+                    observability=self._observability,
                 ).bulk_index_documents(
                     documents=documents,
                     batch_size=self.batch_size,

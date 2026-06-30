@@ -1,7 +1,13 @@
-"""Secrets upload for glean-deploy — GCP Secret Manager and AWS Secrets Manager."""
+"""Cloud secret manager backends for glean-deploy.
+
+Each cloud platform has a dedicated backend class (GCPSecretsBackend,
+AWSSecretsBackend) sharing a common SecretsBackend interface. Use
+get_secrets_backend(config) to obtain the right one at runtime.
+"""
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -41,194 +47,182 @@ def filter_secrets(env_vars: dict[str, str]) -> dict[str, str]:
     return {k: v for k, v in env_vars.items() if k not in _REDLIST}
 
 
-def make_secret_name(config: "DeploymentConfig", env_key: str) -> str:
-    """Build the cloud secret name: CUSTOM_DATASOURCE_PLATFORM_<NAME>_<KEY>."""
-    return f"{config.secret_prefix}{env_key}"
+class SecretsBackend(ABC):
+    """Common interface for cloud-specific secret manager backends.
+
+    Concrete implementations: GCPSecretsBackend, AWSSecretsBackend.
+    Obtain one via get_secrets_backend(config).
+    """
+
+    def __init__(self, config: "DeploymentConfig") -> None:
+        self._config = config
+
+    def _secret_name(self, env_key: str) -> str:
+        """Build the full cloud secret name: CUSTOM_DATASOURCE_PLATFORM_<NAME>_<KEY>."""
+        return f"{self._config.secret_prefix}{env_key}"
+
+    @abstractmethod
+    def upload(self, env_file: Path) -> dict[str, str]:
+        """Upload secrets from *env_file* to the cloud secret manager.
+
+        Idempotent — creates new secrets and updates existing ones.
+        Returns a mapping of ``{secret_name: "created" | "updated"}``.
+        """
+
+    @abstractmethod
+    def list(self) -> list[str]:
+        """Return sorted env-var key names for all connector secrets in the cloud."""
+
+    @abstractmethod
+    def delete(self, key: str) -> None:
+        """Permanently delete the secret for env-var *key*.
+
+        Raises:
+            KeyError: if the secret does not exist.
+        """
 
 
-def upload_secrets_gcp(config: "DeploymentConfig", env_file: Path) -> dict[str, str]:
-    """Upload connector secrets from a .env file to GCP Secret Manager.
+class GCPSecretsBackend(SecretsBackend):
+    """GCP Secret Manager backend.
 
-    Idempotent: updates existing secrets, creates missing ones.
     Ref: https://cloud.google.com/secret-manager/docs
     """
-    if not config.project_id:
-        raise ValueError("project_id is required for GCP secret upload")
 
-    env_vars = filter_secrets(parse_env_file(env_file))
-    if not env_vars:
-        return {}
+    def upload(self, env_file: Path) -> dict[str, str]:
+        if not self._config.project_id:
+            raise ValueError("project_id is required for GCP secret upload")
 
-    from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
-    from google.cloud import secretmanager  # type: ignore[import-untyped]
+        env_vars = filter_secrets(parse_env_file(env_file))
+        if not env_vars:
+            return {}
 
-    client = secretmanager.SecretManagerServiceClient()
-    parent = f"projects/{config.project_id}"
-    results: dict[str, str] = {}
+        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
+        from google.cloud import secretmanager  # type: ignore[import-untyped]
 
-    for key, value in env_vars.items():
-        secret_id = make_secret_name(config, key)
-        secret_name = f"{parent}/secrets/{secret_id}"
-        payload = value.encode("utf-8")
+        client = secretmanager.SecretManagerServiceClient()
+        parent = f"projects/{self._config.project_id}"
+        results: dict[str, str] = {}
 
-        # Check if the secret already exists.
-        secret_existed = True
-        try:
-            client.get_secret(request={"name": secret_name})
-        except NotFound:
-            secret_existed = False
-            client.create_secret(
+        for key, value in env_vars.items():
+            secret_id = self._secret_name(key)
+            secret_path = f"{parent}/secrets/{secret_id}"
+
+            secret_existed = True
+            try:
+                client.get_secret(request={"name": secret_path})
+            except NotFound:
+                secret_existed = False
+                client.create_secret(
+                    request={
+                        "parent": parent,
+                        "secret_id": secret_id,
+                        "secret": {"replication": {"automatic": {}}},
+                    }
+                )
+
+            client.add_secret_version(
                 request={
-                    "parent": parent,
-                    "secret_id": secret_id,
-                    "secret": {"replication": {"automatic": {}}},
+                    "parent": secret_path,
+                    "payload": {"data": value.encode("utf-8")},
                 }
             )
+            results[secret_id] = "updated" if secret_existed else "created"
 
-        # Add a new version with the current value.
-        client.add_secret_version(
-            request={
-                "parent": secret_name,
-                "payload": {"data": payload},
-            }
-        )
-        results[secret_id] = "updated" if secret_existed else "created"
+        return results
 
-    return results
+    def list(self) -> list[str]:
+        if not self._config.project_id:
+            raise ValueError("project_id is required for GCP secret listing")
+
+        from google.cloud import secretmanager  # type: ignore[import-untyped]
+
+        client = secretmanager.SecretManagerServiceClient()
+        parent = f"projects/{self._config.project_id}"
+        prefix = self._config.secret_prefix
+
+        keys: list[str] = []
+        for secret in client.list_secrets(request={"parent": parent, "filter": f"name:{prefix}"}):
+            secret_id = secret.name.split("/")[-1]
+            if secret_id.startswith(prefix):
+                keys.append(secret_id[len(prefix):])
+        return sorted(keys)
+
+    def delete(self, key: str) -> None:
+        if not self._config.project_id:
+            raise ValueError("project_id is required for GCP secret deletion")
+
+        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
+        from google.cloud import secretmanager  # type: ignore[import-untyped]
+
+        client = secretmanager.SecretManagerServiceClient()
+        secret_path = f"projects/{self._config.project_id}/secrets/{self._secret_name(key)}"
+        try:
+            client.delete_secret(request={"name": secret_path})
+        except NotFound:
+            raise KeyError(key)
 
 
-def upload_secrets_aws(config: "DeploymentConfig", env_file: Path) -> dict[str, str]:
-    """Upload connector secrets from a .env file to AWS Secrets Manager.
+class AWSSecretsBackend(SecretsBackend):
+    """AWS Secrets Manager backend.
 
-    Idempotent: updates existing secrets, creates missing ones.
     Ref: https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html
     """
-    env_vars = filter_secrets(parse_env_file(env_file))
-    if not env_vars:
-        return {}
 
-    import boto3  # type: ignore[import-untyped]
-    from botocore.exceptions import ClientError  # type: ignore[import-untyped]
+    def upload(self, env_file: Path) -> dict[str, str]:
+        env_vars = filter_secrets(parse_env_file(env_file))
+        if not env_vars:
+            return {}
 
-    client = boto3.client("secretsmanager", region_name=config.region)
-    results: dict[str, str] = {}
+        import boto3  # type: ignore[import-untyped]
+        from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 
-    for key, value in env_vars.items():
-        secret_id = make_secret_name(config, key)
+        client = boto3.client("secretsmanager", region_name=self._config.region)
+        results: dict[str, str] = {}
+
+        for key, value in env_vars.items():
+            secret_id = self._secret_name(key)
+            try:
+                client.put_secret_value(SecretId=secret_id, SecretString=value)
+                results[secret_id] = "updated"
+            except ClientError as exc:
+                if exc.response["Error"]["Code"] == "ResourceNotFoundException":
+                    client.create_secret(Name=secret_id, SecretString=value)
+                    results[secret_id] = "created"
+                else:
+                    raise
+
+        return results
+
+    def list(self) -> list[str]:
+        import boto3  # type: ignore[import-untyped]
+
+        client = boto3.client("secretsmanager", region_name=self._config.region)
+        prefix = self._config.secret_prefix
+
+        paginator = client.get_paginator("list_secrets")
+        keys: list[str] = []
+        for page in paginator.paginate(Filters=[{"Key": "name", "Values": [prefix]}]):
+            for secret_meta in page.get("SecretList", []):
+                name = secret_meta["Name"]
+                if name.startswith(prefix):
+                    keys.append(name[len(prefix):])
+        return sorted(keys)
+
+    def delete(self, key: str) -> None:
+        import boto3  # type: ignore[import-untyped]
+        from botocore.exceptions import ClientError  # type: ignore[import-untyped]
+
+        client = boto3.client("secretsmanager", region_name=self._config.region)
         try:
-            client.put_secret_value(SecretId=secret_id, SecretString=value)
-            results[secret_id] = "updated"
+            client.delete_secret(SecretId=self._secret_name(key), ForceDeleteWithoutRecovery=True)
         except ClientError as exc:
             if exc.response["Error"]["Code"] == "ResourceNotFoundException":
-                client.create_secret(Name=secret_id, SecretString=value)
-                results[secret_id] = "created"
-            else:
-                raise
-
-    return results
+                raise KeyError(key)
+            raise
 
 
-def upload_secrets(config: "DeploymentConfig", env_file: Path) -> dict[str, str]:
-    """Upload connector secrets to GCP or AWS based on config.cloud."""
+def get_secrets_backend(config: "DeploymentConfig") -> SecretsBackend:
+    """Return the appropriate SecretsBackend for *config.cloud*."""
     if config.cloud == "gcp":
-        return upload_secrets_gcp(config, env_file)
-    return upload_secrets_aws(config, env_file)
-
-
-def list_secrets_gcp(config: "DeploymentConfig") -> list[str]:
-    """List all connector secrets in GCP Secret Manager matching the connector prefix.
-
-    Returns the env-var key names (i.e. the part after the prefix).
-    Ref: https://cloud.google.com/secret-manager/docs
-    """
-    if not config.project_id:
-        raise ValueError("project_id is required for GCP secret listing")
-
-    from google.cloud import secretmanager  # type: ignore[import-untyped]
-
-    client = secretmanager.SecretManagerServiceClient()
-    parent = f"projects/{config.project_id}"
-    prefix = config.secret_prefix
-
-    keys: list[str] = []
-    for secret in client.list_secrets(request={"parent": parent, "filter": f"name:{prefix}"}):
-        secret_id = secret.name.split("/")[-1]
-        if secret_id.startswith(prefix):
-            keys.append(secret_id[len(prefix):])
-    return sorted(keys)
-
-
-def list_secrets_aws(config: "DeploymentConfig") -> list[str]:
-    """List all connector secrets in AWS Secrets Manager matching the connector prefix.
-
-    Returns the env-var key names (i.e. the part after the prefix).
-    Ref: https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html
-    """
-    import boto3  # type: ignore[import-untyped]
-
-    client = boto3.client("secretsmanager", region_name=config.region)
-    prefix = config.secret_prefix
-
-    paginator = client.get_paginator("list_secrets")
-    keys: list[str] = []
-    for page in paginator.paginate(Filters=[{"Key": "name", "Values": [prefix]}]):
-        for secret_meta in page.get("SecretList", []):
-            name = secret_meta["Name"]
-            if name.startswith(prefix):
-                keys.append(name[len(prefix):])
-    return sorted(keys)
-
-
-def list_secrets(config: "DeploymentConfig") -> list[str]:
-    """List connector secrets in GCP or AWS based on config.cloud."""
-    if config.cloud == "gcp":
-        return list_secrets_gcp(config)
-    return list_secrets_aws(config)
-
-
-def delete_secret_gcp(config: "DeploymentConfig", env_key: str) -> None:
-    """Delete a single connector secret from GCP Secret Manager.
-
-    Ref: https://cloud.google.com/secret-manager/docs
-    """
-    if not config.project_id:
-        raise ValueError("project_id is required for GCP secret deletion")
-
-    from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
-    from google.cloud import secretmanager  # type: ignore[import-untyped]
-
-    client = secretmanager.SecretManagerServiceClient()
-    secret_id = make_secret_name(config, env_key)
-    secret_name = f"projects/{config.project_id}/secrets/{secret_id}"
-    try:
-        client.delete_secret(request={"name": secret_name})
-    except NotFound:
-        raise KeyError(env_key)
-
-
-def delete_secret_aws(config: "DeploymentConfig", env_key: str) -> None:
-    """Delete a single connector secret from AWS Secrets Manager.
-
-    Ref: https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html
-    """
-    import boto3  # type: ignore[import-untyped]
-    from botocore.exceptions import ClientError  # type: ignore[import-untyped]
-
-    client = boto3.client("secretsmanager", region_name=config.region)
-    secret_id = make_secret_name(config, env_key)
-    try:
-        client.delete_secret(SecretId=secret_id, ForceDeleteWithoutRecovery=True)
-    except ClientError as exc:
-        if exc.response["Error"]["Code"] == "ResourceNotFoundException":
-            raise KeyError(env_key)
-        raise
-
-
-def delete_secret(config: "DeploymentConfig", env_key: str) -> None:
-    """Delete a connector secret from GCP or AWS based on config.cloud.
-
-    Raises KeyError if the secret does not exist.
-    """
-    if config.cloud == "gcp":
-        return delete_secret_gcp(config, env_key)
-    return delete_secret_aws(config, env_key)
+        return GCPSecretsBackend(config)
+    return AWSSecretsBackend(config)

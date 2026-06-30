@@ -62,7 +62,7 @@ resource "aws_iam_role" "connector" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "${data.aws_iam_openid_connect_provider.eks.url}:sub" = "system:serviceaccount:${var.namespace}:{{ config.connector_name }}-ksa"
+          "${data.aws_iam_openid_connect_provider.eks.url}:sub" = "system:serviceaccount:${var.namespace}:{{ config.k8s_name }}-ksa"
         }
       }
     }]
@@ -124,9 +124,9 @@ resource "aws_iam_role_policy" "cloudwatch" {
   })
 }
 
-resource "kubernetes_service_account" "connector" {
+resource "kubernetes_service_account_v1" "connector" {
   metadata {
-    name      = "{{ config.connector_name }}-ksa"
+    name      = "{{ config.k8s_name }}-ksa"
     namespace = var.namespace
     annotations = {
       "eks.amazonaws.com/role-arn" = aws_iam_role.connector.arn
@@ -139,10 +139,10 @@ resource "kubernetes_service_account" "connector" {
 
 resource "kubernetes_cron_job_v1" "connector" {
   metadata {
-    name      = "{{ config.connector_name }}"
+    name      = "{{ config.k8s_name }}"
     namespace = var.namespace
     labels = {
-      app        = "{{ config.connector_name }}"
+      app        = "{{ config.k8s_name }}"
       managed-by = "glean-deploy"
     }
   }
@@ -156,7 +156,7 @@ resource "kubernetes_cron_job_v1" "connector" {
     job_template {
       metadata {
         labels = {
-          app = "{{ config.connector_name }}"
+          app = "{{ config.k8s_name }}"
         }
       }
       spec {
@@ -164,15 +164,15 @@ resource "kubernetes_cron_job_v1" "connector" {
         template {
           metadata {
             labels = {
-              app = "{{ config.connector_name }}"
+              app = "{{ config.k8s_name }}"
             }
           }
           spec {
-            service_account_name = kubernetes_service_account.connector.metadata[0].name
+            service_account_name = kubernetes_service_account_v1.connector.metadata[0].name
             restart_policy       = "Never"
 
             container {
-              name  = "{{ config.connector_name }}"
+              name  = "{{ config.k8s_name }}"
               image = var.image
 
               # Deployment-control env vars — NOT loaded from secret manager.

@@ -163,17 +163,34 @@ def secrets_upload(env_file: str, config_path: str) -> None:
 @click.option("--terraform-dir", default="terraform", show_default=True, type=click.Path(file_okay=False))
 def apply(config_path: str, terraform_dir: str) -> None:
     """Apply generated Terraform to deploy the connector CronJob."""
-    _load_config(Path(config_path))
+    config = _load_config(Path(config_path))
     tf_dir = Path(terraform_dir)
     if not tf_dir.exists():
         raise click.ClickException(f"Terraform directory not found: {tf_dir}. Run `glean-deploy init` first.")
+
+    if config.cloud == "gcp":
+        var_flags = [
+            f"-var=project_id={config.project_id}",
+            f"-var=region={config.region}",
+            f"-var=cluster_name={config.cluster_name}",
+            f"-var=namespace={config.namespace}",
+            f"-var=image={config.image_name}:latest",
+        ]
+    else:
+        var_flags = [
+            f"-var=account_id={config.account_id}",
+            f"-var=region={config.region}",
+            f"-var=cluster_name={config.cluster_name}",
+            f"-var=namespace={config.namespace}",
+            f"-var=image={config.image_name}:latest",
+        ]
 
     click.echo(f"Running terraform init in {tf_dir}/")
     if subprocess.run(["terraform", "init"], cwd=tf_dir, check=False).returncode != 0:
         raise click.ClickException("terraform init failed.")
 
     click.echo("Running terraform apply...")
-    if subprocess.run(["terraform", "apply"], cwd=tf_dir, check=False).returncode != 0:
+    if subprocess.run(["terraform", "apply", "-auto-approve"] + var_flags, cwd=tf_dir, check=False).returncode != 0:
         raise click.ClickException("terraform apply failed.")
 
 
@@ -188,7 +205,7 @@ def logs(follow: bool, config_path: str) -> None:
         [
             "kubectl", "get", "jobs",
             "-n", config.namespace,
-            "-l", f"app={config.connector_name}",
+            "-l", f"app={config.k8s_name}",
             "--sort-by=.metadata.creationTimestamp",
             "-o", "jsonpath={.items[-1].metadata.name}",
         ],
@@ -197,7 +214,7 @@ def logs(follow: bool, config_path: str) -> None:
     job_name = jobs_result.stdout.strip()
     if not job_name:
         raise click.ClickException(
-            f"No jobs found for connector '{config.connector_name}' in namespace '{config.namespace}'. "
+            f"No jobs found for connector '{config.k8s_name}' in namespace '{config.namespace}'. "
             "Has the CronJob run at least once? Use `glean-deploy status` to check."
         )
 
@@ -217,11 +234,11 @@ def logs(follow: bool, config_path: str) -> None:
 def status(config_path: str) -> None:
     """Show CronJob status and recent job history."""
     config = _load_config(Path(config_path))
-    click.echo(f"CronJob: {config.connector_name}  namespace: {config.namespace}\n")
-    subprocess.run(["kubectl", "get", "cronjob", config.connector_name, "-n", config.namespace], check=False)
+    click.echo(f"CronJob: {config.k8s_name}  namespace: {config.namespace}\n")
+    subprocess.run(["kubectl", "get", "cronjob", config.k8s_name, "-n", config.namespace], check=False)
     click.echo()
     subprocess.run(
-        ["kubectl", "get", "jobs", "-n", config.namespace, "-l", f"app={config.connector_name}", "--sort-by=.metadata.creationTimestamp"],
+        ["kubectl", "get", "jobs", "-n", config.namespace, "-l", f"app={config.k8s_name}", "--sort-by=.metadata.creationTimestamp"],
         check=False,
     )
 
@@ -232,12 +249,29 @@ def status(config_path: str) -> None:
 @click.confirmation_option(prompt="This will destroy the connector deployment. Are you sure?")
 def destroy(config_path: str, terraform_dir: str) -> None:
     """Tear down the connector deployment via terraform destroy."""
-    _load_config(Path(config_path))
+    config = _load_config(Path(config_path))
     tf_dir = Path(terraform_dir)
     if not tf_dir.exists():
         raise click.ClickException(f"Terraform directory not found: {tf_dir}.")
 
+    if config.cloud == "gcp":
+        var_flags = [
+            f"-var=project_id={config.project_id}",
+            f"-var=region={config.region}",
+            f"-var=cluster_name={config.cluster_name}",
+            f"-var=namespace={config.namespace}",
+            f"-var=image={config.image_name}:latest",
+        ]
+    else:
+        var_flags = [
+            f"-var=account_id={config.account_id}",
+            f"-var=region={config.region}",
+            f"-var=cluster_name={config.cluster_name}",
+            f"-var=namespace={config.namespace}",
+            f"-var=image={config.image_name}:latest",
+        ]
+
     click.echo("Running terraform destroy...")
-    if subprocess.run(["terraform", "destroy"], cwd=tf_dir, check=False).returncode != 0:
+    if subprocess.run(["terraform", "destroy", "-auto-approve"] + var_flags, cwd=tf_dir, check=False).returncode != 0:
         raise click.ClickException("terraform destroy failed.")
     click.echo("Deployment destroyed.")

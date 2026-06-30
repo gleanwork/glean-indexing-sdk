@@ -80,12 +80,20 @@ resource "google_project_iam_member" "metric_writer" {
 resource "google_service_account_iam_member" "workload_identity" {
   service_account_id = google_service_account.connector.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.namespace}/{{ config.connector_name }}-ksa]"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.namespace}/{{ config.k8s_name }}-ksa]"
 }
 
-resource "kubernetes_service_account" "connector" {
+# Allow accessing secret values at runtime.
+# Reference: https://cloud.google.com/secret-manager/docs/access-control
+resource "google_project_iam_member" "secret_accessor" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.connector.email}"
+}
+
+resource "kubernetes_service_account_v1" "connector" {
   metadata {
-    name      = "{{ config.connector_name }}-ksa"
+    name      = "{{ config.k8s_name }}-ksa"
     namespace = var.namespace
     annotations = {
       "iam.gke.io/gcp-service-account" = google_service_account.connector.email
@@ -98,10 +106,10 @@ resource "kubernetes_service_account" "connector" {
 
 resource "kubernetes_cron_job_v1" "connector" {
   metadata {
-    name      = "{{ config.connector_name }}"
+    name      = "{{ config.k8s_name }}"
     namespace = var.namespace
     labels = {
-      app        = "{{ config.connector_name }}"
+      app        = "{{ config.k8s_name }}"
       managed-by = "glean-deploy"
     }
   }
@@ -115,7 +123,7 @@ resource "kubernetes_cron_job_v1" "connector" {
     job_template {
       metadata {
         labels = {
-          app = "{{ config.connector_name }}"
+          app = "{{ config.k8s_name }}"
         }
       }
       spec {
@@ -123,15 +131,15 @@ resource "kubernetes_cron_job_v1" "connector" {
         template {
           metadata {
             labels = {
-              app = "{{ config.connector_name }}"
+              app = "{{ config.k8s_name }}"
             }
           }
           spec {
-            service_account_name = kubernetes_service_account.connector.metadata[0].name
+            service_account_name = kubernetes_service_account_v1.connector.metadata[0].name
             restart_policy       = "Never"
 
             container {
-              name  = "{{ config.connector_name }}"
+              name  = "{{ config.k8s_name }}"
               image = var.image
 
               # Deployment-control env vars — NOT loaded from secret manager.

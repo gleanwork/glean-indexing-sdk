@@ -135,10 +135,10 @@ def secrets() -> None:
 @click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
 def secrets_list(config_path: str) -> None:
     """List connector secrets stored in GCP Secret Manager or AWS Secrets Manager."""
-    from glean.indexing.deployment.secrets import list_secrets
+    from glean.indexing.deployment.secrets import get_secrets_backend
 
     config = _load_config(Path(config_path))
-    keys = list_secrets(config)
+    keys = get_secrets_backend(config).list()
 
     if not keys:
         click.echo(f"No secrets found for connector '{config.connector_name}' in {config.cloud.upper()}.")
@@ -155,11 +155,11 @@ def secrets_list(config_path: str) -> None:
 @click.confirmation_option(prompt="This will permanently delete the secret. Are you sure?")
 def secrets_delete(key: str, config_path: str) -> None:
     """Delete a connector secret KEY from GCP Secret Manager or AWS Secrets Manager."""
-    from glean.indexing.deployment.secrets import delete_secret
+    from glean.indexing.deployment.secrets import get_secrets_backend
 
     config = _load_config(Path(config_path))
     try:
-        delete_secret(config, key)
+        get_secrets_backend(config).delete(key)
     except KeyError:
         raise click.ClickException(
             f"Secret '{key}' not found for connector '{config.connector_name}'. "
@@ -173,7 +173,7 @@ def secrets_delete(key: str, config_path: str) -> None:
 @click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
 def secrets_upload(env_file: str, config_path: str) -> None:
     """Upload connector secrets from .env to GCP Secret Manager or AWS Secrets Manager."""
-    from glean.indexing.deployment.secrets import upload_secrets
+    from glean.indexing.deployment.secrets import get_secrets_backend
 
     config = _load_config(Path(config_path))
     env_path = Path(env_file)
@@ -184,7 +184,7 @@ def secrets_upload(env_file: str, config_path: str) -> None:
         )
 
     click.echo(f"Uploading secrets from {env_path} to {config.cloud.upper()} Secret Manager...")
-    results = upload_secrets(config, env_path)
+    results = get_secrets_backend(config).upload(env_path)
 
     if not results:
         click.echo("No secrets to upload (all vars were redlisted or .env was empty).")

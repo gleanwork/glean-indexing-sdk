@@ -13,18 +13,18 @@ Use this skill before connector implementation. Its job is to turn confirmed sou
 - Confirmed docs URLs, files, or local docs directory.
 - API base URL, if known.
 - Optional credentials, token, or env file for read-only testing.
-- Connector workspace directory containing `.glean/`.
+- Connector folder containing `.glean/`.
 - User requirements or rough connector goal, if already available.
 
 ## Outputs
 
-Write outputs to the connector workspace:
+Write outputs to the connector folder:
 
-- `.glean/api_inventory.md`
-- `.glean/api_endpoints.json`
-- `.glean/api_calls_log.md`
-- `.glean/source_investigation.md`
-- `.glean/external_docs/` when documentation is fetched or copied locally.
+- `<connector-folder>/.glean/api_inventory.md`
+- `<connector-folder>/.glean/api_endpoints.json`
+- `<connector-folder>/.glean/api_calls_log.md`
+- `<connector-folder>/.glean/source_investigation.md`
+- `<connector-folder>/.glean/external_docs/` when documentation is fetched or copied locally.
 
 ## Exploration Rules
 
@@ -42,8 +42,8 @@ Write outputs to the connector workspace:
 
 ## Workflow
 
-1. Read confirmed docs from `.glean/source_docs.json` and any additional user-provided docs.
-2. If docs are URLs, fetch or copy the relevant documentation into `.glean/external_docs/` so later planning can cite local files or stable URLs.
+1. Read confirmed docs from `<connector-folder>/.glean/source_docs.json` and any additional user-provided docs.
+2. If docs are URLs, fetch or copy the relevant documentation into `<connector-folder>/.glean/external_docs/` so later planning can cite local files or stable URLs.
 3. Identify connector-relevant objects: content, identities, memberships, permissions, attachments, and deleted/stale records.
 4. Build a complete endpoint inventory before narrowing implementation scope. Capture:
    - name
@@ -59,10 +59,10 @@ Write outputs to the connector workspace:
    - source citation
 5. If credentials are available, run minimal read-only probes against endpoints needed for the first connector version. For each probe, log the redacted request, status, headers relevant to rate limits/pagination, and representative response shape.
 6. If credentials are unavailable or a call fails, document the gap and fall back to docs-only analysis.
-7. Write a human-readable endpoint catalog to `.glean/api_inventory.md`.
-8. Write the structured endpoint inventory to `.glean/api_endpoints.json`.
-9. Write read-only probe results to `.glean/api_calls_log.md` with secrets redacted.
-10. Update `.glean/source_investigation.md` with auth, sync, permission, load, and unknowns.
+7. Write a human-readable endpoint catalog to `<connector-folder>/.glean/api_inventory.md`.
+8. Write the structured endpoint inventory to `<connector-folder>/.glean/api_endpoints.json`.
+9. Write read-only probe results to `<connector-folder>/.glean/api_calls_log.md` with secrets redacted.
+10. Update `<connector-folder>/.glean/source_investigation.md` with auth, sync, permission, load, and unknowns.
 
 ## Live Probe Guidance
 
@@ -83,7 +83,7 @@ When credentials are not provided:
 
 ## Endpoint JSON Shape
 
-Each endpoint in `.glean/api_endpoints.json` must include:
+Each endpoint in `<connector-folder>/.glean/api_endpoints.json` must include:
 
 ```json
 {
@@ -107,10 +107,10 @@ Add optional fields when known:
 
 ## Handoff To Connector Builder
 
-After exploration, run:
+After exploration, draft and confirm `<connector-folder>/.glean/connector_plan.md`, then run:
 
 ```bash
-python scripts/connector_builder/connector_builder.py validate
+python scripts/connector_builder/connector_builder.py validate <connector-folder>
 ```
 
 If validation fails, update the `.glean/` artifacts before implementation. Do not generate connector code until validation passes.

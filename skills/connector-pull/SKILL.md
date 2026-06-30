@@ -5,14 +5,14 @@ description: Implement source-side pull logic for Glean Indexing SDK connectors.
 
 # Connector Pull
 
-Use this skill when implementing source API fetching for a connector after `.glean/api_endpoints.json` and `.glean/source_investigation.md` are complete.
+Use this skill when implementing source API fetching for a connector after `<connector-folder>/.glean/api_endpoints.json` and `<connector-folder>/.glean/source_investigation.md` are complete.
 
 ## Inputs
 
-- `.glean/api_endpoints.json`
-- `.glean/api_inventory.md`
-- `.glean/source_investigation.md`
-- `.glean/connector_plan.md`
+- `<connector-folder>/.glean/api_endpoints.json`
+- `<connector-folder>/.glean/api_inventory.md`
+- `<connector-folder>/.glean/source_investigation.md`
+- `<connector-folder>/.glean/connector_plan.md`
 
 ## Rules
 

@@ -1,5 +1,4 @@
 import json
-import py_compile
 from pathlib import Path
 
 from scripts.connector_builder.connector_builder import main
@@ -8,29 +7,40 @@ from scripts.connector_builder.connector_builder import main
 DOC_URL = "https://developer.webex.com/docs/api/v1/rooms/list-rooms"
 
 
-def test_init_creates_planning_artifacts(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_validate_passes_with_confirmed_artifacts_and_auth(tmp_path):
+    connector_dir = write_valid_connector_artifacts(tmp_path)
 
-    result = main(["init", "webex", "--display-name", "Webex", "--doc-url", DOC_URL])
-
-    assert result == 0
-    assert Path(".glean/source_docs.json").exists()
-    assert Path(".glean/source_investigation.md").exists()
-    assert Path(".glean/api_inventory.md").exists()
-    assert Path(".glean/api_endpoints.json").exists()
-    assert Path(".glean/api_calls_log.md").exists()
-    assert Path(".glean/external_docs").is_dir()
-    assert not Path(".glean/connector_plan.md").exists()
+    assert main(["validate", str(connector_dir)]) == 0
 
 
-def test_validate_requires_confirmed_plan_and_endpoint_inventory(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_validate_requires_glean_directory(tmp_path):
+    connector_dir = tmp_path / "webex"
+    connector_dir.mkdir()
 
-    main(["init", "webex", "--doc-url", DOC_URL])
+    assert main(["validate", str(connector_dir)]) == 1
 
-    assert main(["validate"]) == 1
 
-    plan_path = Path(".glean/connector_plan.md")
+def test_validate_requires_confirmed_plan(tmp_path):
+    connector_dir = write_valid_connector_artifacts(tmp_path)
+    plan_path = connector_dir / ".glean/connector_plan.md"
+    plan_path.write_text(plan_path.read_text().replace("Status: confirmed", "Status: not confirmed"))
+
+    assert main(["validate", str(connector_dir)]) == 1
+
+
+def test_validate_requires_endpoint_inventory(tmp_path):
+    connector_dir = write_valid_connector_artifacts(tmp_path)
+    endpoints_path = connector_dir / ".glean/api_endpoints.json"
+    endpoints = json.loads(endpoints_path.read_text())
+    endpoints["endpoints"] = []
+    endpoints_path.write_text(json.dumps(endpoints, indent=2) + "\n")
+
+    assert main(["validate", str(connector_dir)]) == 1
+
+
+def test_validate_requires_test_and_production_auth(tmp_path):
+    connector_dir = write_valid_connector_artifacts(tmp_path)
+    plan_path = connector_dir / ".glean/connector_plan.md"
     plan_path.write_text(
         """# Webex Connector Plan
 
@@ -41,48 +51,100 @@ def test_validate_requires_confirmed_plan_and_endpoint_inventory(tmp_path, monke
 ## Scope
 
 Index Webex rooms as documents using a full crawl.
+
+## Auth Plan
+
+- Test auth: TBD
+- Production auth: TBD
+"""
+    )
+    investigation_path = connector_dir / ".glean/source_investigation.md"
+    investigation_path.write_text(
+        """# Webex Source Investigation
+
+## Auth
+
+- Test auth: TBD
+- Production auth: TBD
+
+## API Behavior
+
+The source API uses cursor pagination and has documented rate limits.
 """
     )
 
-    endpoints_path = Path(".glean/api_endpoints.json")
-    endpoints = json.loads(endpoints_path.read_text())
-    endpoints["endpoints"] = [
-        {
-            "name": "List rooms",
-            "method": "GET",
-            "path": "/v1/rooms",
-            "purpose": "Fetch rooms to index as documents",
-        }
-    ]
-    endpoints_path.write_text(json.dumps(endpoints, indent=2) + "\n")
-
-    assert main(["validate"]) == 0
+    assert main(["validate", str(connector_dir)]) == 1
 
 
-def test_validate_requires_confirmed_docs(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def write_valid_connector_artifacts(tmp_path: Path) -> Path:
+    connector_dir = tmp_path / "webex"
+    artifact_dir = connector_dir / ".glean"
+    artifact_dir.mkdir(parents=True)
 
-    main(["init", "webex"])
+    (artifact_dir / "source_docs.json").write_text(
+        json.dumps(
+            {
+                "datasource": "webex",
+                "display_name": "Webex",
+                "confirmed_docs": [{"url": DOC_URL, "purpose": "source-of-truth"}],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    (artifact_dir / "api_endpoints.json").write_text(
+        json.dumps(
+            {
+                "datasource": "webex",
+                "endpoints": [
+                    {
+                        "name": "List rooms",
+                        "method": "GET",
+                        "path": "/v1/rooms",
+                        "purpose": "Fetch rooms to index as documents",
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    (artifact_dir / "connector_plan.md").write_text(
+        """# Webex Connector Plan
 
-    assert main(["validate"]) == 1
+## User Confirmation
 
+- Status: confirmed
 
-def test_generate_creates_compilable_snippet(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+## Scope
 
-    result = main(["generate", "webex", "--display-name", "Webex"])
+Index rooms and messages as Glean documents using a full crawl. The first version excludes incremental sync and records it as developer follow-up work.
 
-    assert result == 0
-    snippet_dir = Path("snippets/webex")
-    expected_files = [
-        snippet_dir / "webex_data.py",
-        snippet_dir / "webex_data_client.py",
-        snippet_dir / "webex_connector.py",
-        snippet_dir / "run_connector.py",
-        snippet_dir / ".env.example",
-    ]
-    for path in expected_files:
-        assert path.exists()
+## Auth Plan
 
-    for path in snippet_dir.glob("*.py"):
-        py_compile.compile(str(path), doraise=True)
+- Test auth: Webex developer PAT supplied through WEBEX_API_TOKEN during API exploration.
+- Production auth: OAuth bearer token supplied by the connector deployment environment.
+"""
+    )
+    (artifact_dir / "source_investigation.md").write_text(
+        """# Webex Source Investigation
+
+## Auth
+
+- Test auth: Webex developer PAT supplied through WEBEX_API_TOKEN.
+- Production auth: OAuth bearer token from the production deployment secret store.
+
+## API Behavior
+
+The source API uses cursor pagination, has documented rate limits, and exposes rooms and messages endpoints required for the confirmed full-crawl scope.
+"""
+    )
+    (artifact_dir / "api_inventory.md").write_text(
+        """# Webex API Inventory
+
+| Name | Method | Path | Purpose | Source |
+| ---- | ------ | ---- | ------- | ------ |
+| List rooms | GET | /v1/rooms | Fetch rooms to index as documents | Webex docs |
+"""
+    )
+    return connector_dir

@@ -9,16 +9,16 @@ Use this skill when implementing the Glean-side upload, validation, and status-c
 
 ## Inputs
 
-- `.glean/connector_plan.md`
-- `.glean/source_investigation.md`
-- `.glean/api_endpoints.json`
+- `<connector-folder>/.glean/connector_plan.md`
+- `<connector-folder>/.glean/source_investigation.md`
+- `<connector-folder>/.glean/api_endpoints.json`
 - Source data shapes from the pull/data-client layer.
 
 ## Rules
 
 - Use only the SDK push/status wrappers listed below. Do not call undocumented Glean APIs or generated-client methods directly from generated connector code.
 - Prefer full-crawl bulk operations for AI-built connectors. Incremental or delete-heavy behavior needs explicit developer attention.
-- Record which Glean-side methods are used in `.glean/connector_plan.md`.
+- Record which Glean-side methods are used in `<connector-folder>/.glean/connector_plan.md`.
 - Ask the user for expected document count, average document size, freshness requirement, and source API limits before recommending crawl frequency.
 - Use local compile/tests first, then test Glean uploads only when indexing credentials are available.
 
@@ -55,7 +55,7 @@ Do not use any other Glean-side endpoints in generated connector code.
 
 ## Planning Guidance
 
-In `.glean/connector_plan.md`, include:
+In `<connector-folder>/.glean/connector_plan.md`, include:
 
 - Source entity to Glean entity mapping.
 - Glean object types and document IDs.

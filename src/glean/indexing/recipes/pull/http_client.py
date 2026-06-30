@@ -7,10 +7,11 @@ from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Literal
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from glean.indexing.observability import ConnectorObservability
 from glean.indexing.recipes.pull.options import PullOptions
 from glean.indexing.recipes.pull.rate_limit import RateLimiter
 from glean.indexing.recipes.pull.response import PullResponse
@@ -44,6 +45,7 @@ class PullHttpClient:
         headers: Mapping[str, str] | None = None,
         options: PullOptions | None = None,
         rate_limiter: RateLimiter | None = None,
+        observability: ConnectorObservability | None = None,
         client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -54,6 +56,7 @@ class PullHttpClient:
             headers: Default headers sent with each request.
             options: Request timeout, retry, redirect, and logging behavior.
             rate_limiter: Optional source API rate limiter.
+            observability: Optional observability instance for request metrics.
             client: Optional preconfigured `httpx.Client`.
             sleep: Sleep function used for retry backoff.
         """
@@ -61,6 +64,7 @@ class PullHttpClient:
         self.default_headers = dict(headers or {})
         self.options = options or PullOptions()
         self.rate_limiter = rate_limiter
+        self.observability = observability
         self._client = client or httpx.Client(follow_redirects=self.options.follow_redirects)
         self._owns_client = client is None
         self._sleep = sleep
@@ -170,6 +174,7 @@ class PullHttpClient:
         timeout_seconds: float | None = None,
     ) -> httpx.Response:
         url = self.__full_url(path_or_url)
+        endpoint = self.__endpoint_label(method, url)
         request_headers = self.__headers(headers)
         retry_options = self.options.retries
         attempts = max(1, retry_options.max_attempts)
@@ -181,6 +186,8 @@ class PullHttpClient:
                 if self.rate_limiter is not None:
                     self.rate_limiter.acquire(timeout_seconds=self.options.rate_limit_timeout_seconds)
                 logger.info("Pull %s %s params=%s", method, url, "***MASKED***" if self.options.mask_params else params)
+                request_start = time.time()
+                self.__record_api_request_count(endpoint)
                 response = self._client.request(
                     method,
                     url,
@@ -190,22 +197,28 @@ class PullHttpClient:
                     headers=request_headers,
                     timeout=timeout_seconds if timeout_seconds is not None else self.options.timeout_seconds,
                 )
+                self.__record_api_request_latency(request_start, endpoint)
                 if response.status_code not in retry_options.retry_status_codes:
                     response.raise_for_status()
                     return response
+                self.__record_api_request_error(endpoint, f"http_{response.status_code}")
                 last_error = PullHttpError(f"Retryable source API status {response.status_code}", response=response)
             except httpx.HTTPStatusError as exc:
+                self.__record_api_request_error(endpoint, f"http_{exc.response.status_code}")
                 raise PullHttpError(
                     f"Source API request failed with status {exc.response.status_code}",
                     response=exc.response,
                 ) from exc
             except httpx.RequestError as exc:
                 last_error = exc
+                self.__record_api_request_latency(request_start, endpoint)
+                self.__record_api_request_error(endpoint, type(exc).__name__)
                 if not retry_options.retry_connection_errors:
                     raise PullHttpError(f"Source API request failed: {exc}") from exc
 
             if attempt == attempts:
                 break
+            self.__record_retry(endpoint)
             self.__sleep_before_retry(attempt, response)
 
         if isinstance(last_error, PullHttpError):
@@ -259,6 +272,27 @@ class PullHttpClient:
         if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
             return path_or_url
         return urljoin(self.base_url, path_or_url.lstrip("/"))
+
+    @staticmethod
+    def __endpoint_label(method: HttpMethod, url: str) -> str:
+        parsed = urlparse(url)
+        return f"{method} {parsed.path or '/'}"
+
+    def __record_api_request_count(self, endpoint: str) -> None:
+        if self.observability:
+            self.observability.record_api_request_count(endpoint)
+
+    def __record_api_request_latency(self, start_time: float, endpoint: str) -> None:
+        if self.observability:
+            self.observability.record_api_request_latency((time.time() - start_time) * 1000, endpoint)
+
+    def __record_api_request_error(self, endpoint: str, error_type: str) -> None:
+        if self.observability:
+            self.observability.record_api_request_error(endpoint, error_type)
+
+    def __record_retry(self, endpoint: str) -> None:
+        if self.observability:
+            self.observability.record_retry(endpoint)
 
     @staticmethod
     def __is_text(content_type: str) -> bool:

@@ -2,10 +2,12 @@
 
 from email.utils import formatdate
 from time import time
+from typing import cast
 
 import httpx
 import pytest
 
+from glean.indexing.observability import ConnectorObservability
 from glean.indexing.recipes.pull import (
     BasePullHttpStreamingDataClient,
     PullHttpClient,
@@ -36,6 +38,38 @@ class CountingRateLimiter:
 
     def acquire(self, tokens: float = 1.0, timeout_seconds: float | None = None) -> None:
         self.timeout_seconds_by_call.append(timeout_seconds)
+
+
+class RecordingObservability:
+    def __init__(self) -> None:
+        self.api_counts: list[str] = []
+        self.api_latencies: list[str] = []
+        self.api_errors: list[tuple[str, str]] = []
+        self.retries: list[str] = []
+        self.data_fetch_starts: list[dict] = []
+        self.data_fetch_completions: list[dict] = []
+
+    def record_api_request_count(self, endpoint: str) -> None:
+        self.api_counts.append(endpoint)
+
+    def record_api_request_latency(self, latency_ms: float, endpoint: str) -> None:
+        self.api_latencies.append(endpoint)
+
+    def record_api_request_error(self, endpoint: str, error_type: str) -> None:
+        self.api_errors.append((endpoint, error_type))
+
+    def record_retry(self, operation: str) -> None:
+        self.retries.append(operation)
+
+    def log_data_fetch_started(self, **kwargs) -> None:
+        self.data_fetch_starts.append(kwargs)
+
+    def log_data_fetch_completed(self, item_count: int, duration_ms: int, **kwargs) -> None:
+        self.data_fetch_completions.append({"item_count": item_count, "duration_ms": duration_ms, **kwargs})
+
+
+def _observability_arg(observability: RecordingObservability) -> ConnectorObservability:
+    return cast(ConnectorObservability, observability)
 
 
 def _fast_options(max_attempts: int = 2) -> PullOptions:
@@ -126,6 +160,74 @@ def test_http_client_uses_rate_limiter_for_each_attempt(httpx_mock):
 
     assert response.json_dict()["items"][0]["id"] == "item-1"
     assert limiter.timeout_seconds_by_call == [3, 3]
+
+
+def test_http_client_records_api_metrics_for_success(httpx_mock):
+    observability = RecordingObservability()
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": [{"id": "item-1"}]},
+        headers={"Content-Type": "application/json"},
+    )
+
+    client = PullHttpClient(
+        base_url="https://example.com/v1",
+        options=_fast_options(),
+        observability=_observability_arg(observability),
+    )
+
+    client.get("/items")
+
+    assert observability.api_counts == ["GET /v1/items"]
+    assert observability.api_latencies == ["GET /v1/items"]
+    assert observability.api_errors == []
+
+
+def test_http_client_records_errors_and_retries(httpx_mock):
+    observability = RecordingObservability()
+    httpx_mock.add_response(url="https://example.com/v1/items", status_code=429)
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": []},
+        headers={"Content-Type": "application/json"},
+    )
+
+    client = PullHttpClient(
+        base_url="https://example.com/v1",
+        options=_fast_options(max_attempts=2),
+        observability=_observability_arg(observability),
+        sleep=lambda _: None,
+    )
+
+    client.get("/items")
+
+    assert observability.api_counts == ["GET /v1/items", "GET /v1/items"]
+    assert observability.api_errors == [("GET /v1/items", "http_429")]
+    assert observability.retries == ["GET /v1/items"]
+
+
+def test_http_streaming_data_client_records_fetch_lifecycle(httpx_mock):
+    observability = RecordingObservability()
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": [{"id": "item-1"}, {"id": "item-2"}]},
+        headers={"Content-Type": "application/json"},
+    )
+
+    data_client = BasePullHttpStreamingDataClient[dict[str, object]](
+        base_url="https://example.com/v1",
+        path="/items",
+        pagination="none",
+        observability=_observability_arg(observability),
+        options=_fast_options(),
+    )
+
+    assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2"]
+
+    assert observability.data_fetch_starts == [{"path": "/items", "pagination": "none"}]
+    assert observability.data_fetch_completions[0]["item_count"] == 2
+    assert observability.data_fetch_completions[0]["path"] == "/items"
+    assert observability.data_fetch_completions[0]["pagination"] == "none"
 
 
 def test_http_client_uses_base_url_headers_and_parses_json(httpx_mock):

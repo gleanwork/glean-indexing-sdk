@@ -29,6 +29,7 @@ Use 0/1 for each criterion unless a run needs more detailed human review. A pass
 - Drafts a plan before code generation.
 - Does not write connector implementation code before plan confirmation and validation.
 - Records `Status: confirmed` only when user confirmation is present in the run.
+- Produces artifacts that pass `python scripts/connector_builder/connector_builder.py validate <connector-folder>`.
 
 ### SDK Scope
 
@@ -68,4 +69,4 @@ If the run produced a connector folder:
 python scripts/connector_builder/connector_builder.py validate <connector-folder>
 ```
 
-This deterministic check does not replace LLM grading. It only verifies that the artifact package has the minimum structure needed before implementation.
+This deterministic check does not replace LLM grading, but quality evals should pass it because their prompts include confirmed scope, auth details, SDK usage, and source docs.

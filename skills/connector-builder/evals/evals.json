@@ -1,16 +1,16 @@
 {
   "skill_name": "connector-builder",
   "agent_type": "connector-builder",
-  "setup": "LLM behavior eval for the Glean Indexing SDK connector-builder skill. Run in a temporary workspace with the current plugin/skills available. Do not use real credentials. Do not make live source API calls. Do not push data to Glean. The agent should produce or describe connector-folder-local .glean artifacts and stop before implementation unless explicitly instructed otherwise.",
+  "setup": "LLM behavior eval for the Glean Indexing SDK connector-builder skill. Run in a temporary workspace with the current plugin/skills available. Do not use real credentials. Do not make live source API calls. Do not push data to Glean. Evals 1-5 are synthetic and include inline API docs; they should not use the internet. Eval 6 is the real Webex docs eval and should fetch/read public Webex docs or OpenAPI. Each quality eval should produce validation-ready connector-folder-local .glean artifacts, then stop before implementation.",
   "evals": [
     {
       "id": 1,
       "name": "acme-docs-docs-only",
-      "prompt": "Use the Glean connector-builder skill to plan a connector for Acme Docs.\n\nOfficial API docs: https://api.example.com/acme/docs\n\nI do not have an API token yet. Please use documentation only for now. Do not write connector implementation code.",
-      "expected_output": "The agent follows the docs-only path: confirms/records the docs, asks for base URL/token and explains why live probes would improve quality, proceeds without live API calls, drafts or describes connector-folder-local .glean artifacts, creates a plan before code, and does not generate implementation files.",
+      "prompt": "Use the Glean connector-builder skill to plan a connector for Acme Docs.\n\nConfirmed inline API docs for this eval (record source as inline://acme-docs/api-docs):\n- Base URL: https://acme.example.test/api\n- Auth: Bearer token in Authorization header.\n- GET /records lists records. Query params: cursor, limit. Response: {\"items\": [{\"id\", \"title\", \"body\", \"url\", \"updatedAt\"}], \"nextCursor\"}.\n- GET /records/{id} gets record details. Response: {\"id\", \"title\", \"body\", \"url\", \"updatedAt\", \"ownerEmail\"}.\n- Rate limits: 120 requests/minute. Retry-After may be returned on 429.\n- Permissions: document-level ACLs are not exposed in the API docs.\n- Deletions: no deleted-record endpoint is documented.\n\nConnector folder: acme_docs\nI do not have an API token yet. Please use documentation only for now.\nProduction source auth will be OAuth bearer token supplied by the connector deployment environment.\nSDK usage mode: full connector flow using pull and push layers.\nExpected load: about 25,000 documents, average document body 8 KB, daily freshness is acceptable, customer-hosted crawl.\nI confirm this plan scope for the eval. Create validation-ready .glean artifacts under acme_docs/.glean, but do not write connector implementation code.",
+      "expected_output": "The agent follows the docs-only path, records confirmed docs, records unavailable test auth plus production auth, explains why live probes would improve quality, creates validation-ready connector-folder-local .glean artifacts, marks the plan confirmed, and does not generate implementation files.",
       "expectations": [
-        "Agent asks for or records official API documentation as the source of truth.",
-        "Agent asks for API base URL and read-only token or states that no token was provided.",
+        "Agent records the inline API documentation as the confirmed source of truth using an inline:// source identifier.",
+        "Agent records API base URL and states that no API token was provided for test/API exploration.",
         "Agent explains that live read-only API probes improve connector quality by verifying auth, response shapes, pagination, rate limits, or permissions.",
         "Agent proceeds on a documentation-only basis and explicitly marks lower confidence or gaps caused by missing credentials.",
         "Agent places planned artifacts under a connector folder's .glean directory, not a repo-level .glean directory.",
@@ -18,55 +18,60 @@
         "Agent does not push anything to Glean.",
         "Agent does not write connector implementation code.",
         "Plan includes SDK usage mode and distinguishes test/API-exploration auth from production source auth.",
+        "Artifacts are validation-ready and should pass connector_builder.py validate.",
         "Plan states the AI-built connector flow supports full crawl only for now unless developer follow-up is added."
       ]
     },
     {
       "id": 2,
-      "name": "missing-docs",
-      "prompt": "Use the Glean connector-builder skill to build a connector plan for Acme Docs. I do not have API docs handy. Do not write code yet.",
-      "expected_output": "The agent does not proceed to implementation. It searches for candidate official docs or asks the user for API documentation, OpenAPI spec, or sample request/response payloads, and requests confirmation before treating any docs as source of truth.",
+      "name": "confirmed-docs-no-token",
+      "prompt": "Use the Glean connector-builder skill to plan a connector for Acme Records.\n\nConfirmed inline API docs for this eval (record source as inline://acme-records/api-docs):\n- Base URL: https://records.example.test/api\n- Auth: API key in X-API-Key header.\n- GET /items lists items. Query params: pageToken, pageSize. Response: {\"items\": [{\"id\", \"name\", \"text\", \"webUrl\"}], \"nextPageToken\"}.\n- GET /items/{id} gets item details. Response: {\"id\", \"name\", \"text\", \"webUrl\", \"owner\"}.\n- Rate limits: 60 requests/minute.\n- Permissions: all uploaded records should be visible to all datasource users for this eval.\n\nConnector folder: acme_records\nNo read-only token is available for this eval, so use docs only.\nProduction source auth: API key supplied in the X-API-Key header from the production secret store.\nSDK usage mode: full connector flow using pull and push layers.\nExpected load: about 5,000 documents, average document body 4 KB, weekly freshness is acceptable, Glean-hosted crawl.\nI confirm this plan scope for the eval. Create validation-ready .glean artifacts under acme_records/.glean, but do not write connector implementation code.",
+      "expected_output": "The agent produces validation-ready docs-only .glean artifacts with confirmed docs, base URL, docs-only test auth, production API-key auth, SDK usage, endpoint inventory, full-crawl limitation, and no implementation code.",
       "expectations": [
-        "Agent does not generate connector code.",
-        "Agent does not create a final implementation plan based on unconfirmed documentation.",
-        "Agent asks the user for API documentation, an OpenAPI spec, or sample API request/response payloads if official docs cannot be confidently found.",
-        "If candidate docs are found, agent asks the user to confirm them once before proceeding.",
-        "Agent does not invent endpoint paths, auth flows, or response shapes."
+        "Agent records the inline API documentation and base URL from the prompt.",
+        "Agent records test/API-exploration auth as unavailable/docs-only, not as a raw secret.",
+        "Agent records production source auth as API key via X-API-Key from a secret store.",
+        "Agent creates artifacts under acme_records/.glean, not repo-level .glean.",
+        "Agent does not make live source API calls or push to Glean.",
+        "Agent does not write connector implementation code.",
+        "Artifacts are validation-ready and should pass connector_builder.py validate."
       ]
     },
     {
       "id": 3,
       "name": "incremental-requested",
-      "prompt": "Use the connector-builder skill to plan a connector for Acme Docs using https://api.example.com/acme/docs. I want incremental sync so only changed records are fetched. I do not have credentials yet. Do not write code.",
-      "expected_output": "The agent plans from docs only, but clearly states that the AI-building layer supports full crawl only for now. Incremental sync is captured as developer follow-up unless the user explicitly asks to move outside the current AI-built scope.",
+      "prompt": "Use the connector-builder skill to plan a connector for Acme Docs.\n\nConfirmed inline API docs for this eval (record source as inline://acme-docs/api-docs):\n- Base URL: https://acme.example.test/api\n- Auth: Bearer token in Authorization header.\n- GET /records lists records. Query params: cursor, limit. Response: {\"items\": [{\"id\", \"title\", \"body\", \"url\", \"updatedAt\"}], \"nextCursor\"}.\n- GET /records/{id} gets record details. Response: {\"id\", \"title\", \"body\", \"url\", \"updatedAt\", \"ownerEmail\"}.\n- Rate limits: 120 requests/minute. Retry-After may be returned on 429.\n- Permissions: document-level ACLs are not exposed in the API docs.\n- Deletions: no deleted-record endpoint is documented.\n\nConnector folder: acme_incremental_request\nI want incremental sync so only changed records are fetched, but I understand the AI-building layer supports full crawl only for now.\nNo read-only token is available for this eval; use docs only.\nProduction source auth will be OAuth bearer token supplied by the connector deployment environment.\nSDK usage mode: full connector flow using pull and push layers.\nExpected load: about 100,000 documents, average document body 6 KB, daily freshness is acceptable for the first version.\nI confirm this plan scope for the eval with incremental sync recorded as developer follow-up. Create validation-ready .glean artifacts under acme_incremental_request/.glean, but do not write connector implementation code.",
+      "expected_output": "The agent creates validation-ready .glean artifacts that plan full crawl only, record incremental sync as developer follow-up, include SDK usage and auth split, and stop before implementation.",
       "expectations": [
         "Agent states that the current AI-building workflow supports full crawl only.",
         "Agent records incremental sync as developer follow-up or out of scope for the first AI-built version.",
         "Agent does not claim incremental implementation is supported by the skill flow.",
-        "Agent still asks for API base URL and read-only credentials for better future exploration.",
+        "Agent records API base URL and unavailable read-only credentials for docs-only exploration.",
         "Agent does not write connector implementation code.",
-        "Plan includes SDK usage mode and auth split."
+        "Plan includes SDK usage mode and auth split.",
+        "Artifacts are validation-ready and should pass connector_builder.py validate."
       ]
     },
     {
       "id": 4,
       "name": "push-layer-only",
-      "prompt": "Use the connector-builder skill to plan a push-layer-only Glean connector for Acme Docs. We already have source records available from another system and only need to upload them to Glean. Use docs only, no credentials, and do not write code.",
-      "expected_output": "The agent records SDK usage mode as push-layer-only, does not plan source pull implementation, uses connector-push guidance for allowed Glean SDK methods, and still captures auth/load/validation expectations before code.",
+      "prompt": "Use the connector-builder skill to plan a push-layer-only Glean connector for Acme Docs.\n\nConfirmed inline data contract for this eval (record source as inline://acme-push/export-schema):\n- Source records are already available as local Python dictionaries.\n- Record fields: id, title, body, view_url, owner_email, updated_at.\n- There is no source API fetching in scope.\n- Glean upload should create documents from these records.\n\nConnector folder: acme_push_only\nNo source API token is needed for this eval.\nProduction source auth: not applicable because this is push-layer-only from pre-supplied records.\nGlean indexing auth will use GLEAN_SERVER_URL and GLEAN_INDEXING_API_TOKEN.\nSDK usage mode: push-layer-only.\nExpected load: about 10,000 documents, average document body 10 KB, daily upload is acceptable.\nI confirm this plan scope for the eval. Create validation-ready .glean artifacts under acme_push_only/.glean, but do not write connector implementation code.",
+      "expected_output": "The agent records SDK usage mode as push-layer-only, does not plan source pull implementation, uses connector-push guidance for allowed Glean SDK methods, creates validation-ready .glean artifacts, and does not write implementation code.",
       "expectations": [
         "Plan records SDK usage mode as push-layer-only.",
         "Agent does not require a source pull data client or source API fetching implementation.",
         "Agent uses only Glean-side methods from the connector-push allowlist when discussing upload/status/debug behavior.",
         "Agent asks for expected document count, average document size, freshness requirement, or other load inputs before recommending crawl/upload frequency.",
         "Agent distinguishes Glean indexing auth from source/test auth.",
-        "Agent does not write implementation code."
+        "Agent does not write implementation code.",
+        "Artifacts are validation-ready and should pass connector_builder.py validate."
       ]
     },
     {
       "id": 5,
       "name": "full-connector-flow",
-      "prompt": "Use the connector-builder skill to plan a full Glean Indexing SDK connector for Acme Docs. The connector should fetch records from the source REST API and upload documents to Glean. Official docs are at https://api.example.com/acme/docs. I do not have credentials yet. Do not write code.",
-      "expected_output": "The agent records SDK usage mode as full connector flow, uses API exploration docs-only behavior, plans source pull via connector-pull and Glean upload/status via connector-push, separates test and production auth, asks load/frequency questions, and stops before implementation.",
+      "prompt": "Use the connector-builder skill to plan a full Glean Indexing SDK connector for Acme Docs. The connector should fetch records from the source REST API and upload documents to Glean.\n\nConfirmed inline API docs for this eval (record source as inline://acme-docs/api-docs):\n- Base URL: https://acme.example.test/api\n- Auth: Bearer token in Authorization header.\n- GET /records lists records. Query params: cursor, limit. Response: {\"items\": [{\"id\", \"title\", \"body\", \"url\", \"updatedAt\"}], \"nextCursor\"}.\n- GET /records/{id} gets record details. Response: {\"id\", \"title\", \"body\", \"url\", \"updatedAt\", \"ownerEmail\"}.\n- Rate limits: 120 requests/minute. Retry-After may be returned on 429.\n- Permissions: document-level ACLs are not exposed in the API docs.\n- Deletions: no deleted-record endpoint is documented.\n\nConnector folder: acme_full_flow\nNo read-only token is available for this eval; use docs only.\nProduction source auth: OAuth bearer token supplied by the connector deployment environment.\nGlean indexing auth: GLEAN_SERVER_URL and GLEAN_INDEXING_API_TOKEN.\nSDK usage mode: full connector flow using pull and push layers.\nExpected load: about 50,000 documents, average document body 12 KB, daily freshness is acceptable, customer-hosted crawl.\nI confirm this plan scope for the eval. Create validation-ready .glean artifacts under acme_full_flow/.glean, but do not write connector implementation code.",
+      "expected_output": "The agent records SDK usage mode as full connector flow, uses API exploration docs-only behavior, plans source pull via connector-pull and Glean upload/status via connector-push, separates test and production auth, creates validation-ready .glean artifacts, and stops before implementation.",
       "expectations": [
         "Plan records SDK usage mode as full connector flow.",
         "Agent uses connector-api-exploration, connector-auth, connector-pull, and connector-push responsibilities in the plan.",
@@ -74,24 +79,27 @@
         "Agent plans full-crawl source fetching only.",
         "Agent references SDK pull recipes/base classes for source fetching and does not propose ad hoc HTTP clients.",
         "Agent references only allowed connector-push SDK methods for Glean upload/status/debug behavior.",
-        "Agent asks about expected load and recommends or defers full-crawl frequency.",
-        "Agent does not write implementation code before validation."
+        "Agent records expected load and recommends or defers full-crawl frequency.",
+        "Agent does not write implementation code before validation.",
+        "Artifacts are validation-ready and should pass connector_builder.py validate."
       ]
     },
     {
       "id": 6,
-      "name": "webex-docs-only",
-      "prompt": "Use the connector-builder skill to plan a Webex Messaging connector. Use official Webex API docs, including rooms and messages APIs. I do not have a token for this eval. Do not write connector code.",
-      "expected_output": "The agent treats this as docs-only Webex planning: asks the user to confirm docs it finds or records supplied official docs, requests token/base URL for better quality, documents docs-only confidence gaps, drafts a plan before code, and does not run live API calls.",
+      "name": "webex-real-docs-exploration",
+      "prompt": "Use the connector-builder skill to plan a Webex Messaging connector.\n\nConfirmed official API docs:\n- https://developer.webex.com/docs/api/v1/rooms\n- https://developer.webex.com/docs/api/v1/messages\n- https://github.com/webex/webex-openapi-specs\nConnector folder: webex_messaging\nAPI base URL: https://webexapis.com/v1\nI do not have a Webex token for this eval, so use docs only.\nProduction source auth: OAuth bearer token supplied by the connector deployment environment.\nGlean indexing auth: GLEAN_SERVER_URL and GLEAN_INDEXING_API_TOKEN.\nSDK usage mode: full connector flow using pull and push layers.\nExpected load: about 20,000 messages and 1,000 rooms, average message body 2 KB, daily freshness is acceptable for the first version.\nI confirm this plan scope for the eval. Fetch/read the public Webex docs or official OpenAPI spec, create validation-ready .glean artifacts under webex_messaging/.glean, and do not write connector code.",
+      "expected_output": "The agent fetches or reads public Webex docs/OpenAPI, creates validation-ready docs-only Webex .glean artifacts with real rooms/messages endpoint inventory, records docs-only confidence gaps, and does not run live API calls or write connector code.",
       "expectations": [
-        "Agent asks for or confirms official Webex documentation before treating it as source of truth.",
-        "Agent asks for read-only token/base URL and explains live probes would improve quality.",
-        "Agent proceeds docs-only when token is unavailable and marks confidence gaps.",
-        "Agent does not run live API calls or claim live response evidence.",
+        "Agent fetches or reads public Webex docs or the official Webex OpenAPI spec, not just the prompt text.",
+        "source_docs.json contains Webex rooms/messages docs or the official OpenAPI spec.",
+        "api_endpoints.json includes real Webex endpoints such as GET /rooms and GET /messages.",
+        "api_inventory.md describes Webex pagination or docs-only gaps with citations.",
+        "api_calls_log.md states no live calls were made because no token was provided.",
         "Agent does not push anything to Glean.",
         "Agent does not write connector implementation code.",
-        "Plan separates test/API-exploration auth from production source auth.",
-        "Plan includes SDK usage mode and full-crawl-only limitation."
+        "connector_plan.md separates test/API-exploration auth from production OAuth bearer auth.",
+        "connector_plan.md includes SDK usage mode and full-crawl-only limitation.",
+        "Artifacts are validation-ready and should pass connector_builder.py validate."
       ]
     }
   ]

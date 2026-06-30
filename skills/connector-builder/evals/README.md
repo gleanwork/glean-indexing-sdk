@@ -1,6 +1,8 @@
 # Connector Builder Evals
 
-These evals test whether an LLM follows the `connector-builder` skill flow. They are intentionally credential-free: no live source API calls and no Glean uploads are required.
+These evals test whether an LLM follows the `connector-builder` skill flow. They are intentionally credential-free: no live source API calls and no Glean uploads are required. Quality eval prompts should produce validation-ready `.glean` artifacts.
+
+Evals 1-5 are synthetic and include inline API docs, so they should not need internet access. Eval 6 is the real-docs Webex eval: it should fetch or read public Webex docs / the official OpenAPI spec and then produce validation-ready `.glean` artifacts.
 
 ## Files
 
@@ -22,6 +24,8 @@ The evals focus on instruction-following:
 - states the full-crawl-only limitation for AI-built connectors
 - uses the pull, push, auth, and API exploration skills in their own lanes
 - avoids source API calls, Glean uploads, and code generation when the prompt asks for planning only
+- produces `.glean` artifacts that pass `connector_builder.py validate`
+- uses inline docs for synthetic evals and real public docs for the Webex eval
 
 ## Running Quality Evals Locally
 
@@ -32,13 +36,13 @@ For each case in `evals.json`:
 3. Run the eval prompt exactly as written.
 4. Save the transcript and any output files in a local, uncommitted workspace.
 5. Grade the run against the case's `expectations` and `rubric.md`.
-6. If the run produced a connector folder, run:
+6. Run:
 
    ```bash
    python scripts/connector_builder/connector_builder.py validate <connector-folder>
    ```
 
-The deterministic validator is only a supporting check. The main signal is whether the LLM followed the skill workflow.
+The deterministic validator is required for quality evals. The main signal is still whether the LLM followed the skill workflow, but the artifacts should be complete enough to pass validation.
 
 ## Running Trigger Evals
 

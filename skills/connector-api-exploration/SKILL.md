@@ -40,7 +40,7 @@ Write outputs to the connector folder:
 - Do not claim incremental sync support unless the API exposes a reliable updated/deleted signal for the relevant entity.
 - Do not hide uncertainty. Put unresolved questions in `.glean/source_investigation.md`.
 
-## Workflow
+## API Exploration Steps
 
 1. Read confirmed docs from `<connector-folder>/.glean/source_docs.json` and any additional user-provided docs.
 2. If docs are URLs, fetch or copy the relevant documentation into `<connector-folder>/.glean/external_docs/` so later planning can cite local files or stable URLs.
@@ -105,12 +105,6 @@ Add optional fields when known:
 - `permission_fields`
 - `deletion_behavior`
 
-## Handoff To Connector Builder
+## Completion Criteria
 
-After exploration, draft and confirm `<connector-folder>/.glean/connector_plan.md`, then run:
-
-```bash
-python scripts/connector_builder/connector_builder.py validate <connector-folder>
-```
-
-If validation fails, update the `.glean/` artifacts before implementation. Do not generate connector code until validation passes.
+This skill is complete when the output files above contain a cited endpoint inventory, structured endpoint JSON, source investigation notes, and redacted live-probe notes when credentials were available. The top-level `connector-builder` skill owns planning, validation, and implementation sequencing.

@@ -19,7 +19,7 @@ Use this skill when implementing the Glean-side upload, validation, and status-c
 - Use only the SDK push/status wrappers listed below. Do not call undocumented Glean APIs or generated-client methods directly from generated connector code.
 - Prefer full-crawl bulk operations for AI-built connectors. Incremental or delete-heavy behavior needs explicit developer attention.
 - Record which Glean-side methods are used in `<connector-folder>/.glean/connector_plan.md`.
-- Ask the user for expected document count, average document size, freshness requirement, and source API limits before recommending crawl frequency.
+- Use the load and crawl-frequency decisions from the confirmed connector plan.
 - Use local compile/tests first, then test Glean uploads only when indexing credentials are available.
 
 ## Allowed SDK Push And Status Surface
@@ -65,18 +65,6 @@ In `<connector-folder>/.glean/connector_plan.md`, include:
 - Auth used for Glean indexing: `GLEAN_SERVER_URL` and `GLEAN_INDEXING_API_TOKEN`.
 - Production source auth, which may differ from the token used during API exploration.
 
-## Crawl Frequency Recommendation
+## Crawl Frequency
 
-Ask for expected load before recommending schedule:
-
-- document count
-- average document body/attachment size
-- source API rate limits
-- freshness requirement
-- hosting owner
-
-Recommend conservatively:
-
-- Small/low-change datasources can run full crawl more frequently.
-- Large datasources or strict source API limits should run less frequently or require developer-designed incremental crawl.
-- If the user needs near-real-time freshness, explicitly call out that the current AI-built layer only supports full crawl and a developer should design incremental support.
+Use `<connector-folder>/.glean/connector_plan.md` for expected document count, average document size, freshness requirement, source API limits, hosting owner, and recommended full-crawl frequency. If the plan is missing those decisions, return to the top-level `connector-builder` planning step instead of asking again here.

@@ -31,9 +31,9 @@ Use this skill when the user wants to build, evaluate, or iterate on a connector
    - which entities are in scope for the first version
    - full-crawl behavior and any incremental follow-up notes
    - test auth vs production auth
+   - SDK usage mode: full connector flow, push-layer-only, pull-layer-only, or another confirmed combination
    - Glean-side upload/status endpoints from the `connector-push` skill
    - expected document count, average document size, freshness needs, source API limits, and recommended crawl frequency
-   - push-layer-only vs full connector flow
    - deployment/hosting expectations
 6. Mark the plan as confirmed only after user approval by setting `Status: confirmed`.
 7. Revalidate before implementation:
@@ -53,6 +53,13 @@ python scripts/connector_builder/connector_builder.py validate <connector-folder
 - `<connector-folder>/.glean/api_inventory.md`: cited endpoint catalog and API behavior summary.
 - `<connector-folder>/.glean/api_endpoints.json`: structured endpoint list with `name`, `method`, `path`, and `purpose`.
 - `<connector-folder>/.glean/api_calls_log.md`: redacted read-only probe log when live API calls are used.
+
+## Supporting Skills
+
+- `connector-api-exploration`: source API docs, endpoint inventory, and optional read-only probes.
+- `connector-auth`: test/API-exploration auth and production source auth.
+- `connector-pull`: source-side full-crawl fetching from confirmed endpoints.
+- `connector-push`: Glean-side upload, status, and debug method choices.
 
 ## Evaluation
 

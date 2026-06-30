@@ -44,15 +44,6 @@ Use these SDK exports from `glean.indexing.recipes.pull`:
 7. Preserve raw source IDs and URLs needed by the push/mapping layer.
 8. Add minimal local checks using sample data or mocked HTTP responses when possible.
 
-## Load And Crawl Frequency Inputs
+## Load And Crawl Frequency
 
-Ask the user for:
-
-- Expected number of documents.
-- Average document size or attachment size.
-- Expected change rate.
-- Source API rate limits.
-- Freshness requirement.
-- Whether Glean or the customer will host the crawl.
-
-Use those inputs to recommend a full-crawl frequency. Since the AI layer currently supports full crawl only, call out when the expected load or freshness requirement suggests that a developer should design incremental crawl support.
+Use the load and crawl-frequency decisions from `<connector-folder>/.glean/connector_plan.md`. If the plan is missing those decisions, return to the top-level `connector-builder` planning step instead of asking again here.

@@ -13,6 +13,7 @@ REQUIRED_MARKDOWN_ARTIFACTS = ("connector_plan.md", "source_investigation.md", "
 REQUIRED_JSON_ARTIFACTS = ("source_docs.json", "api_endpoints.json")
 TEST_AUTH_LABELS = ("test auth", "testing auth", "api exploration auth", "test auth used during api exploration")
 PROD_AUTH_LABELS = ("production auth", "prod auth", "production source auth")
+SDK_USAGE_LABELS = ("sdk usage", "sdk feature usage", "sdk mode", "sdk features")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -84,6 +85,8 @@ def validate_workspace(args: argparse.Namespace) -> None:
         errors.append("auth information must specify the test/API-exploration auth flow")
     if not has_filled_label(combined_text, PROD_AUTH_LABELS):
         errors.append("auth information must specify the production source auth flow")
+    if not has_filled_label(plan_text, SDK_USAGE_LABELS):
+        errors.append("connector plan must specify the confirmed SDK usage mode")
 
     if errors:
         raise ConnectorBuilderError("\n".join(errors))

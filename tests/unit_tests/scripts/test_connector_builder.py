@@ -76,6 +76,14 @@ The source API uses cursor pagination and has documented rate limits.
     assert main(["validate", str(connector_dir)]) == 1
 
 
+def test_validate_requires_sdk_usage_choice(tmp_path):
+    connector_dir = write_valid_connector_artifacts(tmp_path)
+    plan_path = connector_dir / ".glean/connector_plan.md"
+    plan_path.write_text(plan_path.read_text().replace("- SDK usage: Full connector flow using pull and push layers.\n", ""))
+
+    assert main(["validate", str(connector_dir)]) == 1
+
+
 def write_valid_connector_artifacts(tmp_path: Path) -> Path:
     connector_dir = tmp_path / "webex"
     artifact_dir = connector_dir / ".glean"
@@ -119,6 +127,10 @@ def write_valid_connector_artifacts(tmp_path: Path) -> Path:
 ## Scope
 
 Index rooms and messages as Glean documents using a full crawl. The first version excludes incremental sync and records it as developer follow-up work.
+
+## SDK Usage
+
+- SDK usage: Full connector flow using pull and push layers.
 
 ## Auth Plan
 

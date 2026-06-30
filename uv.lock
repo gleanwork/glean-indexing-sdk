@@ -434,7 +434,6 @@ source = { editable = "." }
 dependencies = [
     { name = "glean-api-client" },
     { name = "jinja2" },
-    { name = "pydantic" },
 ]
 
 [package.optional-dependencies]
@@ -454,7 +453,6 @@ test = [
     { name = "pytest-httpx" },
     { name = "pytest-socket" },
     { name = "pytest-watcher" },
-    { name = "python-dotenv" },
 ]
 typing = [
     { name = "pyright" },
@@ -473,7 +471,6 @@ requires-dist = [
     { name = "glean-api-client", specifier = ">=0.6.3" },
     { name = "jinja2", specifier = ">=3.1.2" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.6.0" },
-    { name = "pydantic", specifier = ">=2.0" },
     { name = "pyright", marker = "extra == 'typing'", specifier = ">=1.1.370" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.4.3" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.23.2" },
@@ -481,7 +478,6 @@ requires-dist = [
     { name = "pytest-httpx", marker = "extra == 'test'", specifier = ">=0.35.0" },
     { name = "pytest-socket", marker = "extra == 'test'", specifier = ">=0.7.0" },
     { name = "pytest-watcher", marker = "extra == 'test'", specifier = ">=0.3.4" },
-    { name = "python-dotenv", marker = "extra == 'test'", specifier = ">=1.1.0" },
     { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.5" },
     { name = "twine", marker = "extra == 'dev'", specifier = ">=4.0.0" },
 ]
@@ -556,7 +552,7 @@ name = "importlib-metadata"
 version = "8.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp", marker = "python_full_version < '3.13'" },
+    { name = "zipp" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/66/650a33bd90f786193e4de4b3ad86ea60b53c89b669a5c7be931fac31cdb0/importlib_metadata-8.7.0.tar.gz", hash = "sha256:d13b81ad223b890aa16c5471f2ac3056cf76c5f10f82d6f9292f0b415f389000", size = 56641, upload-time = "2025-04-27T15:29:01.736Z" }
 wheels = [
@@ -1206,15 +1202,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/72/72/a2a1e81f1b272ddd9a1848af4959c87c39aa95c0bbfb3007cacb86c47fa9/pytest_watcher-0.4.3.tar.gz", hash = "sha256:0cb0e4661648c8c0ff2b2d25efa5a8e421784b9e4c60fcecbf9b7c30b2d731b3", size = 10386, upload-time = "2024-08-28T17:37:46.662Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5b/3a/c44a76c6bb5e9e896d9707fb1c704a31a0136950dec9514373ced0684d56/pytest_watcher-0.4.3-py3-none-any.whl", hash = "sha256:d59b1e1396f33a65ea4949b713d6884637755d641646960056a90b267c3460f9", size = 11852, upload-time = "2024-08-28T17:37:45.731Z" },
-]
-
-[[package]]
-name = "python-dotenv"
-version = "1.2.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/82/ed/0301aeeac3e5353ef3d94b6ec08bbcabd04a72018415dcb29e588514bba8/python_dotenv-1.2.2.tar.gz", hash = "sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3", size = 50135, upload-time = "2026-03-01T16:00:26.196Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/d7/1959b9648791274998a9c3526f6d0ec8fd2233e4d4acce81bbae76b44b2a/python_dotenv-1.2.2-py3-none-any.whl", hash = "sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a", size = 22101, upload-time = "2026-03-01T16:00:25.09Z" },
 ]
 
 [[package]]

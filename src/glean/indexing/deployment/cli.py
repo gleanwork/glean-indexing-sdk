@@ -131,6 +131,43 @@ def secrets() -> None:
     """Manage connector secrets in cloud secret manager."""
 
 
+@secrets.command("list")
+@click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
+def secrets_list(config_path: str) -> None:
+    """List connector secrets stored in GCP Secret Manager or AWS Secrets Manager."""
+    from glean.indexing.deployment.secrets import list_secrets
+
+    config = _load_config(Path(config_path))
+    keys = list_secrets(config)
+
+    if not keys:
+        click.echo(f"No secrets found for connector '{config.connector_name}' in {config.cloud.upper()}.")
+        return
+
+    click.echo(f"Secrets for connector '{config.connector_name}' in {config.cloud.upper()} ({len(keys)}):\n")
+    for key in keys:
+        click.echo(f"  {key}")
+
+
+@secrets.command("delete")
+@click.argument("key")
+@click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
+@click.confirmation_option(prompt="This will permanently delete the secret. Are you sure?")
+def secrets_delete(key: str, config_path: str) -> None:
+    """Delete a connector secret KEY from GCP Secret Manager or AWS Secrets Manager."""
+    from glean.indexing.deployment.secrets import delete_secret
+
+    config = _load_config(Path(config_path))
+    try:
+        delete_secret(config, key)
+    except KeyError:
+        raise click.ClickException(
+            f"Secret '{key}' not found for connector '{config.connector_name}'. "
+            "Use `glean-deploy secrets list` to see available secrets."
+        )
+    click.echo(f"Deleted secret '{key}' for connector '{config.connector_name}'.")
+
+
 @secrets.command("upload")
 @click.option("--env-file", default=".env", show_default=True, type=click.Path(dir_okay=False))
 @click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))

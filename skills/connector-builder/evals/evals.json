@@ -1,0 +1,98 @@
+{
+  "skill_name": "connector-builder",
+  "agent_type": "connector-builder",
+  "setup": "LLM behavior eval for the Glean Indexing SDK connector-builder skill. Run in a temporary workspace with the current plugin/skills available. Do not use real credentials. Do not make live source API calls. Do not push data to Glean. The agent should produce or describe connector-folder-local .glean artifacts and stop before implementation unless explicitly instructed otherwise.",
+  "evals": [
+    {
+      "id": 1,
+      "name": "acme-docs-docs-only",
+      "prompt": "Use the Glean connector-builder skill to plan a connector for Acme Docs.\n\nOfficial API docs: https://api.example.com/acme/docs\n\nI do not have an API token yet. Please use documentation only for now. Do not write connector implementation code.",
+      "expected_output": "The agent follows the docs-only path: confirms/records the docs, asks for base URL/token and explains why live probes would improve quality, proceeds without live API calls, drafts or describes connector-folder-local .glean artifacts, creates a plan before code, and does not generate implementation files.",
+      "expectations": [
+        "Agent asks for or records official API documentation as the source of truth.",
+        "Agent asks for API base URL and read-only token or states that no token was provided.",
+        "Agent explains that live read-only API probes improve connector quality by verifying auth, response shapes, pagination, rate limits, or permissions.",
+        "Agent proceeds on a documentation-only basis and explicitly marks lower confidence or gaps caused by missing credentials.",
+        "Agent places planned artifacts under a connector folder's .glean directory, not a repo-level .glean directory.",
+        "Agent does not make live source API calls.",
+        "Agent does not push anything to Glean.",
+        "Agent does not write connector implementation code.",
+        "Plan includes SDK usage mode and distinguishes test/API-exploration auth from production source auth.",
+        "Plan states the AI-built connector flow supports full crawl only for now unless developer follow-up is added."
+      ]
+    },
+    {
+      "id": 2,
+      "name": "missing-docs",
+      "prompt": "Use the Glean connector-builder skill to build a connector plan for Acme Docs. I do not have API docs handy. Do not write code yet.",
+      "expected_output": "The agent does not proceed to implementation. It searches for candidate official docs or asks the user for API documentation, OpenAPI spec, or sample request/response payloads, and requests confirmation before treating any docs as source of truth.",
+      "expectations": [
+        "Agent does not generate connector code.",
+        "Agent does not create a final implementation plan based on unconfirmed documentation.",
+        "Agent asks the user for API documentation, an OpenAPI spec, or sample API request/response payloads if official docs cannot be confidently found.",
+        "If candidate docs are found, agent asks the user to confirm them once before proceeding.",
+        "Agent does not invent endpoint paths, auth flows, or response shapes."
+      ]
+    },
+    {
+      "id": 3,
+      "name": "incremental-requested",
+      "prompt": "Use the connector-builder skill to plan a connector for Acme Docs using https://api.example.com/acme/docs. I want incremental sync so only changed records are fetched. I do not have credentials yet. Do not write code.",
+      "expected_output": "The agent plans from docs only, but clearly states that the AI-building layer supports full crawl only for now. Incremental sync is captured as developer follow-up unless the user explicitly asks to move outside the current AI-built scope.",
+      "expectations": [
+        "Agent states that the current AI-building workflow supports full crawl only.",
+        "Agent records incremental sync as developer follow-up or out of scope for the first AI-built version.",
+        "Agent does not claim incremental implementation is supported by the skill flow.",
+        "Agent still asks for API base URL and read-only credentials for better future exploration.",
+        "Agent does not write connector implementation code.",
+        "Plan includes SDK usage mode and auth split."
+      ]
+    },
+    {
+      "id": 4,
+      "name": "push-layer-only",
+      "prompt": "Use the connector-builder skill to plan a push-layer-only Glean connector for Acme Docs. We already have source records available from another system and only need to upload them to Glean. Use docs only, no credentials, and do not write code.",
+      "expected_output": "The agent records SDK usage mode as push-layer-only, does not plan source pull implementation, uses connector-push guidance for allowed Glean SDK methods, and still captures auth/load/validation expectations before code.",
+      "expectations": [
+        "Plan records SDK usage mode as push-layer-only.",
+        "Agent does not require a source pull data client or source API fetching implementation.",
+        "Agent uses only Glean-side methods from the connector-push allowlist when discussing upload/status/debug behavior.",
+        "Agent asks for expected document count, average document size, freshness requirement, or other load inputs before recommending crawl/upload frequency.",
+        "Agent distinguishes Glean indexing auth from source/test auth.",
+        "Agent does not write implementation code."
+      ]
+    },
+    {
+      "id": 5,
+      "name": "full-connector-flow",
+      "prompt": "Use the connector-builder skill to plan a full Glean Indexing SDK connector for Acme Docs. The connector should fetch records from the source REST API and upload documents to Glean. Official docs are at https://api.example.com/acme/docs. I do not have credentials yet. Do not write code.",
+      "expected_output": "The agent records SDK usage mode as full connector flow, uses API exploration docs-only behavior, plans source pull via connector-pull and Glean upload/status via connector-push, separates test and production auth, asks load/frequency questions, and stops before implementation.",
+      "expectations": [
+        "Plan records SDK usage mode as full connector flow.",
+        "Agent uses connector-api-exploration, connector-auth, connector-pull, and connector-push responsibilities in the plan.",
+        "Agent states no live API probing will happen without credentials and marks confidence gaps.",
+        "Agent plans full-crawl source fetching only.",
+        "Agent references SDK pull recipes/base classes for source fetching and does not propose ad hoc HTTP clients.",
+        "Agent references only allowed connector-push SDK methods for Glean upload/status/debug behavior.",
+        "Agent asks about expected load and recommends or defers full-crawl frequency.",
+        "Agent does not write implementation code before validation."
+      ]
+    },
+    {
+      "id": 6,
+      "name": "webex-docs-only",
+      "prompt": "Use the connector-builder skill to plan a Webex Messaging connector. Use official Webex API docs, including rooms and messages APIs. I do not have a token for this eval. Do not write connector code.",
+      "expected_output": "The agent treats this as docs-only Webex planning: asks the user to confirm docs it finds or records supplied official docs, requests token/base URL for better quality, documents docs-only confidence gaps, drafts a plan before code, and does not run live API calls.",
+      "expectations": [
+        "Agent asks for or confirms official Webex documentation before treating it as source of truth.",
+        "Agent asks for read-only token/base URL and explains live probes would improve quality.",
+        "Agent proceeds docs-only when token is unavailable and marks confidence gaps.",
+        "Agent does not run live API calls or claim live response evidence.",
+        "Agent does not push anything to Glean.",
+        "Agent does not write connector implementation code.",
+        "Plan separates test/API-exploration auth from production source auth.",
+        "Plan includes SDK usage mode and full-crawl-only limitation."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+[
+  {
+    "phase": "positive",
+    "shape": "build_connector",
+    "query": "Build a Glean Indexing SDK connector for Acme Docs.",
+    "should_trigger": true
+  },
+  {
+    "phase": "positive",
+    "shape": "plan_connector",
+    "query": "Use the connector-builder skill to plan a custom datasource connector from these API docs.",
+    "should_trigger": true
+  },
+  {
+    "phase": "positive",
+    "shape": "api_exploration",
+    "query": "Explore this vendor API and create a connector plan before writing code.",
+    "should_trigger": true
+  },
+  {
+    "phase": "positive",
+    "shape": "push_layer_only",
+    "query": "I already have source records and only want to use the Glean SDK push layer to index them.",
+    "should_trigger": true
+  },
+  {
+    "phase": "positive",
+    "shape": "full_flow",
+    "query": "I want to fetch records from a third-party REST API and push them to Glean using the SDK.",
+    "should_trigger": true
+  },
+  {
+    "phase": "negative",
+    "shape": "sdk_bugfix",
+    "query": "Fix a bug in PushUploader batching.",
+    "should_trigger": false
+  },
+  {
+    "phase": "negative",
+    "shape": "explain_api",
+    "query": "Explain how PullHttpClient handles retry-after headers.",
+    "should_trigger": false
+  },
+  {
+    "phase": "negative",
+    "shape": "review",
+    "query": "Review this pull request for correctness and missing tests.",
+    "should_trigger": false
+  },
+  {
+    "phase": "negative",
+    "shape": "test_command",
+    "query": "Run the unit tests and summarize failures.",
+    "should_trigger": false
+  },
+  {
+    "phase": "negative",
+    "shape": "credentials_help",
+    "query": "How do I set GLEAN_SERVER_URL and GLEAN_INDEXING_API_TOKEN locally?",
+    "should_trigger": false
+  }
+]

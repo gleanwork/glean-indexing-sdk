@@ -4,7 +4,7 @@ from pathlib import Path
 from scripts.connector_builder.connector_builder import main
 
 
-DOC_URL = "https://developer.webex.com/docs/api/v1/rooms/list-rooms"
+DOC_URL = "https://api.example.com/docs"
 
 
 def test_validate_passes_with_confirmed_artifacts_and_auth(tmp_path):
@@ -14,7 +14,7 @@ def test_validate_passes_with_confirmed_artifacts_and_auth(tmp_path):
 
 
 def test_validate_requires_glean_directory(tmp_path):
-    connector_dir = tmp_path / "webex"
+    connector_dir = tmp_path / "example_connector"
     connector_dir.mkdir()
 
     assert main(["validate", str(connector_dir)]) == 1
@@ -42,7 +42,7 @@ def test_validate_requires_test_and_production_auth(tmp_path):
     connector_dir = write_valid_connector_artifacts(tmp_path)
     plan_path = connector_dir / ".glean/connector_plan.md"
     plan_path.write_text(
-        """# Webex Connector Plan
+        """# Example Connector Plan
 
 ## User Confirmation
 
@@ -50,7 +50,7 @@ def test_validate_requires_test_and_production_auth(tmp_path):
 
 ## Scope
 
-Index Webex rooms as documents using a full crawl.
+Index source records as documents using a full crawl.
 
 ## Auth Plan
 
@@ -60,7 +60,7 @@ Index Webex rooms as documents using a full crawl.
     )
     investigation_path = connector_dir / ".glean/source_investigation.md"
     investigation_path.write_text(
-        """# Webex Source Investigation
+        """# Example Source Investigation
 
 ## Auth
 
@@ -85,15 +85,15 @@ def test_validate_requires_sdk_usage_choice(tmp_path):
 
 
 def write_valid_connector_artifacts(tmp_path: Path) -> Path:
-    connector_dir = tmp_path / "webex"
+    connector_dir = tmp_path / "example_connector"
     artifact_dir = connector_dir / ".glean"
     artifact_dir.mkdir(parents=True)
 
     (artifact_dir / "source_docs.json").write_text(
         json.dumps(
             {
-                "datasource": "webex",
-                "display_name": "Webex",
+                "datasource": "example_connector",
+                "display_name": "Example Connector",
                 "confirmed_docs": [{"url": DOC_URL, "purpose": "source-of-truth"}],
             },
             indent=2,
@@ -103,13 +103,13 @@ def write_valid_connector_artifacts(tmp_path: Path) -> Path:
     (artifact_dir / "api_endpoints.json").write_text(
         json.dumps(
             {
-                "datasource": "webex",
+                "datasource": "example_connector",
                 "endpoints": [
                     {
-                        "name": "List rooms",
+                        "name": "List records",
                         "method": "GET",
-                        "path": "/v1/rooms",
-                        "purpose": "Fetch rooms to index as documents",
+                        "path": "/v1/records",
+                        "purpose": "Fetch source records to index as documents",
                     }
                 ],
             },
@@ -118,7 +118,7 @@ def write_valid_connector_artifacts(tmp_path: Path) -> Path:
         + "\n"
     )
     (artifact_dir / "connector_plan.md").write_text(
-        """# Webex Connector Plan
+        """# Example Connector Plan
 
 ## User Confirmation
 
@@ -126,7 +126,7 @@ def write_valid_connector_artifacts(tmp_path: Path) -> Path:
 
 ## Scope
 
-Index rooms and messages as Glean documents using a full crawl. The first version excludes incremental sync and records it as developer follow-up work.
+Index source records as Glean documents using a full crawl. The first version excludes incremental sync and records it as developer follow-up work.
 
 ## SDK Usage
 
@@ -134,29 +134,29 @@ Index rooms and messages as Glean documents using a full crawl. The first versio
 
 ## Auth Plan
 
-- Test auth: Webex developer PAT supplied through WEBEX_API_TOKEN during API exploration.
+- Test auth: Temporary bearer token supplied through SOURCE_API_TOKEN during API exploration.
 - Production auth: OAuth bearer token supplied by the connector deployment environment.
 """
     )
     (artifact_dir / "source_investigation.md").write_text(
-        """# Webex Source Investigation
+        """# Example Source Investigation
 
 ## Auth
 
-- Test auth: Webex developer PAT supplied through WEBEX_API_TOKEN.
+- Test auth: Temporary bearer token supplied through SOURCE_API_TOKEN.
 - Production auth: OAuth bearer token from the production deployment secret store.
 
 ## API Behavior
 
-The source API uses cursor pagination, has documented rate limits, and exposes rooms and messages endpoints required for the confirmed full-crawl scope.
+The source API uses cursor pagination, has documented rate limits, and exposes records endpoints required for the confirmed full-crawl scope.
 """
     )
     (artifact_dir / "api_inventory.md").write_text(
-        """# Webex API Inventory
+        """# Example API Inventory
 
 | Name | Method | Path | Purpose | Source |
 | ---- | ------ | ---- | ------- | ------ |
-| List rooms | GET | /v1/rooms | Fetch rooms to index as documents | Webex docs |
+| List records | GET | /v1/records | Fetch source records to index as documents | Source docs |
 """
     )
     return connector_dir

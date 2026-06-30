@@ -47,6 +47,6 @@ Before validation, ensure the artifacts include filled-in values for:
 Example:
 
 ```markdown
-- Test auth: Webex developer PAT supplied through WEBEX_API_TOKEN during API exploration.
+- Test auth: Temporary bearer token supplied through SOURCE_API_TOKEN during API exploration.
 - Production auth: OAuth bearer token supplied by the connector deployment environment.
 ```

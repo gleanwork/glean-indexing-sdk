@@ -19,7 +19,7 @@ Use this skill when implementing source API fetching for a connector after `<con
 - Implement full-crawl source fetching for the AI-built connector. Do not implement incremental crawl unless the user explicitly asks for developer-owned follow-up work.
 - Use source API behavior proven by API exploration. Do not invent pagination, rate-limit, auth, or response fields.
 - Keep source fetching in the data client. Keep Glean mapping in the connector.
-- Prefer SDK pull recipes over ad hoc HTTP code when they fit.
+- Use SDK pull recipes only. Inherit from the pull base classes and do not hand-roll ad hoc HTTP clients in generated connector code.
 - Redact secrets in logs and examples.
 
 ## SDK Pull Surface

@@ -87,10 +87,10 @@ Each endpoint in `<connector-folder>/.glean/api_endpoints.json` must include:
 
 ```json
 {
-  "name": "List rooms",
+  "name": "List records",
   "method": "GET",
-  "path": "/v1/rooms",
-  "purpose": "Fetch rooms to index as documents"
+  "path": "/v1/records",
+  "purpose": "Fetch source records to index as documents"
 }
 ```
 

@@ -15,7 +15,7 @@ Use this skill when the user wants to build, evaluate, or iterate on a connector
 
 - Do not generate code until API exploration is complete and the user confirms the connector plan.
 - Prefer official source-system docs over prior connector implementations.
-- Persist repeated context in the connector folder's `.glean/` directory, not only in the chat. For example, a Webex connector should keep artifacts under `<connector-folder>/.glean/`, not a repo-level `.glean/`.
+- Persist repeated context in the connector folder's `.glean/` directory, not only in the chat. Connector artifacts must live under `<connector-folder>/.glean/`, not a repo-level `.glean/`.
 - Do not write connector implementation code until `connector_builder.py validate` passes.
 - Redact secrets from any API call logs.
 - The AI-building workflow supports full crawls only for now. SDK components may support incremental crawls, but incremental behavior needs developer attention and should be called out as follow-up work.
@@ -31,7 +31,7 @@ Use this skill when the user wants to build, evaluate, or iterate on a connector
    - which entities are in scope for the first version
    - full-crawl behavior and any incremental follow-up notes
    - test auth vs production auth
-   - SDK usage mode: full connector flow, push-layer-only, pull-layer-only, or another confirmed combination
+   - SDK usage mode: full connector flow, push-layer-only, or another confirmed combination
    - Glean-side upload/status endpoints from the `connector-push` skill
    - expected document count, average document size, freshness needs, source API limits, and recommended crawl frequency
    - deployment/hosting expectations

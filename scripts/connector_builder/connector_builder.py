@@ -65,6 +65,7 @@ def init_workspace(args: argparse.Namespace) -> None:
     names = normalize_names(args.datasource, args.display_name)
     artifact_dir = artifact_dir_for(args.workspace_dir)
     artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "external_docs").mkdir(exist_ok=True)
 
     write_json(
         artifact_dir / "source_docs.json",
@@ -76,7 +77,6 @@ def init_workspace(args: argparse.Namespace) -> None:
         },
         force=args.force,
     )
-    write_text(artifact_dir / "connector_plan.md", connector_plan_template(names), force=args.force)
     write_text(artifact_dir / "source_investigation.md", source_investigation_template(names), force=args.force)
     write_text(artifact_dir / "api_inventory.md", api_inventory_template(names), force=args.force)
     write_json(
@@ -92,7 +92,7 @@ def init_workspace(args: argparse.Namespace) -> None:
         force=args.force,
     )
     write_text(artifact_dir / "api_calls_log.md", api_calls_log_template(names), force=args.force)
-    print(f"Initialized connector workspace for {names.datasource} at {artifact_dir}")
+    print(f"Initialized connector API exploration workspace for {names.datasource} at {artifact_dir}")
 
 
 def validate_workspace(args: argparse.Namespace) -> None:
@@ -248,7 +248,7 @@ Build a {names.display_name} connector for datasource `{names.datasource}`.
 - Content to index:
 - Identities to sync:
 - Permissions to preserve:
-- Crawl mode:
+- Crawl mode: full crawl only for the AI-built version
 - Deployment ownership:
 
 ## Product Constraints
@@ -257,6 +257,34 @@ Build a {names.display_name} connector for datasource `{names.datasource}`.
 - Incremental crawl possible if:
 - Push-layer-only option:
 - Hosted deployment option:
+
+## API Plan
+
+- Source endpoints to use:
+- Endpoint handling notes:
+- Pagination:
+- Rate limits:
+- Entities supported in first version:
+
+## Auth Plan
+
+- Test auth used during API exploration:
+- Production source auth:
+- Glean indexing auth:
+
+## Glean Push Plan
+
+- Glean document upload methods:
+- Glean identity upload methods:
+- Glean status/debug methods:
+
+## Load And Schedule
+
+- Expected document count:
+- Average document size:
+- Source API limits:
+- Freshness requirement:
+- Recommended full crawl frequency:
 
 ## Open Questions For User
 
@@ -307,6 +335,13 @@ def source_investigation_template(names: ConnectorNames) -> str:
 - Retries:
 - Permissions:
 
+## Load
+
+- Expected document count:
+- Expected average document size:
+- Source API throughput limits:
+- Freshness requirement:
+
 ## Unknowns
 
 - [ ] Replace this checklist with resolved questions before implementation.
@@ -334,11 +369,15 @@ Use this file for the cited endpoint catalog produced by API exploration.
 ## Connector-Relevant Findings
 
 - Auth:
+- Test auth:
+- Production auth:
 - Pagination:
 - Incremental filters:
 - Rate limits:
 - Permissions:
 - Deletions:
+- Load:
+- Recommended full crawl frequency:
 """
 
 

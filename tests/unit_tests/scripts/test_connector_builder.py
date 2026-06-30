@@ -15,11 +15,12 @@ def test_init_creates_planning_artifacts(tmp_path, monkeypatch):
 
     assert result == 0
     assert Path(".glean/source_docs.json").exists()
-    assert Path(".glean/connector_plan.md").exists()
     assert Path(".glean/source_investigation.md").exists()
     assert Path(".glean/api_inventory.md").exists()
     assert Path(".glean/api_endpoints.json").exists()
     assert Path(".glean/api_calls_log.md").exists()
+    assert Path(".glean/external_docs").is_dir()
+    assert not Path(".glean/connector_plan.md").exists()
 
 
 def test_validate_requires_confirmed_plan_and_endpoint_inventory(tmp_path, monkeypatch):
@@ -30,7 +31,18 @@ def test_validate_requires_confirmed_plan_and_endpoint_inventory(tmp_path, monke
     assert main(["validate"]) == 1
 
     plan_path = Path(".glean/connector_plan.md")
-    plan_path.write_text(plan_path.read_text().replace("Status: not confirmed", "Status: confirmed"))
+    plan_path.write_text(
+        """# Webex Connector Plan
+
+## User Confirmation
+
+- Status: confirmed
+
+## Scope
+
+Index Webex rooms as documents using a full crawl.
+"""
+    )
 
     endpoints_path = Path(".glean/api_endpoints.json")
     endpoints = json.loads(endpoints_path.read_text())

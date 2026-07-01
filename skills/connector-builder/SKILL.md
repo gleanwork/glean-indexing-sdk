@@ -35,7 +35,7 @@ Use this skill when the user wants to build, evaluate, or iterate on a connector
    - Glean-side upload/status endpoints from the `connector-push` skill
    - runtime logging, metrics, and evaluation checks from the `connector-observability` skill
    - expected document count, average document size, freshness needs, source API limits, and recommended crawl frequency
-   - deployment/hosting expectations
+   - deployment/hosting expectations from the `connector-deployment` skill, including whether customer-hosted deployment is in scope
 6. Mark the plan as confirmed only after user approval by setting `Status: confirmed`.
 7. Revalidate before implementation:
 
@@ -43,7 +43,7 @@ Use this skill when the user wants to build, evaluate, or iterate on a connector
 python scripts/connector_builder/connector_builder.py validate <connector-folder>
 ```
 
-8. Implement the data client and connector using the `connector-auth`, `connector-pull`, `connector-push`, and `connector-observability` skills. Post-validation code generation is handled by the agent following the skills, not by the local validator.
+8. Implement the data client and connector using the `connector-auth`, `connector-pull`, `connector-push`, `connector-observability`, and `connector-deployment` skills as applicable. Post-validation code generation is handled by the agent following the skills, not by the local validator.
 9. Evaluate with local checks first, then real source/Glean test runs when credentials are available.
 
 ## Required Artifacts
@@ -55,6 +55,7 @@ python scripts/connector_builder/connector_builder.py validate <connector-folder
 - `<connector-folder>/.glean/api_endpoints.json`: structured endpoint list with `name`, `method`, `path`, and `purpose`.
 - `<connector-folder>/.glean/api_calls_log.md`: redacted read-only probe log when live API calls are used.
 - `<connector-folder>/.glean/connector_plan.md` must include observability choices: provider, lifecycle logs, metrics, and evaluation status/debug checks.
+- `<connector-folder>/.glean/connector_plan.md` must include deployment scope: out of scope, customer-hosted GCP/AWS via `glean-deploy`, or follow-up.
 
 ## Supporting Skills
 
@@ -63,6 +64,7 @@ python scripts/connector_builder/connector_builder.py validate <connector-folder
 - `connector-pull`: source-side full-crawl fetching from confirmed endpoints.
 - `connector-push`: Glean-side upload, status, and debug method choices.
 - `connector-observability`: logging, metrics, upload visibility, and evaluation checks.
+- `connector-deployment`: customer-hosted deployment artifacts and `glean-deploy` operations.
 
 ## Evaluation
 
@@ -73,4 +75,5 @@ Evaluate connector quality by checking:
 - Source fetch returns limited expected records with test credentials, if available.
 - Transform/upload paths can push to a test Glean datasource, if credentials are available.
 - Runtime logs/metrics expose lifecycle, fetch, transform, upload, and failure signals without secrets.
+- Deployment artifacts or deployment plan match the confirmed hosting scope, if deployment is in scope.
 - Connector behavior matches the confirmed plan, especially full vs incremental crawl constraints.

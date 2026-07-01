@@ -17,12 +17,13 @@ RUN useradd --create-home --shell /bin/bash connector
 
 WORKDIR /app
 
-# Install connector dependencies.
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir -e . 2>/dev/null || pip install --no-cache-dir .
+# Upgrade pip and setuptools so modern pyproject.toml build backends are available.
+RUN pip install --no-cache-dir --upgrade pip setuptools
 
-# Copy connector source.
+# Copy connector source and install dependencies.
+COPY pyproject.toml ./
 COPY . .
+RUN pip install --no-cache-dir .
 
 USER connector
 

@@ -109,6 +109,14 @@ if connector_cls is None:
     sys.exit(1)
 
 print(f"Starting connector {connector_class_name} with indexing mode: {indexing_mode}")
+
+try:
+    from glean.indexing.models import IndexingMode
+    mode = IndexingMode[indexing_mode]
+except KeyError:
+    print(f"ERROR: Unknown INDEXING_MODE '{indexing_mode}'. Valid values: FULL, INCREMENTAL.", file=sys.stderr)
+    sys.exit(1)
+
 connector = connector_cls()
-connector.index_data()
+connector.index_data(mode=mode)
 print("Connector run complete.")

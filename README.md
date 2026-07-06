@@ -16,6 +16,49 @@ A Python SDK for building custom Glean indexing connectors. Provides base classe
 pip install glean-indexing-sdk
 ```
 
+## AI Connector Builder Plugin
+
+This repository includes a Claude/Cursor agent plugin for planning Glean Indexing SDK connectors with the connector-builder skills. For local Claude Code testing, build the plugin and install the generated Claude plugin from this repo.
+
+From the repository root:
+
+```bash
+npm install
+npm run build:plugins
+```
+
+This generates Claude plugin artifacts under `dist/claude/`. Add that generated directory as a local Claude marketplace:
+
+```bash
+claude plugin marketplace add "$(pwd)/dist/claude"
+```
+
+Verify Claude can see the marketplace plugin:
+
+```bash
+claude plugin list --available --json
+```
+
+Install the connector-builder plugin locally:
+
+```bash
+claude plugin install glean-connector-builder@glean-indexing-sdk-agent-plugin --scope local
+```
+
+Restart Claude Code, or run `/reload-plugins` in the active session. If autocomplete does not show the plugin name, run the exact install command above. You can verify the generated marketplace and plugin names with:
+
+```bash
+cat dist/claude/.claude-plugin/marketplace.json
+```
+
+For a one-off test without installing the plugin, launch Claude Code with the generated plugin directory:
+
+```bash
+claude --plugin-dir "$(pwd)/dist/claude/plugins/glean-connector-builder"
+```
+
+Re-run `npm run build:plugins` after changing files under `skills/`; the generated `dist/` directory is ignored by git.
+
 ## Key Concepts
 
 Every connector has two parts:

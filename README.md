@@ -36,8 +36,6 @@ claude plugin marketplace add "$(pwd)/dist/claude"
 claude plugin install glean-connector-builder@glean-indexing-sdk-agent-plugin --scope user
 ```
 
-Use `--scope project` instead of `--scope user` only when the team intentionally wants the plugin enabled through project Claude settings.
-
 Verify installation:
 
 ```bash
@@ -52,7 +50,11 @@ To inspect the generated Claude marketplace and plugin names:
 cat dist/claude/.claude-plugin/marketplace.json
 ```
 
-Re-run `npm run build:plugins` after changing files under `skills/`; the generated `dist/` directory is ignored by git.
+After installation, ask your coding agent for the connector you want to build. For example:
+
+```text
+I want to push my Webex data to Glean. Build a connector for me.
+```
 
 ## Key Concepts
 

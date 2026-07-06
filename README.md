@@ -18,43 +18,38 @@ pip install glean-indexing-sdk
 
 ## AI Connector Builder Plugin
 
-This repository includes a Claude/Cursor agent plugin for planning Glean Indexing SDK connectors with the connector-builder skills. For local Claude Code testing, build the plugin and install the generated Claude plugin from this repo.
+The Connector Builder plugin is an agent workflow that assists you in building connectors and pushing data to Glean.
 
-From the repository root:
+Build the agent plugin artifacts:
 
 ```bash
 npm install
 npm run build:plugins
 ```
 
-This generates Claude plugin artifacts under `dist/claude/`. Add that generated directory as a local Claude marketplace:
+This installs the plugin packaging dependencies, then generates and validates native plugin artifacts under `dist/`.
+
+After building, install the generated plugin using the process for your AI tool. For Claude Code, use:
 
 ```bash
 claude plugin marketplace add "$(pwd)/dist/claude"
+claude plugin install glean-connector-builder@glean-indexing-sdk-agent-plugin --scope user
 ```
 
-Verify Claude can see the marketplace plugin:
+Use `--scope project` instead of `--scope user` only when the team intentionally wants the plugin enabled through project Claude settings.
+
+Verify installation:
 
 ```bash
-claude plugin list --available --json
+claude plugin list
 ```
 
-Install the connector-builder plugin locally:
+Restart Claude Code, or run `/reload-plugins` in the active session.
 
-```bash
-claude plugin install glean-connector-builder@glean-indexing-sdk-agent-plugin --scope local
-```
-
-Restart Claude Code, or run `/reload-plugins` in the active session. If autocomplete does not show the plugin name, run the exact install command above. You can verify the generated marketplace and plugin names with:
+To inspect the generated Claude marketplace and plugin names:
 
 ```bash
 cat dist/claude/.claude-plugin/marketplace.json
-```
-
-For a one-off test without installing the plugin, launch Claude Code with the generated plugin directory:
-
-```bash
-claude --plugin-dir "$(pwd)/dist/claude/plugins/glean-connector-builder"
 ```
 
 Re-run `npm run build:plugins` after changing files under `skills/`; the generated `dist/` directory is ignored by git.

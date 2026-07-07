@@ -10,5 +10,17 @@ Typical import::
 
 from glean.indexing.testing.harness.config import ClientConfig, TestConfig
 from glean.indexing.testing.harness.harness import TestHarness
+from glean.indexing.testing.harness.permissions import (
+    PermissionRefs,
+    assert_negative_identities_absent,
+    extract_permission_refs,
+)
 
-__all__ = ["ClientConfig", "TestConfig", "TestHarness"]
+__all__ = [
+    "ClientConfig",
+    "PermissionRefs",
+    "TestConfig",
+    "TestHarness",
+    "assert_negative_identities_absent",
+    "extract_permission_refs",
+]

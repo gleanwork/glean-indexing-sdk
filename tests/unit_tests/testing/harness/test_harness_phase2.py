@@ -254,3 +254,77 @@ class TestRunIntegrationTestAsync:
         await harness.run_integration_test_async()
 
         assert connector.async_data_client is real_client
+
+
+# ---------------------------------------------------------------------------
+# Negative identity assertions wired into run_integration_test
+# ---------------------------------------------------------------------------
+
+
+class TestNegativeIdentityAssertions:
+    def test_violation_raises_assertion_error(self, tmp_path: Path):
+        """A negative identity in a document ACL should fail the integration test."""
+        from glean.api_client.models import (
+            ContentDefinition,
+            DocumentDefinition,
+            DocumentPermissionsDefinition,
+            UserReferenceDefinition,
+        )
+        from glean.indexing.connectors.base_data_client import BaseDataClient
+        from glean.indexing.connectors import BaseDatasourceConnector
+        from glean.indexing.models import CustomDatasourceConfig
+
+        _DENIED = "denied_user@corp.com"
+
+        class _DeniedDocClient(BaseDataClient[dict]):
+            def get_source_data(self, **kwargs: Any) -> Sequence[dict]:
+                return [{"id": "1", "title": "Secret"}]
+
+        class _DeniedDocConnector(BaseDatasourceConnector[dict]):
+            configuration = CustomDatasourceConfig(
+                name="denied_conn",
+                display_name="Denied Conn",
+                url_regex=r"https://example\.com/.*",
+            )
+
+            def transform(self, data):
+                return [
+                    DocumentDefinition(
+                        id="doc1",
+                        datasource="denied_conn",
+                        title="Secret",
+                        view_url="https://example.com/doc1",
+                        body=ContentDefinition(mime_type="text/plain", text_content="body"),
+                        permissions=DocumentPermissionsDefinition(
+                            allowed_users=[UserReferenceDefinition(email=_DENIED)]
+                        ),
+                    )
+                ]
+
+        real_client = _DeniedDocClient()
+        connector = _DeniedDocConnector(name="denied_conn", data_client=real_client)
+        config = TestConfig(
+            cache_dir=str(tmp_path),
+            negative_test_identities=[_DENIED],
+        )
+
+        harness = TestHarness(
+            connector=connector, config=config, clients={"data_client": real_client}
+        )
+
+        with pytest.raises(AssertionError, match="denied_user"):
+            harness.run_integration_test()
+
+    def test_no_violation_passes(self, tmp_path: Path):
+        real_client = _CountingDataClient(_DOCS)
+        connector = DatasourceFake(name="ds", data_client=real_client)
+        config = TestConfig(
+            cache_dir=str(tmp_path),
+            negative_test_identities=["outsider@corp.com"],
+        )
+
+        harness = TestHarness(
+            connector=connector, config=config, clients={"data_client": real_client}
+        )
+        result = harness.run_integration_test()  # DatasourceFake produces no ACLs → no violation
+        result.assert_documents_posted(count=3)

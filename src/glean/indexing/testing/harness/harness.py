@@ -40,6 +40,7 @@ from glean.indexing.testing.harness.cache.replay_client import (
     ReplayStreamingClientWrapper,
 )
 from glean.indexing.testing.harness.config import TestConfig
+from glean.indexing.testing.harness.permissions import assert_negative_identities_absent
 from glean.indexing.testing.mock_client import MockGleanClient
 from glean.indexing.testing.runner import run_connector, run_connector_async
 
@@ -313,7 +314,14 @@ class TestHarness:
                 connector attribute.
         """
         with _patched_clients(self._connector, self._clients, self._config):
-            return run_connector(self._connector, mode=mode, options=options)
+            result = run_connector(self._connector, mode=mode, options=options)
+
+        if self._config.negative_test_identities:
+            assert_negative_identities_absent(
+                result.documents_posted, self._config.negative_test_identities
+            )
+
+        return result
 
     async def run_integration_test_async(
         self,
@@ -331,7 +339,14 @@ class TestHarness:
             A :class:`~glean.indexing.testing.mock_client.MockGleanClient`.
         """
         with _patched_clients(self._connector, self._clients, self._config):
-            return await run_connector_async(self._connector, mode=mode, options=options)
+            result = await run_connector_async(self._connector, mode=mode, options=options)
+
+        if self._config.negative_test_identities:
+            assert_negative_identities_absent(
+                result.documents_posted, self._config.negative_test_identities
+            )
+
+        return result
 
     # ------------------------------------------------------------------
     # Phase 3 — end-to-end (real source, real Glean)

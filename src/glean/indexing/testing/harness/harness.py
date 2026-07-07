@@ -12,8 +12,9 @@ Phase 2 (integration — real source, mock Glean, local cache):
     from NDJSON on subsequent runs.
 
 Phase 3 (end-to-end — real source, real Glean):
-    Not yet implemented.  :meth:`TestHarness.run_end_to_end` raises
-    ``NotImplementedError`` until PR 4 lands.
+    Calls ``connector.index_data()`` without any mock patching.  Requires
+    ``GLEAN_SERVER_URL`` / ``GLEAN_INDEXING_API_TOKEN`` environment variables.
+    Per-client ``max_items`` from ``TestConfig`` are applied before the run.
 """
 
 from __future__ import annotations
@@ -360,19 +361,35 @@ class TestHarness:
     ) -> None:
         """Run the connector against the real source and real Glean.
 
-        Requires ``GLEAN_SERVER_URL`` (or ``GLEAN_INSTANCE``) and
-        ``GLEAN_INDEXING_API_TOKEN`` environment variables to be set.
+        Calls ``connector.index_data()`` without any mock patching.  Per-client
+        ``max_items`` from :attr:`config` are applied to bound the crawl.
 
-        .. note::
-            Not yet implemented — will be added in PR 4 (``feature/testing-harness-phase3``).
+        The Glean client is configured from environment variables:
+
+        - ``GLEAN_SERVER_URL`` (preferred) or ``GLEAN_INSTANCE`` (deprecated)
+        - ``GLEAN_INDEXING_API_TOKEN``
+
+        The :attr:`~TestConfig.run_id_prefix` from config is logged but not
+        used to namespace the datasource (the connector's own datasource name
+        is used as-is).  To avoid polluting production data, point
+        ``GLEAN_SERVER_URL`` at a dedicated test instance.
+
+        Args:
+            mode: Indexing mode forwarded to ``connector.index_data``.
+            options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
 
         Raises:
-            NotImplementedError: Always, until PR 4 is merged.
+            RuntimeError: If ``GLEAN_INDEXING_API_TOKEN`` or the server URL is
+                missing from the environment (raised by the underlying
+                :mod:`~glean.indexing.common.glean_client` module).
         """
-        raise NotImplementedError(
-            "run_end_to_end is not yet implemented. "
-            "It will be available in the feature/testing-harness-phase3 branch."
+        logger.info(
+            "Starting end-to-end run (run_id_prefix=%r, mode=%s)",
+            self._config.run_id_prefix,
+            mode.name,
         )
+        with _patched_clients(self._connector, self._clients, self._config):
+            self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
 
     async def run_end_to_end_async(
         self,
@@ -382,13 +399,31 @@ class TestHarness:
     ) -> None:
         """Async variant of :meth:`run_end_to_end`.
 
+        For :class:`~glean.indexing.connectors.BaseAsyncStreamingDatasourceConnector`
+        subclasses this calls ``connector.index_data_async()``; for sync
+        connectors it falls back to ``connector.index_data()``.
+
+        Args:
+            mode: Indexing mode forwarded to the connector.
+            options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
+
         Raises:
-            NotImplementedError: Always, until PR 4 is merged.
+            RuntimeError: If environment variables for the Glean client are missing.
         """
-        raise NotImplementedError(
-            "run_end_to_end_async is not yet implemented. "
-            "It will be available in the feature/testing-harness-phase3 branch."
+        from glean.indexing.connectors.base_async_streaming_datasource_connector import (
+            BaseAsyncStreamingDatasourceConnector,
         )
+
+        logger.info(
+            "Starting async end-to-end run (run_id_prefix=%r, mode=%s)",
+            self._config.run_id_prefix,
+            mode.name,
+        )
+        with _patched_clients(self._connector, self._clients, self._config):
+            if isinstance(self._connector, BaseAsyncStreamingDatasourceConnector):
+                await self._connector.index_data_async(mode=mode, options=options)
+            else:
+                self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
 
     # ------------------------------------------------------------------
     # Internals

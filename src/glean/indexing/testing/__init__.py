@@ -15,6 +15,7 @@ from glean.indexing.testing.data_clients import (
     StaticDataClient,
     StaticStreamingDataClient,
 )
+from glean.indexing.testing.harness import ClientConfig, TestConfig, TestHarness
 from glean.indexing.testing.mock_client import (
     MockGleanClient,
     mock_glean_client,
@@ -24,11 +25,14 @@ from glean.indexing.testing.mock_data_source import MockDataSource
 from glean.indexing.testing.runner import run_connector, run_connector_async
 
 __all__ = [
+    "ClientConfig",
     "MockDataSource",
     "MockGleanClient",
     "StaticAsyncStreamingDataClient",
     "StaticDataClient",
     "StaticStreamingDataClient",
+    "TestConfig",
+    "TestHarness",
     "mock_glean_client",
     "run_connector",
     "run_connector_async",

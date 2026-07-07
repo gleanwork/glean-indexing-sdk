@@ -6,8 +6,10 @@ Phase 1 (full mock):
     calls; everything runs against the mock Glean client.
 
 Phase 2 (integration — real source, mock Glean, local cache):
-    Not yet implemented.  :meth:`TestHarness.run_integration_test` raises
-    ``NotImplementedError`` until PR 2 lands.
+    Wraps each connector data client with a ``Recording*`` or ``Replay*``
+    wrapper depending on whether a valid cache fixture already exists.
+    Push side is mocked; pull side hits the real API on first run and replays
+    from NDJSON on subsequent runs.
 
 Phase 3 (end-to-end — real source, real Glean):
     Not yet implemented.  :meth:`TestHarness.run_end_to_end` raises
@@ -16,22 +18,174 @@ Phase 3 (end-to-end — real source, real Glean):
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Union
+import logging
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Dict, Generator, Optional, Union
 
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
 from glean.indexing.models import ConnectorOptions, IndexingMode
+from glean.indexing.testing.harness.cache.manifest import CacheManifest
+from glean.indexing.testing.harness.cache.recording_client import (
+    RecordingAsyncStreamingClientWrapper,
+    RecordingDataClientWrapper,
+    RecordingStreamingClientWrapper,
+)
+from glean.indexing.testing.harness.cache.replay_client import (
+    ReplayAsyncStreamingClientWrapper,
+    ReplayDataClientWrapper,
+    ReplayStreamingClientWrapper,
+)
 from glean.indexing.testing.harness.config import TestConfig
 from glean.indexing.testing.mock_client import MockGleanClient
 from glean.indexing.testing.runner import run_connector, run_connector_async
+
+logger = logging.getLogger(__name__)
 
 AnyDataClient = Union[
     BaseDataClient[Any],
     BaseStreamingDataClient[Any],
     BaseAsyncStreamingDataClient[Any],
 ]
+
+_MANIFEST_FILENAME = "manifest.json"
+
+
+def _sdk_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("glean-indexing-sdk")
+    except Exception:
+        return "unknown"
+
+
+def _should_use_cache(
+    manifest_path: Path,
+    use_cache: bool,
+    refresh_cache: bool,
+) -> bool:
+    """Return ``True`` if a valid, non-stale cache fixture should be replayed."""
+    if not use_cache or refresh_cache:
+        return False
+    if not manifest_path.exists():
+        return False
+    try:
+        manifest = CacheManifest.load(manifest_path)
+    except Exception:
+        return False
+    return not manifest.is_stale(_sdk_version())
+
+
+def _wrap_client(
+    attr_name: str,
+    client: AnyDataClient,
+    *,
+    cache_dir: Path,
+    connector_name: str,
+    use_cache: bool,
+    refresh_cache: bool,
+    max_items: Optional[int],
+) -> AnyDataClient:
+    """Return a recording or replay wrapper for *client*."""
+    manifest_path = (
+        cache_dir / connector_name / "integration" / attr_name / _MANIFEST_FILENAME
+    )
+    if _should_use_cache(manifest_path, use_cache=use_cache, refresh_cache=refresh_cache):
+        logger.debug("Cache HIT for client '%s'", attr_name)
+        if isinstance(client, BaseAsyncStreamingDataClient):
+            return ReplayAsyncStreamingClientWrapper(
+                cache_dir=cache_dir,
+                connector_name=connector_name,
+                client_name=attr_name,
+            )
+        if isinstance(client, BaseStreamingDataClient):
+            return ReplayStreamingClientWrapper(
+                cache_dir=cache_dir,
+                connector_name=connector_name,
+                client_name=attr_name,
+            )
+        return ReplayDataClientWrapper(
+            cache_dir=cache_dir,
+            connector_name=connector_name,
+            client_name=attr_name,
+        )
+
+    logger.debug("Cache MISS for client '%s' — recording", attr_name)
+    if isinstance(client, BaseAsyncStreamingDataClient):
+        return RecordingAsyncStreamingClientWrapper(
+            inner=client,
+            cache_dir=cache_dir,
+            connector_name=connector_name,
+            client_name=attr_name,
+            max_items=max_items,
+        )
+    if isinstance(client, BaseStreamingDataClient):
+        return RecordingStreamingClientWrapper(
+            inner=client,
+            cache_dir=cache_dir,
+            connector_name=connector_name,
+            client_name=attr_name,
+            max_items=max_items,
+        )
+    return RecordingDataClientWrapper(
+        inner=client,
+        cache_dir=cache_dir,
+        connector_name=connector_name,
+        client_name=attr_name,
+        max_items=max_items,
+    )
+
+
+@contextmanager
+def _patched_clients(
+    connector: BaseConnector,
+    clients: Dict[str, AnyDataClient],
+    config: TestConfig,
+) -> Generator[None, None, None]:
+    """Context manager that monkey-patches connector client attributes.
+
+    Replaces each ``connector.<attr_name>`` with a recording or replay wrapper
+    for the duration of the block, then restores the originals.
+
+    Raises:
+        AttributeError: If a key in *clients* does not correspond to an
+            attribute on the connector.
+    """
+    cache_dir = Path(config.cache_dir)
+    connector_name = connector.name  # type: ignore[attr-defined]
+    originals: Dict[str, AnyDataClient] = {}
+
+    for attr_name, client in clients.items():
+        if not hasattr(connector, attr_name):
+            raise AttributeError(
+                f"Connector {type(connector).__name__!r} has no attribute {attr_name!r}. "
+                f"Verify the 'clients' dict keys match the connector's data-client attribute names."
+            )
+        originals[attr_name] = getattr(connector, attr_name)
+
+        client_cfg = config.clients.get(attr_name)
+        max_items = client_cfg.max_items if client_cfg else None
+
+        wrapped = _wrap_client(
+            attr_name,
+            client,
+            cache_dir=cache_dir,
+            connector_name=connector_name,
+            use_cache=config.use_cache,
+            refresh_cache=config.refresh_cache,
+            max_items=max_items,
+        )
+        setattr(connector, attr_name, wrapped)
+
+    try:
+        yield
+    finally:
+        for attr_name, original in originals.items():
+            setattr(connector, attr_name, original)
 
 
 class TestHarness:
@@ -43,12 +197,11 @@ class TestHarness:
     Args:
         connector: Any ``BaseConnector`` subclass (datasource, streaming, async-streaming, people).
         config: Harness configuration.  Defaults to an in-process ``TestConfig()`` if not given.
-        clients: Mapping of *attribute name* → data-client instance.  Keys must
-            correspond to attributes on the connector (e.g. ``"data_client"``,
-            ``"tickets_client"``).  Used in Phase 2 (integration) to wrap
-            each client with recording / replay logic.  Not required for Phase 1.
+        clients: Mapping of *connector attribute name* → data-client instance.  Keys must
+            match attributes on the connector (e.g. ``"data_client"``, ``"tickets_client"``).
+            Required for Phase 2 (integration) to enable recording/replay.  Not needed for Phase 1.
 
-    Example::
+    Example — Phase 1::
 
         harness = TestHarness(
             connector=MyConnector(data_client=StaticDataClient([...])),
@@ -56,6 +209,16 @@ class TestHarness:
         )
         client = harness.run_full_mock()
         client.assert_documents_posted(5)
+
+    Example — Phase 2::
+
+        harness = TestHarness(
+            connector=my_connector,
+            config=TestConfig.from_yaml("testing_config.yaml"),
+            clients={"data_client": real_tickets_client},
+        )
+        client = harness.run_integration_test()
+        client.assert_documents_posted()
     """
 
     def __init__(
@@ -131,18 +294,26 @@ class TestHarness:
     ) -> MockGleanClient:
         """Run the connector against the real source with a mocked Glean client.
 
-        Uses a local replay cache to avoid repeated network calls.
+        On the first call (cache miss) each data client in ``self._clients``
+        is wrapped with a recording wrapper that forwards calls to the real
+        API and writes items to NDJSON.  On subsequent calls (cache hit) items
+        are replayed from disk without touching the real API.
 
-        .. note::
-            Not yet implemented — will be added in PR 2 (``feature/testing-harness-phase2``).
+        Pass ``config.refresh_cache=True`` to force re-recording.
+
+        Args:
+            mode: Indexing mode forwarded to ``connector.index_data``.
+            options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
+
+        Returns:
+            A :class:`~glean.indexing.testing.mock_client.MockGleanClient`.
 
         Raises:
-            NotImplementedError: Always, until PR 2 is merged.
+            AttributeError: If a key in ``clients`` does not correspond to a
+                connector attribute.
         """
-        raise NotImplementedError(
-            "run_integration_test is not yet implemented. "
-            "It will be available in the feature/testing-harness-phase2 branch."
-        )
+        with _patched_clients(self._connector, self._clients, self._config):
+            return run_connector(self._connector, mode=mode, options=options)
 
     async def run_integration_test_async(
         self,
@@ -152,13 +323,15 @@ class TestHarness:
     ) -> MockGleanClient:
         """Async variant of :meth:`run_integration_test`.
 
-        Raises:
-            NotImplementedError: Always, until PR 2 is merged.
+        Args:
+            mode: Indexing mode forwarded to ``connector.index_data_async``.
+            options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
+
+        Returns:
+            A :class:`~glean.indexing.testing.mock_client.MockGleanClient`.
         """
-        raise NotImplementedError(
-            "run_integration_test_async is not yet implemented. "
-            "It will be available in the feature/testing-harness-phase2 branch."
-        )
+        with _patched_clients(self._connector, self._clients, self._config):
+            return await run_connector_async(self._connector, mode=mode, options=options)
 
     # ------------------------------------------------------------------
     # Phase 3 — end-to-end (real source, real Glean)

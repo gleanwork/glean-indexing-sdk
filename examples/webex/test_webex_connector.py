@@ -11,7 +11,7 @@ from __future__ import annotations
 import httpx
 
 from examples.webex.connector import WebexConnector, _message_title, _to_epoch
-from examples.webex.data_client import WebexDataClient
+from examples.webex.data_client import WebexDataClient, WebexEventsDataClient
 from glean.indexing.testing import run_connector
 
 ROOMS = {
@@ -203,3 +203,134 @@ def test_timestamp_and_title_helpers() -> None:
     assert _message_title("a@acme.com", "Eng", "hi there") == "a@acme.com in Eng: hi there"
     long_title = _message_title("a@acme.com", "Eng", "x" * 500)
     assert len(long_title) <= 120
+
+
+# --- Org-wide Events API client -------------------------------------------
+
+EVENTS = {
+    "items": [
+        {
+            "id": "E1",
+            "resource": "messages",
+            "type": "created",
+            "created": "2026-01-10T00:00:00.000Z",
+            "data": {
+                "id": "M1",
+                "roomId": "R1",
+                "roomType": "group",
+                "text": "org-wide hello",
+                "personEmail": "a@acme.com",
+                "created": "2026-01-10T00:00:00.000Z",
+            },
+        },
+        {
+            "id": "E2",
+            "resource": "messages",
+            "type": "created",
+            "created": "2026-01-11T00:00:00.000Z",
+            "data": {
+                "id": "M2",
+                "roomId": "R1",
+                "roomType": "group",
+                "text": "second org message",
+                "personEmail": "b@acme.com",
+                "created": "2026-01-11T00:00:00.000Z",
+            },
+        },
+        {
+            "id": "E3",
+            "resource": "messages",
+            "type": "deleted",  # should be skipped by default event_types
+            "created": "2026-01-12T00:00:00.000Z",
+            "data": {"id": "M9", "roomId": "R1", "roomType": "group"},
+        },
+        {
+            "id": "E4",
+            "resource": "messages",
+            "type": "created",
+            "created": "2026-01-13T00:00:00.000Z",
+            "data": {
+                "id": "M3",
+                "roomId": "RD",
+                "roomType": "direct",  # DM, excluded by default
+                "text": "dm message",
+                "personEmail": "c@acme.com",
+                "created": "2026-01-13T00:00:00.000Z",
+            },
+        },
+    ]
+}
+ROOM_R1 = {"id": "R1", "title": "Org Space", "type": "group", "created": "2026-01-01T00:00:00Z"}
+
+
+def _events_handler(request: httpx.Request) -> httpx.Response:
+    """Route mock org-wide Events/room/membership requests."""
+    path = request.url.path
+    if path.endswith("/events"):
+        return httpx.Response(200, json=EVENTS)
+    if path.endswith("/memberships"):
+        return httpx.Response(
+            200, json={"items": [{"personEmail": "a@acme.com"}, {"personEmail": "b@acme.com"}]}
+        )
+    if "/rooms/" in path:
+        return httpx.Response(200, json=ROOM_R1)
+    return httpx.Response(404, json={})
+
+
+def _events_client() -> WebexEventsDataClient:
+    """Build a WebexEventsDataClient backed by the canned mock transport."""
+    http = httpx.Client(
+        transport=httpx.MockTransport(_events_handler), base_url="https://webexapis.com/v1"
+    )
+    return WebexEventsDataClient(api_token="t", client=http)
+
+
+def test_events_client_streams_room_then_messages() -> None:
+    """Org-wide client emits a room once, then its group messages; DMs/deletes excluded."""
+    items = list(_events_client().get_source_data())
+    kinds = [i["kind"] for i in items]
+    # R1 room (emitted once) + M1 + M2. M9 is a delete, M3 is a DM -> both excluded.
+    assert kinds == ["room", "message", "message"]
+    first = items[0]
+    assert first["kind"] == "room"
+    assert first["room"]["id"] == "R1"
+    assert first["member_emails"] == ["a@acme.com", "b@acme.com"]
+    message_ids = [i["message"]["id"] for i in items if i["kind"] == "message"]
+    assert message_ids == ["M1", "M2"]
+
+
+def test_events_client_room_emitted_only_once() -> None:
+    """A room shared by multiple messages is emitted a single time."""
+    rooms = [i for i in _events_client().get_source_data() if i["kind"] == "room"]
+    assert len(rooms) == 1
+
+
+def test_events_client_full_transform_permissions() -> None:
+    """Org-wide path produces permissioned documents through the connector."""
+    result = run_connector(WebexConnector(_events_client()))
+    docs = result.documents_posted
+    assert len(docs) == 3  # 1 space + 2 messages
+    assert {d.object_type for d in docs} == {"Space", "Message"}
+    for d in docs:
+        assert d.permissions is not None and d.permissions.allowed_users is not None
+        assert {u.email for u in d.permissions.allowed_users} == {"a@acme.com", "b@acme.com"}
+
+
+def test_events_client_clamps_start_date_beyond_lookback() -> None:
+    """A start_date older than the lookback window is clamped, not sent as-is."""
+    captured = {"from": None}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/events"):
+            captured["from"] = request.url.params.get("from")
+            return httpx.Response(200, json={"items": []})
+        return httpx.Response(200, json={"items": []})
+
+    http = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://webexapis.com/v1")
+    client = WebexEventsDataClient(
+        api_token="t", start_date="2000-01-01T00:00:00.000Z", max_lookback_days=89, client=http
+    )
+    list(client.get_source_data())
+    # The ancient start date must have been clamped forward to a recent value.
+    assert captured["from"] is not None
+    assert not captured["from"].startswith("2000")

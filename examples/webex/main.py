@@ -1,13 +1,19 @@
 """Run the Webex connector.
 
 Environment variables:
-    WEBEX_API_TOKEN         Webex bearer token (production auth model TBD).
-    GLEAN_SERVER_URL        Glean backend URL (e.g. https://acme-be.glean.com).
+    WEBEX_API_TOKEN           Webex bearer token (production auth model TBD).
+    GLEAN_SERVER_URL          Glean backend URL (e.g. https://acme-be.glean.com).
     GLEAN_INDEXING_API_TOKEN  Glean indexing API token.
 
 Usage:
-    uv run python -m examples.webex.main            # configure + full index
-    uv run python -m examples.webex.main --dry-run  # fetch + transform only, no upload
+    # Org-wide crawl via the compliance Events API (Compliance Officer token):
+    uv run python -m examples.webex.main --org-wide --start-date 2026-01-01T00:00:00Z
+
+    # Room-scoped crawl (bot/user token; only rooms the token owner is in):
+    uv run python -m examples.webex.main
+
+    # Fetch + transform only, no upload:
+    uv run python -m examples.webex.main --org-wide --dry-run
 """
 
 from __future__ import annotations
@@ -18,11 +24,21 @@ import os
 import sys
 
 from examples.webex.connector import WebexConnector
-from examples.webex.data_client import WebexDataClient
+from examples.webex.data_client import WebexDataClient, WebexEventsDataClient
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the Webex Glean connector.")
+    parser.add_argument(
+        "--org-wide",
+        action="store_true",
+        help="Crawl the whole org via the compliance Events API (Compliance Officer token).",
+    )
+    parser.add_argument(
+        "--start-date",
+        default=None,
+        help="ISO-8601 'from' bound for the org-wide crawl (default: Webex ~90-day window).",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -45,7 +61,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     room_types = ("group", "direct") if args.include_direct else ("group",)
-    data_client = WebexDataClient(api_token=token, room_types=room_types)
+    if args.org_wide:
+        data_client = WebexEventsDataClient(
+            api_token=token, start_date=args.start_date, room_types=room_types
+        )
+    else:
+        data_client = WebexDataClient(api_token=token, room_types=room_types)
     connector = WebexConnector(data_client)
 
     if args.dry_run:

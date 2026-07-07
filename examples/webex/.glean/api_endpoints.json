@@ -31,6 +31,35 @@
       "path": "/memberships",
       "purpose": "List room members (roomId required) to build per-space allowed_users permissions.",
       "verified_live": true
+    },
+    {
+      "name": "list_events",
+      "method": "GET",
+      "path": "/events",
+      "purpose": "Org-wide compliance stream (resource=messages); embeds full message in data. Requires Compliance Officer + spark-compliance scopes. ~90-day lookback.",
+      "verified_live": true
+    },
+    {
+      "name": "get_room",
+      "method": "GET",
+      "path": "/rooms/{id}",
+      "purpose": "Fetch a single room's metadata by id (org-wide path resolves room title for arbitrary rooms).",
+      "verified_live": true
     }
-  ]
+  ],
+  "scopes": {
+    "room_scoped_user_or_bot": [
+      "spark:people_read",
+      "spark:rooms_read",
+      "spark:messages_read",
+      "spark:memberships_read"
+    ],
+    "org_wide_compliance": [
+      "spark-compliance:events_read",
+      "spark-compliance:messages_read",
+      "spark-compliance:memberships_read",
+      "spark-compliance:rooms_read"
+    ],
+    "note": "Compliance scope strings should be confirmed on developer.webex.com; org-wide reads verified live against the org with a Compliance-Officer-capable token."
+  }
 }

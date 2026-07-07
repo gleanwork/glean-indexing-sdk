@@ -1,25 +1,30 @@
 # Webex Source Investigation
 
 ## Auth
-- Test auth: read-only Webex bearer token, verified live on 2026-07-06.
-- Production auth: WEBEX_API_TOKEN bearer env var placeholder; concrete model (bot / OAuth integration / compliance officer) to be decided later per user instruction.
+- Test auth: read-only Webex bearer token (Compliance-Officer-capable), verified live on 2026-07-06.
+- Production auth: org-wide via Compliance Officer token. Scopes: spark-compliance:events_read, spark-compliance:messages_read, spark-compliance:memberships_read, spark-compliance:rooms_read. Room-scoped alternative (bot/user): spark:people_read, spark:rooms_read, spark:messages_read, spark:memberships_read. Confirm exact strings on developer.webex.com.
 
 ## Source data model
-- **Room (space):** group (multi-person) or direct (1:1 DM). Has title, timestamps, creator/owner, team linkage.
-- **Message:** belongs to one room; plain `text` + optional `html`, `files`, `mentionedPeople`, `parentId`. Authored by a person (`personEmail`).
-- **Membership:** person-to-room link with `personEmail`; basis for permissions.
+- **Room (space):** group or direct. Title, timestamps, creator/owner, team linkage.
+- **Message:** belongs to one room; text + optional html, files, mentionedPeople, parentId. Authored by personEmail.
+- **Event:** compliance envelope {id, resource, type, actorId, created, data}; for resource=messages, `data` is the full message. Org-wide for Compliance Officers.
+- **Membership:** person-to-room link with personEmail; readable for arbitrary org rooms with the compliance token.
 
 ## Sync model
-- v1: full crawl only. Enumerate rooms, then page all messages per room, emit documents.
-- Incremental (follow-up): `/messages` before/beforeMessage; checkpoint per-room latest created. Deferred.
+- v1: full crawl only. Org-wide client pages /events?resource=messages within the allowed window, discovering rooms lazily.
+- Incremental (follow-up): checkpoint the events window (from/to) and handle edit/delete event types.
+
+## Constraints verified live
+- Events API lookback capped at ~90 days: from=2026-04-08 -> 200, from=2026-04-01 -> 403. Client clamps over-old start_date forward with a warning.
+- Org-wide events include rooms the token owner is not in.
 
 ## Permissions model
-- Webex spaces are private to members. Correct Glean permissions = allowed_users = room members' emails (from `/memberships`).
-- Requires `is_user_referenced_by_email=True` on the datasource config.
-- Fail-closed: if memberships cannot be read for a room, skip its docs rather than expose them broadly.
+- allowed_users = current room members (from /memberships), which the compliance token can read for any org room.
+- is_user_referenced_by_email=True on the datasource config.
+- Fail-closed: room/membership read failure -> skip that room and its messages.
 
 ## Unknowns / risks
-- Production token scope determines room visibility (bot membership vs org-wide).
-- Rate limits: honor 429 + Retry-After. Cost scales with total message count.
-- direct (DM) rooms excluded by default in v1.
-- Attachment binaries not fetched in v1 (URLs recorded only).
+- Exact compliance scope strings (confirm on portal); Compliance Officer role required for org-wide.
+- Rate limits: honor 429 + Retry-After. Cost scales with org message volume in the window.
+- Messages older than ~90 days need Webex eDiscovery (out of scope).
+- Message edits/deletions within the window not yet reconciled (follow-up).

@@ -17,10 +17,9 @@ from glean.api_client.models import (
     DocumentPermissionsDefinition,
     UserReferenceDefinition,
 )
-from glean.indexing.connectors import BaseStreamingDatasourceConnector
+from glean.indexing.connectors import BaseStreamingDataClient, BaseStreamingDatasourceConnector
 from glean.indexing.models import CustomDatasourceConfig
 
-from examples.webex.data_client import WebexDataClient
 from examples.webex.models import WebexItem, WebexMessage, WebexRoom
 
 # Webex web client space deep-link, e.g. https://web.webex.com/spaces/<id>
@@ -39,7 +38,9 @@ class WebexConnector(BaseStreamingDatasourceConnector[WebexItem]):
         is_user_referenced_by_email=True,
     )
 
-    def __init__(self, data_client: WebexDataClient, name: str = "webex") -> None:
+    def __init__(
+        self, data_client: BaseStreamingDataClient[WebexItem], name: str = "webex"
+    ) -> None:
         super().__init__(name, data_client)
 
     def transform(self, data: Sequence[WebexItem]) -> List[DocumentDefinition]:

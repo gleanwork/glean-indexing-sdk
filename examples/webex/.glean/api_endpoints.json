@@ -1,0 +1,36 @@
+{
+  "datasource": "webex",
+  "base_url": "https://webexapis.com/v1",
+  "auth": "Authorization: Bearer <token>",
+  "pagination": "Cursor-based via RFC5988 Link header rel=next; follow until absent. max sets page size.",
+  "endpoints": [
+    {
+      "name": "get_me",
+      "method": "GET",
+      "path": "/people/me",
+      "purpose": "Auth verification / identify token owner and org.",
+      "verified_live": true
+    },
+    {
+      "name": "list_rooms",
+      "method": "GET",
+      "path": "/rooms",
+      "purpose": "Enumerate spaces/rooms; each indexed as a document and used as message container.",
+      "verified_live": true
+    },
+    {
+      "name": "list_messages",
+      "method": "GET",
+      "path": "/messages",
+      "purpose": "List messages within a room (roomId required); each indexed as a document.",
+      "verified_live": true
+    },
+    {
+      "name": "list_memberships",
+      "method": "GET",
+      "path": "/memberships",
+      "purpose": "List room members (roomId required) to build per-space allowed_users permissions.",
+      "verified_live": true
+    }
+  ]
+}

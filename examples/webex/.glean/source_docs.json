@@ -1,0 +1,39 @@
+{
+  "datasource": "webex",
+  "source_system": "Webex",
+  "confirmed_by_user": true,
+  "confirmed_on": "2026-07-06",
+  "base_url": "https://webexapis.com/v1",
+  "confirmed_docs": [
+    {
+      "title": "Webex REST API Reference",
+      "url": "https://developer.webex.com/docs/api/getting-started",
+      "purpose": "API conventions: auth, base URL, pagination, rate limits"
+    },
+    {
+      "title": "Webex Rooms API",
+      "url": "https://developer.webex.com/docs/api/v1/rooms",
+      "purpose": "List spaces/rooms and metadata"
+    },
+    {
+      "title": "Webex Messages API",
+      "url": "https://developer.webex.com/docs/api/v1/messages",
+      "purpose": "List messages within a room"
+    },
+    {
+      "title": "Webex Memberships API",
+      "url": "https://developer.webex.com/docs/api/v1/memberships",
+      "purpose": "List room members for permissions"
+    }
+  ],
+  "scope": {
+    "entities_v1": [
+      "messages_in_spaces",
+      "rooms_spaces"
+    ],
+    "crawl_mode": "full",
+    "incremental_followup": "messages support before/beforeMessage; deferred",
+    "exploration_auth": "read-only Webex bearer token (session env only)",
+    "production_auth": "undecided - bearer token env var placeholder"
+  }
+}

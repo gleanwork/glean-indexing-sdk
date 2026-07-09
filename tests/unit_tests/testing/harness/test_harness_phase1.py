@@ -48,7 +48,7 @@ class TestTestHarnessInit:
             config=TestConfig(),
             clients={"data_client": client},
         )
-        assert "data_client" in harness._clients
+        assert "data_client" in harness.clients
 
 
 class TestRunFullMock:

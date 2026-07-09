@@ -2,8 +2,10 @@
 
 Phase 1 (full mock):
     Delegates to the existing :func:`~glean.indexing.testing.run_connector` /
-    :func:`~glean.indexing.testing.run_connector_async` helpers.  No network
-    calls; everything runs against the mock Glean client.
+    :func:`~glean.indexing.testing.run_connector_async` helpers.  The Glean
+    API is fully mocked; the connector's own data clients are not touched, so
+    use :class:`~glean.indexing.testing.StaticDataClient` (or similar) to
+    avoid real network calls on the source side.
 
 Phase 2 (integration — real source, mock Glean, local cache):
     Not yet implemented.  :meth:`TestHarness.run_integration_test` raises
@@ -85,7 +87,10 @@ class TestHarness:
         """Run the connector against a fully mocked Glean client.
 
         Delegates to :func:`~glean.indexing.testing.runner.run_connector`.
-        No network calls are made on either the source or the Glean side.
+        The Glean API is fully mocked; no indexing network calls are made.
+        The connector's source-side data clients are not replaced, so pass
+        :class:`~glean.indexing.testing.StaticDataClient` (or similar) when
+        constructing the connector to keep the run fully offline.
 
         Args:
             mode: Indexing mode forwarded to ``connector.index_data``.
@@ -215,3 +220,8 @@ class TestHarness:
     def connector(self) -> BaseConnector:
         """The connector under test."""
         return self._connector
+
+    @property
+    def clients(self) -> Dict[str, AnyDataClient]:
+        """The registered data clients, keyed by connector attribute name."""
+        return dict(self._clients)

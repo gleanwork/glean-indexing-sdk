@@ -1,6 +1,7 @@
 """Tests for TestHarness Phase 2 — integration test (real source, mock Glean, cache)."""
 
 import json
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any, AsyncGenerator, Generator, Sequence
 
@@ -15,7 +16,10 @@ from glean.indexing.testing.harness.config import ClientConfig
 from tests.unit_tests.testing._fakes import AsyncStreamingFake, DatasourceFake, StreamingFake
 
 _DOCS = [{"id": str(i), "title": f"Doc {i}"} for i in range(3)]
-_SDK_VER = "1.0.0b2"
+try:
+    _SDK_VER = _pkg_version("glean-indexing-sdk")
+except Exception:
+    _SDK_VER = "unknown"
 
 
 def _fixture_data_path(cache_dir: Path, connector_name: str, client_name: str) -> Path:

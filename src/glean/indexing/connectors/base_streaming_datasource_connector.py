@@ -17,7 +17,9 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
     """
     Base class for all Glean streaming datasource connectors.
 
-    This class provides the core logic for memory-efficient, incremental indexing of large document/content datasets from external systems into Glean.
+    This class provides the core logic for memory-efficient indexing of large document/content datasets from external systems into Glean.
+    It fetches source data incrementally from a generator and uploads documents in bulk batches, so it can be used for full crawls
+    without loading the entire dataset into memory.
     Subclasses must define a `configuration` attribute of type `CustomDatasourceConfig` describing the datasource.
 
     To implement a custom streaming connector, inherit from this class and implement:

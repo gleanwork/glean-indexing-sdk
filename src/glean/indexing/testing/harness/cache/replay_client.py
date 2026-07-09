@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, AsyncGenerator, Generator, Generic, List, Sequence
+from typing import Any, AsyncGenerator, Generator, Generic, List, Optional, Sequence
 
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_data_client import BaseDataClient
@@ -69,6 +69,7 @@ class ReplayDataClientWrapper(BaseDataClient[TSourceData], Generic[TSourceData])
         cache_dir: Root cache directory (same value as used during recording).
         connector_name: Connector name (used to locate the fixture path).
         client_name: Data-client attribute name (used to locate the fixture path).
+        max_items: If set, replay at most this many items.
     """
 
     def __init__(
@@ -76,10 +77,12 @@ class ReplayDataClientWrapper(BaseDataClient[TSourceData], Generic[TSourceData])
         cache_dir: Path,
         connector_name: str,
         client_name: str,
+        max_items: Optional[int] = None,
     ) -> None:
         self._cache_dir = cache_dir
         self._connector_name = connector_name
         self._client_name = client_name
+        self._max_items = max_items
 
     def _data_path(self) -> Path:
         return (
@@ -89,6 +92,8 @@ class ReplayDataClientWrapper(BaseDataClient[TSourceData], Generic[TSourceData])
     def get_source_data(self, **kwargs: Any) -> Sequence[TSourceData]:
         path = self._data_path()
         items = _load_ndjson(path)
+        if self._max_items is not None:
+            items = items[: self._max_items]
         logger.debug(
             "Replayed %d items for client '%s' ← %s", len(items), self._client_name, path
         )
@@ -102,6 +107,7 @@ class ReplayStreamingClientWrapper(BaseStreamingDataClient[TSourceData], Generic
         cache_dir: Root cache directory.
         connector_name: Connector name.
         client_name: Data-client attribute name.
+        max_items: If set, replay at most this many items.
     """
 
     def __init__(
@@ -109,10 +115,12 @@ class ReplayStreamingClientWrapper(BaseStreamingDataClient[TSourceData], Generic
         cache_dir: Path,
         connector_name: str,
         client_name: str,
+        max_items: Optional[int] = None,
     ) -> None:
         self._cache_dir = cache_dir
         self._connector_name = connector_name
         self._client_name = client_name
+        self._max_items = max_items
 
     def _data_path(self) -> Path:
         return (
@@ -122,6 +130,8 @@ class ReplayStreamingClientWrapper(BaseStreamingDataClient[TSourceData], Generic
     def get_source_data(self, **kwargs: Any) -> Generator[TSourceData, None, None]:
         path = self._data_path()
         items = _load_ndjson(path)
+        if self._max_items is not None:
+            items = items[: self._max_items]
         logger.debug(
             "Replayed %d items for client '%s' ← %s", len(items), self._client_name, path
         )
@@ -138,6 +148,7 @@ class ReplayAsyncStreamingClientWrapper(
         cache_dir: Root cache directory.
         connector_name: Connector name.
         client_name: Data-client attribute name.
+        max_items: If set, replay at most this many items.
     """
 
     def __init__(
@@ -145,10 +156,12 @@ class ReplayAsyncStreamingClientWrapper(
         cache_dir: Path,
         connector_name: str,
         client_name: str,
+        max_items: Optional[int] = None,
     ) -> None:
         self._cache_dir = cache_dir
         self._connector_name = connector_name
         self._client_name = client_name
+        self._max_items = max_items
 
     def _data_path(self) -> Path:
         return (
@@ -158,6 +171,8 @@ class ReplayAsyncStreamingClientWrapper(
     async def get_source_data(self, **kwargs: Any) -> AsyncGenerator[TSourceData, None]:
         path = self._data_path()
         items = _load_ndjson(path)
+        if self._max_items is not None:
+            items = items[: self._max_items]
         logger.debug(
             "Replayed %d items for client '%s' ← %s", len(items), self._client_name, path
         )

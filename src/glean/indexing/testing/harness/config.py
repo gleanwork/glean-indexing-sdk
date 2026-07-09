@@ -89,7 +89,7 @@ class TestConfig:
                 f"but got keys: {list(raw.keys()) if isinstance(raw, dict) else type(raw).__name__}"
             )
 
-        return cls.from_dict(raw["testing"])
+        return cls.from_dict(raw["testing"] or {})
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TestConfig":

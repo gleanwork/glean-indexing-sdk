@@ -2,8 +2,10 @@
 
 Phase 1 (full mock):
     Delegates to the existing :func:`~glean.indexing.testing.run_connector` /
-    :func:`~glean.indexing.testing.run_connector_async` helpers.  No network
-    calls; everything runs against the mock Glean client.
+    :func:`~glean.indexing.testing.run_connector_async` helpers.  The Glean
+    API is fully mocked; the connector's own data clients are not touched, so
+    use :class:`~glean.indexing.testing.StaticDataClient` (or similar) to
+    avoid real network calls on the source side.
 
 Phase 2 (integration — real source, mock Glean, local cache):
     Wraps each connector data client with a ``Recording*`` or ``Replay*``
@@ -74,6 +76,10 @@ def _should_use_cache(
         return False
     if not manifest_path.exists():
         return False
+    # Also require the data file to exist; a manifest without data is a partial write.
+    data_path = manifest_path.parent / "data.ndjson"
+    if not data_path.exists():
+        return False
     try:
         manifest = CacheManifest.load(manifest_path)
     except Exception:
@@ -102,17 +108,20 @@ def _wrap_client(
                 cache_dir=cache_dir,
                 connector_name=connector_name,
                 client_name=attr_name,
+                max_items=max_items,
             )
         if isinstance(client, BaseStreamingDataClient):
             return ReplayStreamingClientWrapper(
                 cache_dir=cache_dir,
                 connector_name=connector_name,
                 client_name=attr_name,
+                max_items=max_items,
             )
         return ReplayDataClientWrapper(
             cache_dir=cache_dir,
             connector_name=connector_name,
             client_name=attr_name,
+            max_items=max_items,
         )
 
     logger.debug("Cache MISS for client '%s' — recording", attr_name)
@@ -160,29 +169,29 @@ def _patched_clients(
     connector_name = connector.name  # type: ignore[attr-defined]
     originals: Dict[str, AnyDataClient] = {}
 
-    for attr_name, client in clients.items():
-        if not hasattr(connector, attr_name):
-            raise AttributeError(
-                f"Connector {type(connector).__name__!r} has no attribute {attr_name!r}. "
-                f"Verify the 'clients' dict keys match the connector's data-client attribute names."
-            )
-        originals[attr_name] = getattr(connector, attr_name)
-
-        client_cfg = config.clients.get(attr_name)
-        max_items = client_cfg.max_items if client_cfg else None
-
-        wrapped = _wrap_client(
-            attr_name,
-            client,
-            cache_dir=cache_dir,
-            connector_name=connector_name,
-            use_cache=config.use_cache,
-            refresh_cache=config.refresh_cache,
-            max_items=max_items,
-        )
-        setattr(connector, attr_name, wrapped)
-
     try:
+        for attr_name, client in clients.items():
+            if not hasattr(connector, attr_name):
+                raise AttributeError(
+                    f"Connector {type(connector).__name__!r} has no attribute {attr_name!r}. "
+                    f"Verify the 'clients' dict keys match the connector's data-client attribute names."
+                )
+            originals[attr_name] = getattr(connector, attr_name)
+
+            client_cfg = config.clients.get(attr_name)
+            max_items = client_cfg.max_items if client_cfg else None
+
+            wrapped = _wrap_client(
+                attr_name,
+                client,
+                cache_dir=cache_dir,
+                connector_name=connector_name,
+                use_cache=config.use_cache,
+                refresh_cache=config.refresh_cache,
+                max_items=max_items,
+            )
+            setattr(connector, attr_name, wrapped)
+
         yield
     finally:
         for attr_name, original in originals.items():
@@ -249,7 +258,10 @@ class TestHarness:
         """Run the connector against a fully mocked Glean client.
 
         Delegates to :func:`~glean.indexing.testing.runner.run_connector`.
-        No network calls are made on either the source or the Glean side.
+        The Glean API is fully mocked; no indexing network calls are made.
+        The connector's source-side data clients are not replaced, so pass
+        :class:`~glean.indexing.testing.StaticDataClient` (or similar) when
+        constructing the connector to keep the run fully offline.
 
         Args:
             mode: Indexing mode forwarded to ``connector.index_data``.
@@ -403,3 +415,8 @@ class TestHarness:
     def connector(self) -> BaseConnector:
         """The connector under test."""
         return self._connector
+
+    @property
+    def clients(self) -> Dict[str, AnyDataClient]:
+        """The registered data clients, keyed by connector attribute name."""
+        return dict(self._clients)

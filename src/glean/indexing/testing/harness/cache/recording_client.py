@@ -10,8 +10,9 @@ Recorded items are serialised as NDJSON (one JSON object per line).
 Dataclass instances are converted via ``dataclasses.asdict``; everything
 else must already be JSON-serialisable (TypedDicts, plain dicts).
 
-The cache directory and manifest are written atomically: data is collected
-first, then written to disk, so a failed crawl leaves no partial fixture.
+The cache directory is created on first write.  If the crawl fails
+mid-stream the partial fixture will be absent (data is collected in
+memory before being flushed to disk).
 """
 
 from __future__ import annotations

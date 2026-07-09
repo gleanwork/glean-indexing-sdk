@@ -15,8 +15,8 @@ ways:
 
 Identities collected
 --------------------
-- ``user_ids``: ``email`` or ``datasource_user_id`` (whichever is set) from
-  ``allowedUsers`` entries.
+- ``user_ids``: email is preferred; ``datasource_user_id`` is used as
+  fallback when ``email`` is not set on a ``UserReferenceDefinition``.
 - ``group_ids``: every string from ``allowedGroups`` and from each
   ``allowedGroupIntersections[*].requiredGroups`` entry.
 """
@@ -90,8 +90,13 @@ def assert_negative_identities_absent(
     """Assert that none of the *negative_test_identities* appear in any document's ACL.
 
     A "negative identity" is one that must NOT have access to any crawled
-    document.  If any negative identity is found in ``allowedUsers`` or
-    ``allowedGroups`` of any document, an :class:`AssertionError` is raised
+    document.  The check covers all three ACL fields on each document:
+
+    - ``allowedUsers`` (email preferred over ``datasource_user_id``)
+    - ``allowedGroups`` (list of group name strings)
+    - ``allowedGroupIntersections[*].requiredGroups``
+
+    If any negative identity is found an :class:`AssertionError` is raised
     with a descriptive message listing the violating identities and the
     document IDs where they appear.
 

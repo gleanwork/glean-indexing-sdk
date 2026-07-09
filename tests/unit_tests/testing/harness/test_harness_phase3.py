@@ -1,15 +1,14 @@
 """Tests for TestHarness Phase 3 — end-to-end (real source, real Glean).
 
 Unit tests here validate the method interface and max_items wiring without
-making actual network calls.  The end-to-end flow is covered by integration
-tests (marked ``@pytest.mark.integration``) that require
-``GLEAN_INDEXING_API_TOKEN`` in the environment and are not run in CI by
-default.
+making actual network calls.  Live end-to-end runs are manual — point
+``GLEAN_SERVER_URL`` at a test instance and set ``GLEAN_INDEXING_API_TOKEN``
+before calling ``harness.run_end_to_end()``.
 """
 
 from pathlib import Path
 from typing import Any, AsyncGenerator, Sequence
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -84,23 +83,17 @@ class TestRunEndToEnd:
             clients={"data_client": real_client},
         )
 
-        # Patch index_data so we don't need a real Glean server, but still
-        # let the client patching happen
-        original_index_data = connector.index_data
+        class _PatchingConfirmed(Exception):
+            pass
 
-        def _capture_and_call(mode, options):
-            # Verify the client is wrapped (not the original) during index_data
-            assert connector.data_client is not real_client
-            # Still call original so client gets exercised
-            original_index_data(mode=mode, options=options)
+        def _verify_wrapping_then_raise(mode, options):
+            # If the client is the original it means patching didn't happen.
+            assert connector.data_client is not real_client, "client should be wrapped"
+            raise _PatchingConfirmed("wrapping confirmed — abort before real Glean call")
 
-        with patch.object(connector, "index_data", side_effect=_capture_and_call):
-            # This will fail at PushUploader (no creds), so just check AttributeError
-            # is not raised first — the wrapping is what we're testing
-            try:
+        with patch.object(connector, "index_data", side_effect=_verify_wrapping_then_raise):
+            with pytest.raises(_PatchingConfirmed):
                 harness.run_end_to_end()
-            except Exception:
-                pass  # Expected — no Glean credentials in unit test env
 
         # Client must be restored after run
         assert connector.data_client is real_client
@@ -135,14 +128,9 @@ class TestRunEndToEndAsync:
         config = TestConfig(cache_dir=str(tmp_path))
         harness = TestHarness(connector=connector, config=config)
 
-        with patch.object(connector, "index_data_async") as mock_async:
-            mock_async.return_value = None
-            # Make it awaitable
-            import asyncio
-
-            mock_async.return_value = asyncio.coroutine(lambda: None)()
+        with patch.object(connector, "index_data_async", new_callable=AsyncMock) as mock_async:
             await harness.run_end_to_end_async()
-            mock_async.assert_called_once_with(mode=IndexingMode.FULL, options=None)
+            mock_async.assert_awaited_once_with(mode=IndexingMode.FULL, options=None)
 
     @pytest.mark.asyncio
     async def test_sync_connector_calls_index_data(self, tmp_path: Path):

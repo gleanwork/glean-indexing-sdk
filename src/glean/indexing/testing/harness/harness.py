@@ -373,8 +373,10 @@ class TestHarness:
     ) -> None:
         """Run the connector against the real source and real Glean.
 
-        Calls ``connector.index_data()`` without any mock patching.  Per-client
-        ``max_items`` from :attr:`config` are applied to bound the crawl.
+        The Glean API is **not** mocked — this exercises the full indexing
+        path.  Connector clients registered via the ``clients`` constructor
+        argument are temporarily wrapped to enforce per-client ``max_items``
+        limits; clients not passed in ``clients`` are left untouched.
 
         The Glean client is configured from environment variables:
 
@@ -391,9 +393,9 @@ class TestHarness:
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
 
         Raises:
-            RuntimeError: If ``GLEAN_INDEXING_API_TOKEN`` or the server URL is
-                missing from the environment (raised by the underlying
-                :mod:`~glean.indexing.common.glean_client` module).
+            ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
+                ``GLEAN_INDEXING_API_TOKEN`` or the server URL is missing from
+                the environment.
         """
         logger.info(
             "Starting end-to-end run (run_id_prefix=%r, mode=%s)",
@@ -415,12 +417,17 @@ class TestHarness:
         subclasses this calls ``connector.index_data_async()``; for sync
         connectors it falls back to ``connector.index_data()``.
 
+        Like the sync variant, connector clients registered via ``clients``
+        are temporarily wrapped to enforce ``max_items``; the Glean API itself
+        is not mocked.
+
         Args:
             mode: Indexing mode forwarded to the connector.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
 
         Raises:
-            RuntimeError: If environment variables for the Glean client are missing.
+            ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
+                environment variables for the Glean client are missing.
         """
         from glean.indexing.connectors.base_async_streaming_datasource_connector import (
             BaseAsyncStreamingDatasourceConnector,

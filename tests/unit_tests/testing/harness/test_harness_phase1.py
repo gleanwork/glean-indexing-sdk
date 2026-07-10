@@ -140,7 +140,3 @@ class TestPublicImport:
 
     def test_top_level_import(self):
         from glean.indexing.testing import ClientConfig, TestConfig, TestHarness  # noqa: F401
-
-        assert TestHarness is not None
-        assert TestConfig is not None
-        assert ClientConfig is not None

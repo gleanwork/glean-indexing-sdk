@@ -136,21 +136,6 @@ class TestRunFullMockAsync:
 
 
 class TestPhaseStubs:
-    def test_run_integration_test_raises(self):
-        connector = DatasourceFake(name="ds", data_client=StaticDataClient(_DOCS))
-        harness = TestHarness(connector=connector, config=TestConfig())
-
-        with pytest.raises(NotImplementedError, match="run_integration_test"):
-            harness.run_integration_test()
-
-    @pytest.mark.asyncio
-    async def test_run_integration_test_async_raises(self):
-        connector = DatasourceFake(name="ds", data_client=StaticDataClient(_DOCS))
-        harness = TestHarness(connector=connector, config=TestConfig())
-
-        with pytest.raises(NotImplementedError, match="run_integration_test_async"):
-            await harness.run_integration_test_async()
-
     def test_run_end_to_end_raises(self):
         connector = DatasourceFake(name="ds", data_client=StaticDataClient(_DOCS))
         harness = TestHarness(connector=connector, config=TestConfig())

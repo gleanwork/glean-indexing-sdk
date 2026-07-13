@@ -23,19 +23,64 @@ Use this skill when deployment or hosting is in scope for a connector build. It 
 - Keep deployment-control variables separate from connector secrets. Deployment-control variables are not uploaded as connector secrets.
 - Keep `.glean` planning artifacts inside the connector folder, and deployment artifacts in the connector folder root.
 
-## Supported Deployment Surface
+## Prerequisites
+
+Before using `glean-deploy`, confirm the user has:
+
+- Docker running locally.
+- Cloud CLI authenticated:
+  - GCP: `gcloud auth login`
+  - AWS: `aws configure`
+- `glean_deployment.yaml` in the connector project directory.
+- `.env` in the connector project directory, created from `.env.example`.
+- For deployment operations, access to the target Kubernetes cluster and container registry.
+
+## Happy Path
+
+Use this sequence for a normal customer-hosted deployment:
+
+```bash
+# 1. Scaffold deployment files
+glean-deploy init --cloud gcp   # or --cloud aws
+# Edit glean_deployment.yaml: image registry, schedule, cluster, resources, etc.
+# Edit .env: GLEAN_INDEXING_API_TOKEN, GLEAN_SERVER_URL, source credentials, etc.
+
+# 2. Build and push container image
+glean-deploy build --push
+
+# 3. Upload secrets from .env to cloud secret manager
+glean-deploy secrets upload
+
+# 4. Deploy the Kubernetes CronJob
+glean-deploy apply
+```
+
+After deployment:
+
+```bash
+glean-deploy status
+glean-deploy logs -f
+```
+
+## Command Reference
 
 Use the `glean-deploy` CLI:
 
-- `glean-deploy init --cloud gcp|aws`: generates deployment artifacts.
-- `glean-deploy build [--push]`: builds the connector Docker image and optionally pushes it.
-- `glean-deploy secrets upload`: uploads connector secrets from `.env`.
-- `glean-deploy secrets list`: lists connector secret keys already stored in cloud secret manager.
-- `glean-deploy secrets delete <KEY>`: deletes one connector secret after confirmation.
-- `glean-deploy apply`: runs Terraform to deploy the Kubernetes CronJob.
-- `glean-deploy status`: shows CronJob and recent job status.
-- `glean-deploy logs [--follow]`: shows logs from the most recent connector job.
-- `glean-deploy destroy`: tears down the deployment after confirmation.
+| Command | What it does |
+| --- | --- |
+| `glean-deploy init --cloud gcp|aws` | Scaffold `Dockerfile`, `terraform/`, `run.py`, `glean_deployment.yaml`, and `.env.example`. |
+| `glean-deploy build` | Build the connector container image locally. |
+| `glean-deploy build --push` | Build and push the connector image to the configured registry. |
+| `glean-deploy build --tag v1.2` | Build with a specific image tag instead of `latest`. |
+| `glean-deploy secrets upload` | Upload connector secrets from `.env` to GCP Secret Manager or AWS Secrets Manager. |
+| `glean-deploy secrets list` | List connector secrets currently stored in the cloud. |
+| `glean-deploy secrets delete KEY` | Delete a specific connector secret after confirmation. |
+| `glean-deploy apply` | Run Terraform apply to deploy or update the Kubernetes CronJob. |
+| `glean-deploy status` | Show CronJob status and recent job history. |
+| `glean-deploy logs` | Show logs from the most recent run. |
+| `glean-deploy logs -f` | Tail logs in follow mode. |
+| `glean-deploy destroy` | Tear down the deployment with confirmation. |
+| `glean-deploy destroy --yes` | Tear down the deployment without an interactive confirmation prompt. |
 
 Use the Python deployment APIs only when writing tests or advanced tooling:
 
@@ -111,6 +156,19 @@ Connector secrets should include values such as:
 - `GLEAN_INDEXING_API_TOKEN`
 - source API tokens, API keys, OAuth client secrets, or other connector-specific credentials
 
+To rotate a secret:
+
+```bash
+glean-deploy secrets delete OLD_KEY
+glean-deploy secrets upload
+```
+
+To inspect currently uploaded connector secrets:
+
+```bash
+glean-deploy secrets list
+```
+
 ## Plan Fields
 
 Before implementation or deployment, ensure `<connector-folder>/.glean/connector_plan.md` records:
@@ -139,6 +197,12 @@ After connector code and plan are ready:
 8. `glean-deploy logs`
 
 Use `glean-deploy destroy` only when the user explicitly wants teardown.
+
+For complete teardown:
+
+```bash
+glean-deploy destroy --yes
+```
 
 ## Evaluation
 

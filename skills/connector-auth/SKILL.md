@@ -17,6 +17,7 @@ Use this skill when deciding how the connector authenticates to the source API d
 ## Rules
 
 - Separate test/API-exploration auth from production source auth.
+- If test auth and production auth differ, both must be described in the initial confirmed plan before implementation. Do not test with a PAT and later switch to OAuth without updating the plan and calling out what remains untested.
 - Never persist raw credentials, tokens, cookies, or secrets in `.glean/`, generated code, examples, or logs.
 - Store only environment variable names, secret names, auth flow descriptions, scopes, and setup instructions.
 - If the user provides a temporary token for exploration, treat it as test-only.
@@ -40,6 +41,7 @@ Before validation, ensure the artifacts include filled-in values for:
 
 - `Test auth`: the auth used for read-only API exploration.
 - `Production auth`: the auth flow the generated connector should use in real deployments.
+- `Auth validation gap`: anything production auth requires that was not exercised during exploration/testing.
 - Required scopes or permissions.
 - Environment variable names or secret names.
 - Any auth limitations or follow-up work.

@@ -27,6 +27,7 @@ Use this skill when deployment or hosting is in scope for a connector build. It 
 
 Before using `glean-deploy`, confirm the user has:
 
+- The Glean Indexing SDK installed in the active Python environment. The `glean-deploy` console command is registered by the SDK package.
 - Docker running locally.
 - Cloud CLI authenticated:
   - GCP: `gcloud auth login`
@@ -34,6 +35,22 @@ Before using `glean-deploy`, confirm the user has:
 - `glean_deployment.yaml` in the connector project directory.
 - `.env` in the connector project directory, created from `.env.example`.
 - For deployment operations, access to the target Kubernetes cluster and container registry.
+
+## Running The CLI
+
+If the SDK is installed, use `glean-deploy` directly:
+
+```bash
+glean-deploy --help
+```
+
+From a local SDK checkout, the user can run the same CLI without separately installing the package:
+
+```bash
+uv run glean-deploy --help
+```
+
+Use the same `uv run` prefix for any command when working from the SDK checkout, for example `uv run glean-deploy init --cloud gcp`.
 
 ## Happy Path
 

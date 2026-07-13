@@ -29,10 +29,12 @@ Write outputs to the connector folder:
 ## Exploration Rules
 
 - Prefer official vendor docs. Use internal or prior connector examples only as supporting evidence.
-- If API documentation links are missing, search for candidate official docs and ask the user to confirm them once.
-- If no reliable docs can be found, stop and ask the user for API documentation, an OpenAPI spec, or sample request/response payloads.
+- If API documentation links are missing, search for candidate official docs and ask the user to confirm them once before treating them as source of truth.
+- If the user provided documentation links, attempt those links first. If they cannot be fetched or read, stop and ask the user for an OpenAPI spec, copied docs, exported docs, or sample request/response payloads.
+- Do not proceed from model general knowledge. A statement like "API specifics are from general knowledge, not verified docs" is a blocker, not acceptable evidence.
+- If normal document fetching fails because docs are JavaScript-rendered, browser/Playwright extraction may be used as a bounded fallback. Try it once for the relevant docs; if it loops, requires login, or does not quickly produce useful content, stop and ask the user for an OpenAPI spec or copied docs.
 - Cite the source doc URL or local file for every endpoint and important behavior claim.
-- Ask for an API base URL and read-only token/credentials. Explain that live API probes produce much better connector quality because they verify auth, response fields, pagination, rate limits, and permissions against real responses.
+- Ask for an API base URL and token/credentials. Recommend providing credentials because live API probes produce much better connector quality by verifying auth, response fields, pagination, rate limits, and permissions against real responses.
 - If credentials are not provided, proceed from documentation only and mark the lower-confidence areas explicitly.
 - Use only read-only API calls unless the user explicitly approves otherwise. Default to GET requests.
 - Redact credentials in all persisted commands, headers, responses, and logs.
@@ -44,7 +46,7 @@ Write outputs to the connector folder:
 
 1. Read confirmed docs from `<connector-folder>/.glean/source_docs.json` and any additional user-provided docs.
 2. If docs are URLs, fetch or copy the relevant documentation into `<connector-folder>/.glean/external_docs/` so later planning can cite local files or stable URLs.
-3. Identify connector-relevant objects: content, identities, memberships, permissions, attachments, and deleted/stale records.
+3. Identify connector-relevant objects from the user's exploration-scope answer and from the docs: containers, content records, comments/messages, files/attachments, users, groups, memberships, permissions, and deleted/stale records.
 4. Build a complete endpoint inventory before narrowing implementation scope. Capture:
    - name
    - method

@@ -17,10 +17,10 @@ Use this skill when implementing the Glean-side upload, validation, and status-c
 ## Rules
 
 - Use only the SDK push/status wrappers listed below. Do not call undocumented Glean APIs or generated-client methods directly from generated connector code.
-- Prefer full-crawl bulk operations for AI-built connectors. Incremental or delete-heavy behavior needs explicit developer attention.
+- Use full-crawl bulk operations for AI-built connectors. Incremental, partial-update, or delete-heavy behavior needs explicit developer attention after full crawl works.
 - Record which Glean-side methods are used in `<connector-folder>/.glean/connector_plan.md`.
 - Use the load and crawl-frequency decisions from the confirmed connector plan.
-- Use local compile/tests first, then test Glean uploads only when indexing credentials are available.
+- Use compile checks and an end-to-end full-crawl smoke run first. Add unit tests only after the connector behavior is confirmed and worth regression testing.
 
 ## Allowed SDK Push And Status Surface
 

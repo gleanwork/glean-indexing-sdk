@@ -135,23 +135,6 @@ class TestRunFullMockAsync:
         result.assert_documents_posted(count=1)
 
 
-class TestPhaseStubs:
-    def test_run_end_to_end_raises(self):
-        connector = DatasourceFake(name="ds", data_client=StaticDataClient(_DOCS))
-        harness = TestHarness(connector=connector, config=TestConfig())
-
-        with pytest.raises(NotImplementedError, match="run_end_to_end"):
-            harness.run_end_to_end()
-
-    @pytest.mark.asyncio
-    async def test_run_end_to_end_async_raises(self):
-        connector = DatasourceFake(name="ds", data_client=StaticDataClient(_DOCS))
-        harness = TestHarness(connector=connector, config=TestConfig())
-
-        with pytest.raises(NotImplementedError, match="run_end_to_end_async"):
-            await harness.run_end_to_end_async()
-
-
 class TestPublicImport:
     """Verify that TestHarness and TestConfig are importable from the top-level testing package."""
 

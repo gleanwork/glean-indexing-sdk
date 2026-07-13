@@ -99,6 +99,8 @@ Use the `glean-deploy` CLI:
 | `glean-deploy destroy` | Tear down the deployment with confirmation. |
 | `glean-deploy destroy --yes` | Tear down the deployment without an interactive confirmation prompt. |
 
+For `glean-deploy init`, only `--cloud` is required. If omitted, `--connector-name` defaults to the current directory name, `--connector-class` defaults to `MyConnector`, and `--connector-module` defaults to `connector`. Pass those options when the generated connector uses different names.
+
 Use the Python deployment APIs only when writing tests or advanced tooling:
 
 - `DeploymentConfig`
@@ -204,7 +206,7 @@ Before implementation or deployment, ensure `<connector-folder>/.glean/connector
 
 After connector code and plan are ready:
 
-1. `glean-deploy init --cloud gcp|aws --connector-name <name> --connector-class <ClassName> --connector-module <module>`
+1. `glean-deploy init --cloud gcp|aws` (optionally add `--connector-name <name> --connector-class <ClassName> --connector-module <module>` when defaults do not match)
 2. Edit `glean_deployment.yaml`.
 3. Copy `.env.example` to `.env` and fill secrets locally.
 4. `glean-deploy build --push`

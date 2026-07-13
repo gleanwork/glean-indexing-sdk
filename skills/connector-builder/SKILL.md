@@ -18,33 +18,38 @@ Use this skill when the user wants to build, evaluate, or iterate on a connector
 - Persist repeated context in the connector folder's `.glean/` directory, not only in the chat. Connector artifacts must live under `<connector-folder>/.glean/`, not a repo-level `.glean/`.
 - Do not write connector implementation code until `connector_builder.py validate` passes.
 - Redact secrets from any API call logs.
-- The AI-building workflow supports full crawls only for now. SDK components may support incremental crawls, but incremental behavior needs developer attention and should be called out as follow-up work.
+- The AI-building workflow generates full-crawl connectors only. Do not implement incremental crawl in generated code; record it only as developer follow-up after full crawl works end-to-end.
+- Do not add unit tests during initial connector generation. First get a full-crawl connector compiling and passing an end-to-end smoke run; add focused regression tests only after the E2E path is confirmed.
+- Always ask the user connector data-model questions before drafting the connector plan. Do not infer final scope from API docs alone.
 
 ## Workflow
 
-1. Identify official source-system API documentation. If links are not provided, search for candidates and ask the user to confirm them once. If no reliable docs can be found, stop and ask the user for API documentation, an OpenAPI spec, or sample API responses.
-2. Ask the user for an API base URL and read-only test credentials/token. Explain that live read-only API probes materially improve connector quality because they verify auth, response shapes, pagination, rate limits, and permissions against the real API. If credentials are not provided, continue from documentation only and mark confidence gaps.
-3. Create or identify the connector folder and create its `.glean/` directory.
-4. Use the `connector-api-exploration` skill to inspect docs and, when credentials are available, run read-only API probes. Fill `<connector-folder>/.glean/source_investigation.md`, `<connector-folder>/.glean/api_inventory.md`, `<connector-folder>/.glean/api_endpoints.json`, and `<connector-folder>/.glean/api_calls_log.md`.
-5. Enter planning mode. Draft `<connector-folder>/.glean/connector_plan.md` and ask the user to confirm scope before technical work. Capture:
-   - each source API endpoint and how it will be used
-   - which entities are in scope for the first version
+1. Ask the pre-exploration questions needed to avoid guessing:
+   - Which official source API docs should be used? If the user did not provide docs, search for candidate official docs and ask the user to confirm them once. If no reliable docs can be found, stop and ask for API docs, an OpenAPI spec, or sample API responses.
+   - Can the user provide an API base URL and test credentials/token? Recommend this option because live probes materially improve connector quality. Docs-only mode is a fallback, not the preferred path.
+   - Which source objects should be considered for indexing and permissions? Ask explicitly about containers, documents/messages/records, comments, files/attachments, users, groups, memberships, and permissions. Treat the answer as exploration scope, not final V1 scope.
+2. Create or identify the connector folder and create its `.glean/` directory.
+3. Use the `connector-api-exploration` skill to inspect docs and, when credentials are available, run read-only API probes. Fill `<connector-folder>/.glean/source_investigation.md`, `<connector-folder>/.glean/api_inventory.md`, `<connector-folder>/.glean/api_endpoints.json`, and `<connector-folder>/.glean/api_calls_log.md`.
+4. After API exploration is complete, enter planning mode. Draft `<connector-folder>/.glean/connector_plan.md` and ask the user to confirm scope before technical work. This plan is user-facing and must not include internal implementation mechanics such as SDK class names, Python file layout, validation commands, or unit-test commands. Capture:
+   - every explored source object and whether it is included in V1, deferred, or excluded
+   - every relevant source API endpoint and how it contributes to the selected objects
+   - fields available from each endpoint that matter for search, URLs, timestamps, authors, permissions, and metadata
    - full-crawl behavior and any incremental follow-up notes
-   - test auth vs production auth
+   - test/API-exploration auth and production auth, including when they differ
    - SDK usage mode: full connector flow, push-layer-only, or another confirmed combination
    - Glean-side upload/status endpoints from the `connector-push` skill
    - runtime logging, metrics, and evaluation checks from the `connector-observability` skill
    - expected document count, average document size, freshness needs, source API limits, and recommended crawl frequency
    - deployment/hosting expectations from the `connector-deployment` skill, including whether customer-hosted deployment is in scope
-6. Mark the plan as confirmed only after user approval by setting `Status: confirmed`.
-7. Revalidate before implementation:
+5. Mark the plan as confirmed only after user approval by setting `Status: confirmed`.
+6. Revalidate before implementation:
 
 ```bash
 python scripts/connector_builder/connector_builder.py validate <connector-folder>
 ```
 
-8. Implement the data client and connector using the `connector-auth`, `connector-pull`, `connector-push`, `connector-observability`, and `connector-deployment` skills as applicable. Post-validation code generation is handled by the agent following the skills, not by the local validator.
-9. Evaluate with local checks first, then real source/Glean test runs when credentials are available.
+7. Implement the data client and connector using the `connector-auth`, `connector-pull`, `connector-push`, `connector-observability`, and `connector-deployment` skills as applicable. Post-validation code generation is handled by the agent following the skills, not by the local validator.
+8. Evaluate with compile checks and an end-to-end full-crawl smoke run first. Add unit tests only after that path works and the behavior is stable enough for regression coverage.
 
 ## Required Artifacts
 

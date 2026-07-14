@@ -1,0 +1,100 @@
+{
+  "datasource": "Zulip",
+  "endpoints": [
+    {
+      "name": "Get accessible channels",
+      "method": "GET",
+      "path": "/api/v1/streams",
+      "purpose": "Discover channels whose content the connector principal can access",
+      "source": "https://zulip.com/api/get-streams",
+      "required_scopes": "HTTP Basic auth with a Zulip user or bot API email and API key",
+      "pagination": "None documented",
+      "response_fields": [
+        "streams[].stream_id",
+        "streams[].name",
+        "streams[].description",
+        "streams[].rendered_description",
+        "streams[].date_created",
+        "streams[].is_archived",
+        "streams[].invite_only",
+        "streams[].is_web_public"
+      ],
+      "permission_fields": [
+        "include_can_access_content request parameter",
+        "invite_only",
+        "is_web_public"
+      ],
+      "deletion_behavior": "Archived channels are identified by is_archived; deleted channels are not documented as tombstones."
+    },
+    {
+      "name": "Get channel messages",
+      "method": "GET",
+      "path": "/api/v1/messages",
+      "purpose": "Fetch a full historical page sequence for each accessible channel",
+      "source": "https://zulip.com/api/get-messages",
+      "required_scopes": "The authenticated principal must have content access to each requested channel",
+      "pagination": "ID-anchored ranges using anchor, include_anchor, num_before, and num_after; stop when found_newest is true",
+      "rate_limit_notes": "Zulip recommends at most 1,000 messages per request; 5,000 is the server maximum.",
+      "response_fields": [
+        "messages[].id",
+        "messages[].content",
+        "messages[].content_type",
+        "messages[].sender_id",
+        "messages[].sender_full_name",
+        "messages[].sender_email",
+        "messages[].stream_id",
+        "messages[].subject",
+        "messages[].timestamp",
+        "messages[].last_edit_timestamp",
+        "found_newest",
+        "found_oldest",
+        "history_limited"
+      ],
+      "permission_fields": [
+        "narrow channel operand",
+        "Authenticated principal's channel history and shared-history access"
+      ],
+      "deletion_behavior": "Deleted messages are not documented as tombstones in full-history results; full-crawl replacement removes documents no longer returned."
+    },
+    {
+      "name": "Get organization users",
+      "method": "GET",
+      "path": "/api/v1/users",
+      "purpose": "Fetch datasource identities referenced by messages and channel memberships",
+      "source": "https://zulip.com/api/get-users",
+      "required_scopes": "Returns users accessible to the authenticated principal",
+      "pagination": "None documented",
+      "response_fields": [
+        "members[].user_id",
+        "members[].email",
+        "members[].delivery_email",
+        "members[].full_name",
+        "members[].is_active",
+        "members[].is_bot",
+        "members[].is_guest",
+        "members[].is_deleted",
+        "members[].avatar_url"
+      ],
+      "permission_fields": [
+        "email may be an API-only placeholder when real email visibility is restricted"
+      ],
+      "deletion_behavior": "is_active=false marks deactivation; is_deleted=true is available on Zulip 12.0 feature level 490 or later."
+    },
+    {
+      "name": "Get channel subscribers",
+      "method": "GET",
+      "path": "/api/v1/streams/{stream_id}/members",
+      "purpose": "Fetch active user IDs allowed to access each private channel",
+      "source": "https://zulip.com/api/get-subscribers",
+      "required_scopes": "The authenticated principal must be allowed to access the target channel",
+      "pagination": "None documented",
+      "response_fields": [
+        "subscribers[]"
+      ],
+      "permission_fields": [
+        "subscribers contains active subscribed user IDs"
+      ],
+      "deletion_behavior": "Full-crawl membership replacement removes memberships no longer returned."
+    }
+  ]
+}

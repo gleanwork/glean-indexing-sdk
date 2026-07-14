@@ -1,0 +1,26 @@
+{
+  "datasource": "Zulip",
+  "confirmed_docs": [
+    {
+      "url": "https://zulip.com/api/rest",
+      "purpose": "Official REST API overview and authentication"
+    },
+    {
+      "url": "https://zulip.com/api/get-messages",
+      "purpose": "Message retrieval, visibility, pagination, and response schema"
+    },
+    {
+      "url": "https://zulip.com/api/get-streams",
+      "purpose": "Accessible channel discovery and channel metadata"
+    },
+    {
+      "url": "https://zulip.com/api/get-subscribers",
+      "purpose": "Channel membership used for document permissions"
+    },
+    {
+      "url": "https://zulip.com/api/get-users",
+      "purpose": "Organization user identities"
+    }
+  ],
+  "confirmation": "User confirmed the official Zulip REST API documentation on 2026-07-13."
+}

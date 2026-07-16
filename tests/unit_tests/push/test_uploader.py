@@ -1,5 +1,10 @@
 """Tests for incremental push uploader wrappers."""
 
+import threading
+import time
+from unittest.mock import patch
+
+import pytest
 from glean.api_client.models import (
     ContentDefinition,
     CustomDatasourceConfig,
@@ -178,6 +183,75 @@ def test_bulk_index_documents_calls_generated_client():
         force_restart_upload=None,
         disable_stale_document_deletion_check=True,
     )
+
+
+def test_bulk_index_documents_uploads_middle_pages_concurrently():
+    uploader = PushUploader(datasource="test_datasource", upload_max_workers=2)
+    documents = [_document(f"doc-{index}") for index in range(5)]
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+    events: list[str] = []
+    active_middle_uploads = 0
+    max_active_middle_uploads = 0
+    completed_middle_uploads = 0
+
+    def upload_batch(*, documents, is_first_page, is_last_page, **kwargs):
+        nonlocal active_middle_uploads, max_active_middle_uploads, completed_middle_uploads
+        document_id = documents[0].id
+        if is_first_page:
+            assert active_middle_uploads == 0
+            events.append(f"first:{document_id}")
+            return
+        if is_last_page:
+            assert completed_middle_uploads == 3
+            events.append(f"last:{document_id}")
+            return
+
+        with lock:
+            active_middle_uploads += 1
+            max_active_middle_uploads = max(max_active_middle_uploads, active_middle_uploads)
+        if document_id in {"doc-1", "doc-2"}:
+            barrier.wait(timeout=1)
+        time.sleep(0.01)
+        with lock:
+            active_middle_uploads -= 1
+            completed_middle_uploads += 1
+
+    with patch.object(uploader, "bulk_index_single_batch_upload", side_effect=upload_batch):
+        uploader.bulk_index_documents(documents, batch_size=1)
+
+    assert events == ["first:doc-0", "last:doc-4"]
+    assert max_active_middle_uploads == 2
+
+
+def test_upload_max_workers_defaults_to_five():
+    assert PushUploader(datasource="test_datasource").upload_max_workers == 5
+
+
+def test_upload_max_workers_must_be_positive():
+    with pytest.raises(ValueError, match="upload_max_workers"):
+        PushUploader(datasource="test_datasource", upload_max_workers=0)
+
+
+def test_bulk_index_documents_does_not_finalize_after_middle_page_failure():
+    uploader = PushUploader(datasource="test_datasource", upload_max_workers=2)
+    documents = [_document(f"doc-{index}") for index in range(4)]
+    finalized = False
+
+    def upload_batch(*, documents, is_last_page, **kwargs):
+        nonlocal finalized
+        if is_last_page:
+            finalized = True
+        if documents[0].id == "doc-1":
+            raise RuntimeError("middle page failed")
+
+    with (
+        patch.object(uploader, "bulk_index_single_batch_upload", side_effect=upload_batch),
+        pytest.raises(RuntimeError, match="middle page failed"),
+    ):
+        uploader.bulk_index_documents(documents, batch_size=1)
+
+    assert finalized is False
 
 
 def test_bulk_index_documents_splits_batches_by_byte_size():

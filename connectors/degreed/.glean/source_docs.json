@@ -1,0 +1,29 @@
+{
+  "datasource": "Degreed",
+  "confirmed_docs": [
+    {
+      "title": "API Reference",
+      "url": "https://developer.degreed.com/reference/overview"
+    },
+    {
+      "title": "Getting Started with the API",
+      "url": "https://developer.degreed.com/docs/getting-started-with-the-api"
+    },
+    {
+      "title": "Authentication Guide",
+      "url": "https://developer.degreed.com/docs/authentication"
+    },
+    {
+      "title": "Pagination",
+      "url": "https://developer.degreed.com/docs/pagination"
+    },
+    {
+      "title": "Get All Content",
+      "url": "https://developer.degreed.com/reference/get_api-v2-content"
+    },
+    {
+      "title": "Get a Specific Content Item",
+      "url": "https://developer.degreed.com/reference/get_api-v2-content-id"
+    }
+  ]
+}

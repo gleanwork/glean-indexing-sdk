@@ -1,0 +1,81 @@
+{
+  "datasource": "Degreed",
+  "api_base_url": "https://api.degreed.com",
+  "oauth_token_url": "https://degreed.com/oauth/token",
+  "endpoints": [
+    {
+      "name": "Create access token",
+      "method": "POST",
+      "path": "https://degreed.com/oauth/token",
+      "purpose": "Exchange OAuth client credentials for a bearer token",
+      "source": "https://developer.degreed.com/docs/authentication",
+      "required_scopes": [
+        "content:read"
+      ],
+      "response_fields": [
+        "access_token",
+        "token_type",
+        "expires_in"
+      ]
+    },
+    {
+      "name": "List all content",
+      "method": "GET",
+      "path": "/api/v2/content",
+      "purpose": "Full-crawl all non-obsolete, organization-visible catalog content",
+      "source": "https://developer.degreed.com/reference/get_api-v2-content",
+      "required_scopes": [
+        "content:read"
+      ],
+      "pagination": {
+        "mode": "next",
+        "page_size_parameter": "limit",
+        "maximum_page_size": 1000,
+        "next_parameter": "next",
+        "next_url_field": "links.next",
+        "cursor_expiry": "2 minutes without a subsequent request"
+      },
+      "incremental_filter": "filter[modified_after] in yyyy-mm-dd format; deferred from version 1",
+      "response_fields": [
+        "data[].id",
+        "data[].attributes.content-type",
+        "data[].attributes.external-id",
+        "data[].attributes.title",
+        "data[].attributes.summary",
+        "data[].attributes.url",
+        "data[].attributes.degreed-url",
+        "data[].attributes.image-url",
+        "data[].attributes.language",
+        "data[].attributes.provider",
+        "data[].attributes.learning-minutes",
+        "data[].attributes.created-at",
+        "data[].attributes.modified-at",
+        "data[].attributes.publish-date",
+        "data[].attributes.visibility",
+        "data[].attributes.groups-with-access-ids",
+        "data[].relationships"
+      ],
+      "permission_fields": [
+        "visibility",
+        "groups-with-access",
+        "groups-with-access-ids"
+      ],
+      "deletion_behavior": "Obsolete content is excluded; full-crawl bulk replacement removes stale Glean documents"
+    },
+    {
+      "name": "Get content item",
+      "method": "GET",
+      "path": "/api/v2/content/{id}",
+      "purpose": "Optional detail/debug lookup for a single catalog item; not needed during the normal full crawl",
+      "source": "https://developer.degreed.com/reference/get_api-v2-content-id",
+      "required_scopes": [
+        "content:read"
+      ],
+      "permission_fields": [
+        "visibility",
+        "groups-with-access",
+        "groups-with-access-ids"
+      ]
+    }
+  ]
+}

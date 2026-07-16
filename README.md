@@ -44,6 +44,19 @@ claude plugin list
 
 Restart Claude Code, or run `/reload-plugins` in the active session.
 
+### Updating the plugin
+
+To pick up the latest connector builder skills, pull the newest sources, rebuild the artifacts, and update the installed plugin:
+
+```bash
+git pull
+npm run build:plugins
+claude plugin marketplace update glean-indexing-sdk-agent-plugin
+claude plugin update glean-connector-builder@glean-indexing-sdk-agent-plugin
+```
+
+The commands above are for Claude Code. For other AI tools (e.g. Cursor), run the equivalent plugin/marketplace update commands for that tool after rebuilding.
+
 To inspect the generated Claude marketplace and plugin names:
 
 ```bash

@@ -33,7 +33,7 @@ export default defineConfig({
       plugins: {
         "glean-connector-builder": {
           from: ["connector-builder-lib"],
-          components: ["skills"],
+          components: ["skills", "hooks"],
           displayName: "Glean Connector Builder",
           description: "Build Glean Indexing SDK connectors from source-system documentation.",
         },

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/check_update.sh\"",
+            "timeout": 6,
+            "statusMessage": "Checking for connector-builder updates"
+          }
+        ]
+      }
+    ]
+  }
+}

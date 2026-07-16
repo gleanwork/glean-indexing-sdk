@@ -46,23 +46,14 @@ Restart Claude Code, or run `/reload-plugins` in the active session.
 
 ### Updating the plugin
 
-After changing skills or other plugin sources, rebuild and refresh the installed copy. Claude Code re-copies a plugin into its cache only when the version changes, so **bump the version first** — a same-version rebuild is not picked up.
+To pick up the latest connector builder skills, pull the newest sources, rebuild the artifacts, and update the installed plugin:
 
-1. Bump the `version` in `package.json`.
-2. Rebuild the artifacts:
-
-   ```bash
-   npm run build:plugins
-   ```
-
-3. Refresh the marketplace from the rebuilt `dist/`, then update the installed plugin:
-
-   ```bash
-   claude plugin marketplace update glean-indexing-sdk-agent-plugin
-   claude plugin update glean-connector-builder@glean-indexing-sdk-agent-plugin
-   ```
-
-4. Restart Claude Code to apply the update. Confirm the new version with `claude plugin list`.
+```bash
+git pull
+npm run build:plugins
+claude plugin marketplace update glean-indexing-sdk-agent-plugin
+claude plugin update glean-connector-builder@glean-indexing-sdk-agent-plugin
+```
 
 To inspect the generated Claude marketplace and plugin names:
 

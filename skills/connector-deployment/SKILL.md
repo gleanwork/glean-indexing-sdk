@@ -214,6 +214,7 @@ After connector code and plan are ready:
 6. `glean-deploy apply`
 7. `glean-deploy status`
 8. `glean-deploy logs`
+9. Inspect the deployed connector logs and confirm the connector actually ran: lifecycle start/completion or failure, source fetch counts, transform counts, upload attempts/results, and no leaked secrets.
 
 Use `glean-deploy destroy` only when the user explicitly wants teardown.
 
@@ -234,3 +235,4 @@ For implementation evals with cloud access, verify:
 - `.env` excludes deployment-control variables from uploaded connector secrets.
 - `secrets upload` is run only after user confirmation.
 - `apply`, `status`, `logs`, and `destroy` are run only in an approved test environment.
+- After deployment, actual deployed connector logs show the expected lifecycle/fetch/transform/upload events and no secret values.

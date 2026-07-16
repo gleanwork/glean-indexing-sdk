@@ -11,6 +11,10 @@ Use this skill as the top-level workflow for building Glean Indexing SDK connect
 
 Use this skill when the user wants to build, evaluate, or iterate on a connector for a third-party datasource.
 
+## Mental Model
+
+Follow this loop: ask scope -> plan -> implement -> local validation -> deploy if requested -> inspect real deployed logs -> fix and re-run validation if needed.
+
 ## Rules
 
 - Do not generate code until API exploration is complete and the user confirms the connector plan.
@@ -29,6 +33,7 @@ Use this skill when the user wants to build, evaluate, or iterate on a connector
    - Which official source API docs should be used? If the user did not provide docs, search for candidate official docs and ask the user to confirm them once. If no reliable docs can be found, stop and ask for API docs, an OpenAPI spec, or sample API responses.
    - Can the user provide an API base URL and test credentials/token? Recommend this option because live probes materially improve connector quality. Docs-only mode is a fallback, not the preferred path.
    - Which source objects should be considered for indexing and permissions? Ask explicitly about containers, documents/messages/records, comments, files/attachments, users, groups, memberships, and permissions. Treat the answer as exploration scope, not final V1 scope.
+   - Is deployment in scope for this connector? If yes, ask for the required deployment target: GCP or AWS, project/account, region, Kubernetes cluster, and container registry. To estimate crawl schedule and resource sizing, ask about expected data volume, how long a full crawl takes or is expected to take, and how fresh the indexed data needs to be. If the user does not know yet, proceed with a reasonable initial estimate, tell them the estimate should be refined after observing an actual full crawl, and record that follow-up. Propose a schedule/resources estimate from the available information and ask the user to confirm or adjust it. Use the default namespace unless the user wants a specific one. If deployment is not in scope, record it as out of scope.
 2. Create or identify the connector folder and create its `.glean/` directory.
 3. Use the `connector-api-exploration` skill to inspect docs and, when credentials are available, run read-only API probes. Fill `<connector-folder>/.glean/source_investigation.md`, `<connector-folder>/.glean/api_inventory.md`, `<connector-folder>/.glean/api_endpoints.json`, and `<connector-folder>/.glean/api_calls_log.md`.
 4. After API exploration is complete, enter planning mode. Draft `<connector-folder>/.glean/connector_plan.md` and ask the user to confirm scope before technical work. This plan is user-facing and must not include internal implementation mechanics such as SDK class names, Python file layout, validation commands, or unit-test commands. Capture:
@@ -83,4 +88,5 @@ Evaluate connector quality by checking:
 - Transform/upload paths can push to a test Glean datasource, if credentials are available.
 - Runtime logs/metrics expose lifecycle, fetch, transform, upload, and failure signals without secrets.
 - Deployment artifacts or deployment plan match the confirmed hosting scope, if deployment is in scope.
+- After deployment, actual deployed connector logs show lifecycle, fetch, transform, upload, and failure/success signals without secrets.
 - Connector behavior matches the confirmed plan, especially full vs incremental crawl constraints.

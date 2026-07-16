@@ -21,6 +21,7 @@ Use this skill when the user wants to build, evaluate, or iterate on a connector
 - The AI-building workflow generates full-crawl connectors only. Do not implement incremental crawl in generated code; record it only as developer follow-up after full crawl works end-to-end.
 - Do not add unit tests during initial connector generation. First get a full-crawl connector compiling and passing an end-to-end smoke run; add focused regression tests only after the E2E path is confirmed.
 - Always ask the user connector data-model questions before drafting the connector plan. Do not infer final scope from API docs alone.
+- After making connector or harness implementation changes, use the `connector-testing` skill and ask once whether to proceed to the testing step.
 
 ## Workflow
 
@@ -70,6 +71,7 @@ python scripts/connector_builder/connector_builder.py validate <connector-folder
 - `connector-push`: Glean-side upload, status, and debug method choices.
 - `connector-observability`: logging, metrics, upload visibility, and evaluation checks.
 - `connector-deployment`: customer-hosted deployment artifacts and `glean-deploy` operations.
+- `connector-testing`: TestHarness validation with full mock, integration/cache, and confirmed E2E modes.
 
 ## Evaluation
 

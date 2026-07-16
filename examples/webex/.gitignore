@@ -1,0 +1,16 @@
+# Secrets (also covered by repo root .gitignore)
+.env
+.glean/.env
+
+# Build artifacts
+*.whl
+*.tar.gz
+__pycache__/
+*.pyc
+
+# Terraform local state & provider cache (do not commit)
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.*
+terraform/*.tfplan

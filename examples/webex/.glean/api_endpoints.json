@@ -1,0 +1,67 @@
+{
+  "datasource": "webex",
+  "api_base_url": "https://webexapis.com/v1",
+  "access_model": "org-wide via Compliance Officer token + Events API (rolling ~90-day window)",
+  "endpoints": [
+    {
+      "name": "Get my own details",
+      "method": "GET",
+      "path": "/v1/people/me",
+      "purpose": "Auth smoke-test; identifies the authenticated principal and its orgId.",
+      "source": "https://developer.webex.com/docs/api/v1/people/get-my-own-details",
+      "required_scopes": ["spark:people_read"],
+      "pagination": "none",
+      "verified": "live-probe HTTP 200"
+    },
+    {
+      "name": "List events (org-wide message feed)",
+      "method": "GET",
+      "path": "/v1/events",
+      "purpose": "PRIMARY content source. Org-wide feed of message activity; each created event's data is a message to index. Also yields updated (edits) and deleted (removals) events.",
+      "source": "https://developer.webex.com/docs/api/v1/events/list-events",
+      "required_scopes": ["spark-compliance:events_read", "spark-compliance:messages_read"],
+      "pagination": "Link header, rel=\"next\", opaque cursor query param",
+      "query_params": ["resource (messages)", "type (created|updated|deleted)", "from (ISO8601, max ~90 days back)", "to (ISO8601)", "max"],
+      "response_fields": ["id", "resource", "type", "actorId", "created", "data (embedded message object)"],
+      "embedded_message_fields": ["id", "roomId", "roomType", "text", "html", "files", "personId", "personEmail", "parentId", "created", "updated"],
+      "incremental_filter": "from/to time window (bounded to ~90 days); cursor for paging within the window",
+      "deletion_behavior": "type=deleted events expose removed message ids within the window",
+      "rate_limit_notes": "429 + Retry-After on throttle; auto-injects a from/to window if from omitted (default ~25 days)",
+      "verified": "live-probe HTTP 200; created/updated/deleted all 200; from beyond ~90d -> 403"
+    },
+    {
+      "name": "Get room details",
+      "method": "GET",
+      "path": "/v1/rooms/{roomId}",
+      "purpose": "Fetch a discovered room's details (title, description, timestamps) for the Space document. Works org-wide with the compliance token.",
+      "source": "https://developer.webex.com/docs/api/v1/rooms/get-room-details",
+      "required_scopes": ["spark-compliance:rooms_read"],
+      "pagination": "none",
+      "response_fields": ["id", "title", "type", "description", "isLocked", "isPublic", "isReadOnly", "madePublic", "teamId", "creatorId", "ownerId", "created", "lastActivity"],
+      "verified": "live-probe HTTP 200 for a room id taken from an event"
+    },
+    {
+      "name": "List memberships",
+      "method": "GET",
+      "path": "/v1/memberships",
+      "purpose": "For a discovered roomId, list members; drives per-document ACLs (allowed_users by email). Works org-wide with the compliance token.",
+      "source": "https://developer.webex.com/docs/api/v1/memberships/list-memberships",
+      "required_scopes": ["spark-compliance:memberships_read"],
+      "pagination": "Link header, rel=\"next\", opaque cursor query param",
+      "query_params": ["roomId (required)", "max"],
+      "response_fields": ["id", "roomId", "roomType", "personId", "personEmail", "personDisplayName", "personOrgId", "isModerator", "isMonitor", "created"],
+      "permission_fields": ["personId", "personEmail", "personOrgId", "isModerator"],
+      "verified": "live-probe HTTP 200, 3 members with email+orgId"
+    },
+    {
+      "name": "List rooms (supporting)",
+      "method": "GET",
+      "path": "/v1/rooms",
+      "purpose": "Supporting/diagnostic only. For a user token returns only the principal's spaces; NOT used for org-wide discovery (that comes from /events). Kept for reference and non-compliance fallback.",
+      "source": "https://developer.webex.com/docs/api/v1/rooms/list-rooms",
+      "required_scopes": ["spark:rooms_read"],
+      "pagination": "Link header, rel=\"next\", opaque cursor query param",
+      "verified": "live-probe HTTP 200, 5 items"
+    }
+  ]
+}

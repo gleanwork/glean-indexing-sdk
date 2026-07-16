@@ -1,0 +1,19 @@
+[project]
+name = "webex-connector"
+version = "0.1.0"
+description = "Glean Indexing SDK connector for Webex (org-wide, compliance Events API)"
+requires-python = ">=3.10,<4.0"
+dependencies = [
+    "httpx>=0.27",
+    # The SDK at this version (1.0.0b2) is not on PyPI, so it is vendored as a
+    # wheel and installed from the in-container build path (see Dockerfile: the
+    # wheel is copied to /app by `COPY . .` before `pip install .`).
+    "glean-indexing-sdk @ file:///app/glean_indexing_sdk-1.0.0b2-py3-none-any.whl",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["connector", "data_client", "models"]

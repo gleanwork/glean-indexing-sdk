@@ -1,0 +1,12 @@
+# Keep secrets and planning artifacts out of the container image.
+# Runtime secrets are loaded from GCP Secret Manager by run.py, never baked in.
+.glean/
+.env
+*.env
+!.env.example
+
+# Python caches / local artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/

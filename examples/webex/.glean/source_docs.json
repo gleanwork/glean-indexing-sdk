@@ -1,0 +1,38 @@
+{
+  "datasource": "webex",
+  "confirmed_by_user": true,
+  "confirmed_on": "2026-07-16",
+  "api_base_url": "https://webexapis.com/v1",
+  "confirmed_docs": [
+    {
+      "title": "Webex REST API reference (v1)",
+      "url": "https://developer.webex.com/docs/api/v1",
+      "role": "primary"
+    },
+    {
+      "title": "Rooms API",
+      "url": "https://developer.webex.com/docs/api/v1/rooms",
+      "role": "primary"
+    },
+    {
+      "title": "Messages API",
+      "url": "https://developer.webex.com/docs/api/v1/messages",
+      "role": "primary"
+    },
+    {
+      "title": "People API",
+      "url": "https://developer.webex.com/docs/api/v1/people",
+      "role": "primary"
+    },
+    {
+      "title": "Memberships API",
+      "url": "https://developer.webex.com/docs/api/v1/memberships",
+      "role": "primary"
+    },
+    {
+      "title": "Webex API basics (pagination + rate limiting)",
+      "url": "https://developer.webex.com/docs/api/basics",
+      "role": "supporting"
+    }
+  ]
+}

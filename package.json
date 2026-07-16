@@ -1,6 +1,6 @@
 {
   "name": "@gleanwork/glean-indexing-sdk-agent-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Agent plugin sources for building Glean Indexing SDK connectors.",
   "license": "MIT",
   "author": {

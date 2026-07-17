@@ -2,6 +2,8 @@
 
 import functools
 import logging
+import os
+import sys
 import time
 import uuid
 from collections import defaultdict
@@ -14,6 +16,35 @@ from .logging import LoggerProvider
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+_auto_logging_configured = False
+
+
+def ensure_default_logging() -> None:
+    """Configure root logging to stdout once, if nothing else has.
+
+    Connectors typically run as standalone jobs where no logging is configured,
+    so INFO lifecycle logs would be dropped and the last-resort handler writes to
+    stderr (which cloud backends like GKE mark as ERROR). This attaches a single
+    stdout handler with structured, severity-tagged output at the level from
+    ``LOG_LEVEL`` (default INFO).
+
+    Idempotent, and a no-op when the caller has already configured root logging or
+    sets ``GLEAN_DISABLE_LOG_SETUP``.
+    """
+    global _auto_logging_configured
+    if _auto_logging_configured or os.getenv("GLEAN_DISABLE_LOG_SETUP"):
+        return
+
+    _auto_logging_configured = True
+    root = logging.getLogger()
+    if root.handlers:
+        return
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(StructuredFormatter())
+    root.addHandler(handler)
+    level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+    root.setLevel(level)
 
 
 class ConnectorObservability:
@@ -40,6 +71,7 @@ class ConnectorObservability:
         self.timers: Dict[str, float] = {}
         self.start_time: Optional[float] = None
         self._execution_failed: bool = False
+        ensure_default_logging()
 
     def get_common_fields(self, operation: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
         """Get common fields for structured logging.
@@ -721,7 +753,8 @@ def setup_connector_logging(
     if logger_provider is not None:
         handlers = [logger_provider.setup_handler(connector_name, level)]
     else:
-        handlers = [logging.StreamHandler()]
+        # stdout so cloud backends don't infer ERROR severity from stderr.
+        handlers = [logging.StreamHandler(sys.stdout)]
 
     if extra_handlers:
         handlers.extend(extra_handlers)

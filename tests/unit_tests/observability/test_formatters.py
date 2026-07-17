@@ -338,7 +338,7 @@ class TestCompactStructuredFormatter:
         output = formatter.format(record)
         log_data = json.loads(output)
 
-        assert set(log_data.keys()) == {"timestamp", "level", "logger", "message"}
+        assert set(log_data.keys()) == {"timestamp", "level", "severity", "logger", "message"}
 
 
 class TestFormatterIntegration:

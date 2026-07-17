@@ -1,6 +1,7 @@
 """Logger provider abstractions for cloud logging backends."""
 
 import logging
+import sys
 from abc import ABC, abstractmethod
 
 
@@ -31,8 +32,12 @@ class ConsoleLoggerProvider(LoggerProvider):
     """Default console logging provider with no cloud dependencies."""
 
     def setup_handler(self, logger_name: str, level: int = logging.INFO) -> logging.Handler:
-        """Create a StreamHandler for console output."""
-        handler = logging.StreamHandler()
+        """Create a StreamHandler for console output.
+
+        Writes to stdout so cloud logging backends that infer severity from the
+        stream (e.g. GKE maps stderr -> ERROR) do not mislabel INFO lines.
+        """
+        handler = logging.StreamHandler(sys.stdout)
         handler.setLevel(level)
         return handler
 

@@ -83,6 +83,11 @@ class StructuredFormatter(logging.Formatter):
             ).isoformat() + "Z"
 
         log_data[self.level_field] = record.levelname
+        # Cloud logging backends (e.g. GCP) read a top-level "severity" field to
+        # classify a log line. Python level names (DEBUG/INFO/WARNING/ERROR/
+        # CRITICAL) are valid severities, so emit it to avoid stdout/stderr stream
+        # heuristics mislabeling INFO lines as errors.
+        log_data.setdefault("severity", record.levelname)
         log_data[self.logger_field] = record.name
         log_data[self.message_field] = record.getMessage()
 

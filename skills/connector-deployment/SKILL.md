@@ -19,7 +19,7 @@ Use this skill when deployment or hosting is in scope for a connector build. It 
 
 - Use `glean-deploy` for deployment artifacts and operations. Do not invent Terraform, Docker, Kubernetes, or secret-manager files by hand.
 - Do not run cloud-mutating commands (`secrets upload`, `apply`, `destroy`) without explicit user confirmation.
-- Do not begin deployment until the confirmed connector plan has been revalidated against the current implementation and configuration for production use.
+- Do not build, push, upload secrets, or apply until the confirmed connector plan has been revalidated against the current implementation and generated deployment configuration for production use.
 - Never commit `.env` or raw secrets. Use `.env.example` as the template and upload real secrets through `glean-deploy secrets upload`.
 - Keep deployment-control variables separate from connector secrets. Deployment-control variables are not uploaded as connector secrets.
 - Keep `.glean` planning artifacts inside the connector folder, and deployment artifacts in the connector folder root.
@@ -207,22 +207,22 @@ Before implementation or deployment, ensure `<connector-folder>/.glean/connector
 
 ## Pre-deployment Revalidation
 
-Immediately before generating deployment artifacts or running any build, push, secret-upload, or apply command:
+After generating and configuring the deployment artifacts, immediately before running any build, push, secret-upload, or apply command:
 
 1. Re-read the confirmed `<connector-folder>/.glean/connector_plan.md` and `<connector-folder>/.glean/source_investigation.md`.
 2. Compare every local-testing assumption with its production requirement, including source authentication, scopes and permissions, secret names, endpoints, and runtime configuration.
 3. Inspect the current connector implementation and deployment configuration to verify that every production requirement in the plan is implemented and configured. A successful local test does not prove that a different production path is ready.
-4. If anything required for production is missing, incomplete, or still marked as a validation gap, stop before deployment. Explain the specific gaps, ask the user for the required decisions or setup, make the necessary implementation or configuration changes, update the plan, and ask the user to reconfirm it.
+4. If anything required for production is missing, incomplete, or still marked as a validation gap, stop before building or running any cloud-mutating command. Explain the specific gaps, ask the user for the required decisions or setup, make the necessary implementation or configuration changes, update the plan, and ask the user to reconfirm it.
 5. Never deploy a test-only mechanism when the plan specifies a different production mechanism. Do not build or deploy until the planned production mechanism is implemented and configured.
 
 ## Recommended Sequence
 
 After connector code and plan are ready:
 
-1. Complete the pre-deployment revalidation above and resolve every production-readiness gap.
-2. `glean-deploy init --cloud gcp|aws` (optionally add `--connector-name <name> --connector-class <ClassName> --connector-module <module>` when defaults do not match)
-3. Edit `glean_deployment.yaml`.
-4. Copy `.env.example` to `.env` and fill secrets locally.
+1. `glean-deploy init --cloud gcp|aws` (optionally add `--connector-name <name> --connector-class <ClassName> --connector-module <module>` when defaults do not match)
+2. Edit `glean_deployment.yaml`.
+3. Copy `.env.example` to `.env` and fill secrets locally.
+4. Complete the pre-deployment revalidation above and resolve every production-readiness gap.
 5. `glean-deploy build --push`
 6. `glean-deploy secrets upload`
 7. `glean-deploy apply`

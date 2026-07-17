@@ -213,7 +213,7 @@ Immediately before generating deployment artifacts or running any build, push, s
 2. Compare every local-testing assumption with its production requirement, including source authentication, scopes and permissions, secret names, endpoints, and runtime configuration.
 3. Inspect the current connector implementation and deployment configuration to verify that every production requirement in the plan is implemented and configured. A successful local test does not prove that a different production path is ready.
 4. If anything required for production is missing, incomplete, or still marked as a validation gap, stop before deployment. Explain the specific gaps, ask the user for the required decisions or setup, make the necessary implementation or configuration changes, update the plan, and ask the user to reconfirm it.
-5. Never deploy a test-only mechanism when the plan specifies a different production mechanism. For example, do not build or deploy a PAT-based connector when the confirmed production plan requires OAuth until the OAuth flow is implemented and configured.
+5. Never deploy a test-only mechanism when the plan specifies a different production mechanism. Do not build or deploy until the planned production mechanism is implemented and configured.
 
 ## Recommended Sequence
 

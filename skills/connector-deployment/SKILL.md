@@ -22,13 +22,14 @@ Use this skill when deployment or hosting is in scope for a connector build. It 
 - Never commit `.env` or raw secrets. Use `.env.example` as the template and upload real secrets through `glean-deploy secrets upload`.
 - Keep deployment-control variables separate from connector secrets. Deployment-control variables are not uploaded as connector secrets.
 - Keep `.glean` planning artifacts inside the connector folder, and deployment artifacts in the connector folder root.
+- Use the connector folder as the container image build directory by default. Do not ask the user to choose an image directory.
 
 ## Prerequisites
 
 Before using `glean-deploy`, confirm the user has:
 
 - The Glean Indexing SDK installed in the active Python environment. The `glean-deploy` console command is registered by the SDK package.
-- Docker running locally.
+- Colima installed and running. If Colima is unavailable, ask the user whether they want to install and start it or use another Docker-compatible runtime, such as Docker Desktop. Verify the selected runtime is working with `docker info` before building an image.
 - Cloud CLI authenticated:
   - GCP: `gcloud auth login`
   - AWS: `aws configure`

@@ -23,6 +23,7 @@ Use this skill when deployment or hosting is in scope for a connector build. It 
 - Keep deployment-control variables separate from connector secrets. Deployment-control variables are not uploaded as connector secrets.
 - Keep `.glean` planning artifacts inside the connector folder, and deployment artifacts in the connector folder root.
 - Use the connector folder as the container image build directory by default. Do not ask the user to choose an image directory.
+- When pushing the image to the configured cloud container registry, use only the connector name as its repository path. Do not ask the user to choose an image path.
 
 ## Prerequisites
 

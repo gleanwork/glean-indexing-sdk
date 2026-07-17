@@ -204,8 +204,13 @@ def test_build_invokes_docker_build(runner, tmp_path, gcp_deployment_yaml):
         )
         assert result.exit_code == 0, result.output
         build_call = mock_run.call_args_list[0]
-        assert "docker" in build_call.args[0]
-        assert "build" in build_call.args[0]
+        cmd = build_call.args[0]
+        assert "docker" in cmd
+        assert "buildx" in cmd
+        assert "build" in cmd
+        assert "--platform" in cmd
+        assert "linux/amd64" in cmd
+        assert "--load" in cmd  # no --push → load into local daemon
 
 
 def test_build_uses_config_parent_as_cwd(runner, tmp_path, gcp_deployment_yaml):
@@ -224,10 +229,11 @@ def test_build_push_calls_docker_push(runner, tmp_path, gcp_deployment_yaml):
             ["build", "--push", "--config", str(gcp_deployment_yaml)],
         )
         assert result.exit_code == 0, result.output
-        assert mock_run.call_count == 2
-        push_call = mock_run.call_args_list[1]
-        assert "docker" in push_call.args[0]
-        assert "push" in push_call.args[0]
+        # buildx build --push is a single command (no separate docker push step)
+        assert mock_run.call_count == 1
+        cmd = mock_run.call_args_list[0].args[0]
+        assert "--push" in cmd
+        assert "--load" not in cmd
 
 
 def test_build_missing_config_shows_error(runner, tmp_path):

@@ -36,7 +36,11 @@ data "google_container_cluster" "main" {
 }
 
 provider "kubernetes" {
-  host                   = "https://${data.google_container_cluster.main.endpoint}"
+  # For private-only GKE clusters (enablePublicEndpoint: false) set cluster_endpoint in
+  # glean_deployment.yaml to the GKE DNS endpoint (*.gke.goog); Terraform will use that instead
+  # of the private IP returned by the cluster data source.
+  # Reference: https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-architecture#control_plane_endpoint_modes
+  host                   = "https://${coalesce(var.cluster_endpoint, data.google_container_cluster.main.endpoint)}"
   token                  = data.google_client_config.default.access_token
   cluster_ca_certificate = base64decode(data.google_container_cluster.main.master_auth[0].cluster_ca_certificate)
 }

@@ -19,6 +19,7 @@ Use this skill when deployment or hosting is in scope for a connector build. It 
 
 - Use `glean-deploy` for deployment artifacts and operations. Do not invent Terraform, Docker, Kubernetes, or secret-manager files by hand.
 - Do not run cloud-mutating commands (`secrets upload`, `apply`, `destroy`) without explicit user confirmation.
+- Do not begin deployment until the confirmed connector plan has been revalidated against the current implementation and configuration for production use.
 - Never commit `.env` or raw secrets. Use `.env.example` as the template and upload real secrets through `glean-deploy secrets upload`.
 - Keep deployment-control variables separate from connector secrets. Deployment-control variables are not uploaded as connector secrets.
 - Keep `.glean` planning artifacts inside the connector folder, and deployment artifacts in the connector folder root.
@@ -204,19 +205,30 @@ Before implementation or deployment, ensure `<connector-folder>/.glean/connector
 - Secret keys needed at runtime, without secret values.
 - Whether the user confirmed running cloud-mutating commands.
 
+## Pre-deployment Revalidation
+
+Immediately before generating deployment artifacts or running any build, push, secret-upload, or apply command:
+
+1. Re-read the confirmed `<connector-folder>/.glean/connector_plan.md` and `<connector-folder>/.glean/source_investigation.md`.
+2. Compare every local-testing assumption with its production requirement, including source authentication, scopes and permissions, secret names, endpoints, and runtime configuration.
+3. Inspect the current connector implementation and deployment configuration to verify that every production requirement in the plan is implemented and configured. A successful local test does not prove that a different production path is ready.
+4. If anything required for production is missing, incomplete, or still marked as a validation gap, stop before deployment. Explain the specific gaps, ask the user for the required decisions or setup, make the necessary implementation or configuration changes, update the plan, and ask the user to reconfirm it.
+5. Never deploy a test-only mechanism when the plan specifies a different production mechanism. For example, do not build or deploy a PAT-based connector when the confirmed production plan requires OAuth until the OAuth flow is implemented and configured.
+
 ## Recommended Sequence
 
 After connector code and plan are ready:
 
-1. `glean-deploy init --cloud gcp|aws` (optionally add `--connector-name <name> --connector-class <ClassName> --connector-module <module>` when defaults do not match)
-2. Edit `glean_deployment.yaml`.
-3. Copy `.env.example` to `.env` and fill secrets locally.
-4. `glean-deploy build --push`
-5. `glean-deploy secrets upload`
-6. `glean-deploy apply`
-7. `glean-deploy status`
-8. `glean-deploy logs`
-9. Inspect the deployed connector logs and confirm the connector actually ran: lifecycle start/completion or failure, source fetch counts, transform counts, upload attempts/results, and no leaked secrets.
+1. Complete the pre-deployment revalidation above and resolve every production-readiness gap.
+2. `glean-deploy init --cloud gcp|aws` (optionally add `--connector-name <name> --connector-class <ClassName> --connector-module <module>` when defaults do not match)
+3. Edit `glean_deployment.yaml`.
+4. Copy `.env.example` to `.env` and fill secrets locally.
+5. `glean-deploy build --push`
+6. `glean-deploy secrets upload`
+7. `glean-deploy apply`
+8. `glean-deploy status`
+9. `glean-deploy logs`
+10. Inspect the deployed connector logs and confirm the connector actually ran: lifecycle start/completion or failure, source fetch counts, transform counts, upload attempts/results, and no leaked secrets.
 
 Use `glean-deploy destroy` only when the user explicitly wants teardown.
 
@@ -234,6 +246,7 @@ For implementation evals with cloud access, verify:
 
 - `glean-deploy init` creates all expected artifacts.
 - `glean_deployment.yaml` validates for the selected cloud.
+- The implemented and configured production auth path matches the confirmed plan rather than a test-only auth path.
 - `.env` excludes deployment-control variables from uploaded connector secrets.
 - `secrets upload` is run only after user confirmation.
 - `apply`, `status`, `logs`, and `destroy` are run only in an approved test environment.

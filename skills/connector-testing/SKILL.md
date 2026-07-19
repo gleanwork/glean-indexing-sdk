@@ -13,6 +13,25 @@ Use this skill to validate the SDK testing harness introduced under `glean.index
 - In the same testing-step prompt, say which validation levels will run. Use the existing task context, including the connector-local `.env` file if already identified, to determine whether required Glean and connector source tokens are present. If token presence is missing or unknown, say that E2E testing is recommended but will not happen unless the required tokens are present.
 - If you make any code changes after a test run, ask the user whether to run the harness validation again.
 - Never print secrets, commit `.env`, or include recorded source data.
+- Run the offline config-consistency checks below in the full-mock level (no credentials needed) BEFORE any live upload. These catch upload-time `400` rejections (e.g. undeclared object types) without spending a real API round-trip.
+
+## Offline Config-Consistency Checks (full-mock, run first)
+
+These run against a full-mock crawl (`run_connector` -> `MockGleanClient`) and require no credentials. They catch the mismatches the Glean indexing API only reports as a `400` at live upload time:
+
+- **Object types are declared.** Every distinct `object_type` on `client.documents_posted` must appear as a `name` in the connector's `configuration.object_definitions`. An object type set on a document but not declared in the config is rejected at upload with `400 ... Object definitions not found for object types: <Name>`. Assert this offline, e.g.:
+
+  ```python
+  client = run_connector(connector)
+  declared = {o.name for o in (connector.configuration.object_definitions or [])}
+  used = {d.object_type for d in client.documents_posted if d.object_type}
+  assert used <= declared, f"Undeclared object types: {used - declared}"
+  ```
+
+- **Datasource is configured before upload.** Use `client.assert_datasource_configured()`.
+- **Documents carry required fields.** Non-empty `id`, `datasource` matching the connector name, and (for permissioned sources) non-empty `permissions` so nothing is unintentionally world-visible.
+
+If any offline check fails, fix the connector and re-run before attempting a live upload.
 
 ## Validation Levels
 

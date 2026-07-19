@@ -62,6 +62,14 @@ Use `connector-push` for the allowed status/debug surface. The observability pla
 
 Do not call undocumented status or debug endpoints directly.
 
+### Confirming indexing, not just upload
+
+A successful upload response only proves Glean **accepted** the batch. Do not report "indexed successfully" from upload logs alone. After a test/live upload, confirm actual indexing:
+
+- Call `StatusClient.get_datasource_status` and read `documents.counts`. It reports both `uploaded` and `indexed` counts per object type. Treat indexing as confirmed only when the `indexed` count for your object type is non-zero and consistent with the number of documents pushed. `uploaded > indexed` shortly after a run is normal (indexing is asynchronous); `indexed` staying at zero indicates a real problem.
+- Check the latest entry in `documents.bulkUploadHistory` for your `uploadId`: `status: SUCCESSFUL` and `processingState: UPLOAD COMPLETED`.
+- Known SDK quirk: `get_datasource_status` may raise `GleanError: Unexpected response received: Status 200` because the generated client fails to parse an otherwise-valid `200` body. The raw JSON body is included in the error and is authoritative — parse the `documents.counts` from it rather than assuming the call failed.
+
 ## Required Plan Fields
 
 Before implementation, ensure `<connector-folder>/.glean/connector_plan.md` includes:
@@ -82,4 +90,5 @@ For an implementation eval with credentials, verify:
 - Generated Python compiles.
 - Connector run emits lifecycle/fetch/transform/upload logs.
 - Upload status/debug checks are attempted only when Glean indexing credentials are available.
+- Indexing is confirmed via `get_datasource_status` (`indexed` counts non-zero for the object type), not inferred from a successful upload response alone.
 - No secret values appear in logs or `.glean/` artifacts.

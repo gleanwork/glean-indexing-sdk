@@ -18,9 +18,11 @@ Use this skill when implementing the Glean-side upload, validation, and status-c
 
 - Use only the SDK push/status wrappers listed below. Do not call undocumented Glean APIs or generated-client methods directly from generated connector code.
 - Use full-crawl bulk operations for AI-built connectors. Incremental, partial-update, or delete-heavy behavior needs explicit developer attention after full crawl works.
+- Every custom `object_type` set on a `DocumentDefinition` MUST have a matching entry in the datasource's `configuration.object_definitions` (each with a `name` equal to the `object_type`). Otherwise the indexing API rejects the whole batch at upload time with `400 ... Object definitions not found for object types: <Name>`. If you do not declare object definitions, do not set `object_type` on documents either. Keep the two in sync as a pair.
 - Record which Glean-side methods are used in `<connector-folder>/.glean/connector_plan.md`.
 - Use the load and crawl-frequency decisions from the confirmed connector plan.
 - Use compile checks and an end-to-end full-crawl smoke run first. Add unit tests only after the connector behavior is confirmed and worth regression testing.
+- A successful upload response (HTTP 200 / "batch upload completed") only means Glean **accepted** the batch. It is NOT proof that documents were indexed. Confirm indexing with `StatusClient.get_datasource_status` and check that the `indexed` counts for your object type are non-zero, not just the `uploaded` counts (see `connector-observability`).
 
 ## Allowed SDK Push And Status Surface
 
@@ -58,10 +60,10 @@ Do not use any other Glean-side endpoints in generated connector code.
 In `<connector-folder>/.glean/connector_plan.md`, include:
 
 - Source entity to Glean entity mapping.
-- Glean object types and document IDs.
+- Glean object types and document IDs. For every object type, list the matching `configuration.object_definitions` entry that declares it (object type set on documents but not declared in the config is the most common cause of a 400 at upload).
 - Full-crawl upload choice: `bulk_index_documents`, `bulk_index_users`, `bulk_index_groups`, and/or `bulk_index_memberships`.
 - Test upload choice: small `index_documents` or focused bulk upload.
-- Status/debug checks to run after upload.
+- Status/debug checks to run after upload, including a `get_datasource_status` check that `indexed` counts (not just `uploaded`) are non-zero for each object type.
 - Auth used for Glean indexing: `GLEAN_SERVER_URL` and `GLEAN_INDEXING_API_TOKEN`.
 - Production source auth, which may differ from the token used during API exploration.
 

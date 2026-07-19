@@ -68,7 +68,6 @@ A successful upload response only proves Glean **accepted** the batch. Do not re
 
 - Call `StatusClient.get_datasource_status` and read `documents.counts`. It reports both `uploaded` and `indexed` counts per object type. Treat indexing as confirmed only when the `indexed` count for your object type is non-zero and consistent with the number of documents pushed. `uploaded > indexed` shortly after a run is normal (indexing is asynchronous); `indexed` staying at zero indicates a real problem.
 - Check the latest entry in `documents.bulkUploadHistory` for your `uploadId`: `status: SUCCESSFUL` and `processingState: UPLOAD COMPLETED`.
-- Known SDK quirk: `get_datasource_status` may raise `GleanError: Unexpected response received: Status 200` because the generated client fails to parse an otherwise-valid `200` body. The raw JSON body is included in the error and is authoritative — parse the `documents.counts` from it rather than assuming the call failed.
 
 ## Required Plan Fields
 

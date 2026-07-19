@@ -54,8 +54,44 @@ Live E2E validation requires Glean credentials (`GLEAN_INDEXING_API_TOKEN` and `
 
 Use the existing task context to determine whether required tokens are present. If the tokens are missing, or if their presence is unknown, tell the user that live E2E testing is recommended but will not happen unless the required Glean and connector tokens are present. The existing pytest harness suite can still validate the full mock, integration/cache, and E2E interface structure.
 
-## Existing Harness Suite
+## Live E2E Verification (after a real upload, credentials required)
 
+A successful upload does not prove documents are searchable. For a permissioned datasource, indexing and access succeed independently, so verify both:
+
+1. **Indexed, not just uploaded.** `StatusClient.get_datasource_status` -> `documents.counts.indexed` is non-zero for each object type (not only `uploaded`). Per document: `StatusClient.get_documents_status([...])` -> each `indexingStatus: INDEXED`.
+2. **Permissions uploaded.** On `get_documents_status`, `permissionIdentityStatus` is an enum of `NOT_UPLOADED`, `UPLOADED`, `STATUS_UNKNOWN`. `UPLOADED` is the healthy value; there is no "processed" state to wait for. `NOT_UPLOADED` means the document's permissions were not uploaded and visibility is affected — that is the failure to catch.
+3. **Access resolves both ways (positive and negative).** Verify permission trimming in both directions with `check_document_access(object_type, document_id, user_email)`:
+   - **Positive:** a user who IS in a document's source ACL returns `hasAccess: true`.
+   - **Negative:** a user who is NOT in that document's ACL returns `hasAccess: false`.
+   The negative check is essential — it proves the connector is not over-sharing (world-readable, wrong ACLs, or leaking across containers). A green positive check alone does not catch over-permissioning.
+
+You do not need a full crawl to verify permissions. Pushing a **small sample of documents** is enough, as long as the sample includes at least one restricted document plus a user who should see it and a user who should not. Prefer this focused sample for permission verification.
+
+Trigger processing once after the test push. Uploaded documents are otherwise processed on a periodic (sometimes ~daily) cycle, so a fresh test upload may not be indexed for a long time. After pushing the test docs, call `/processalldocuments` **once** for the test datasource (`client.indexing.documents.process_all(request=ProcessAllDocumentsRequest(datasource=<name>))`) to schedule immediate processing. This endpoint is **heavily rate-limited** — call it a single time per test run and do not retry it soon; then poll the status/access checks below rather than calling `process_all` again. Use `get_document_lifecycle_events` (also rate-limited, ~1/min) to see a document's `UPLOADED`/`INDEXED` timeline and confirm processing actually ran.
+
+Notes:
+
+- Non-anonymous permissions require the referenced users to be **indexed** (e.g. via `get_identities()` / `bulk_index_users`), even when referencing by email. A document can be `INDEXED` with `permissionIdentityStatus: UPLOADED` and still return `hasAccess: false` if its ACL users were never indexed. Confirm the connector indexes the users it references.
+- Both indexing and permissions are **asynchronous**, so verify by **polling**, not a single check. Upload completes immediately, but a document's `indexingStatus` can stay `NOT_INDEXED` and `check_document_access` can stay `false` for minutes after upload. Poll `get_documents_status` + `check_document_access` on a short interval (e.g. every ~2 minutes) until access is granted or a timeout (e.g. ~30 minutes) is reached. Check upload/index recency too: `lastUploadedAt` should reflect the current run, and `lastIndexedAt` should advance past the upload time before you trust a `false` access result — a `false` while the doc has not been re-indexed since upload is inconclusive, not a failure.
+- `permissionIdentityStatus` enum is `NOT_UPLOADED` / `UPLOADED` / `STATUS_UNKNOWN`; `UPLOADED` is healthy and `NOT_UPLOADED` means the document's permissions were not uploaded. It does not indicate whether ACL users were indexed — `check_document_access` is the end-to-end signal.
+- If access stays `false` after the docs are freshly indexed and the users are indexed, confirm the ACL email matches the user's Glean identity (same email); on a test instance the user may simply not be provisioned in Glean.
+
+## Test-Run Report
+
+When a live test crawl is run, produce a short human-readable run report and point the end developer to it so they can manually verify. Save it under the connector's `.glean/` (e.g. `.glean/run_report.md`) and tell the developer to open it for details. The report should reconcile what was pulled against what was pushed:
+
+- **Pulled from source:** counts of records/documents, containers, and distinct users; the time range covered; and a per-container breakdown when useful.
+- **Pushed to Glean:** datasource name, number of datasource users indexed, number of documents indexed, and object types used.
+- **Identities indexed:** the list of datasource users pushed (`bulkindexusers`), since document ACLs only grant access to indexed users.
+- **Permissions pushed (document -> allowed users):** for a permissioned datasource, list each document's ACL (`permissions.allowedUsers`) so the developer can see exactly which users each document was shared with.
+- **Per-user visibility:** an inverted view of the ACLs — for each user, how many documents they can see (and a few sample titles) — so the developer can sanity-check that permission trimming matches the source.
+- **Glean-reported status:** `get_datasource_status` `uploaded` vs `indexed` counts per object type, and the latest upload's `status` / `processingState`. Note that these are datasource-wide cumulative totals, not per-run; if per-run deltas are needed, snapshot counts before and after the run.
+- **Sample documents:** a handful with their IDs, titles, view URLs, and ACL sizes, so the developer can eyeball them.
+- **How to check manually:** confirm the datasource is enabled in the admin console; search a distinctive phrase as a user who is a member/has access; and note that permissions process asynchronously so access may lag the upload.
+
+Explicitly ask the end developer to review the report and cross-check it in Glean, rather than treating a green run as sufficient on its own.
+
+## Existing Harness Suite
 For normal harness validation, ask before running:
 
 ```bash

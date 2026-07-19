@@ -48,6 +48,16 @@ Use `StatusClient` from `glean.indexing.push`:
 - `get_documents_status`: checks upload, indexing, and permission status for specific documents.
 - `check_document_access`: checks whether a user has access to a document.
 
+### Permission identities and access
+
+Non-anonymous document permissions only grant access after the referenced users are **indexed** — this is required even when referencing users by email. Uploading a document whose ACL lists a user does not by itself let that user find it; Glean must separately know the user exists. See https://developers.glean.com/api-info/indexing/documents/permissions ("users need to be indexed before being referenced").
+
+- **Index the ACL users.** Every user referenced in a document's `allowed_users` must be indexed, e.g. by returning them from the connector's `get_identities()` (the base datasource connector uploads identities before documents) or via `bulk_index_users`. Indexing a user only tells Glean the user exists; it does not by itself grant document access.
+- **`is_user_referenced_by_email=True`:** reference users by `email` in `allowed_users`, and index those same users by email. If `false`, reference and index by `datasourceUserId`.
+- **Processing is asynchronous.** Permissions and memberships are processed after upload, so `check_document_access` can be `false` for a short delay, then become `true`.
+- **`permissionIdentityStatus`** from `get_documents_status` is an enum of `NOT_UPLOADED`, `UPLOADED`, `STATUS_UNKNOWN` (always `STATUS_UNKNOWN` when the datasource sets `identityDatasourceName`). `UPLOADED` is the healthy value for a document's permissions; `NOT_UPLOADED` means the document's permissions were not uploaded and visibility is affected. It does NOT reflect whether the referenced users were indexed — verify end-to-end access with `check_document_access`.
+- **Group-based permissions** additionally require indexing groups and memberships (`bulk_index_groups` / `bulk_index_memberships`), then `client.indexing.permissions.process_memberships`.
+
 Use these debug helpers only through `PushUploader`:
 
 - `get_document_lifecycle_events`: gets lifecycle events for a datasource document.
@@ -61,9 +71,10 @@ In `<connector-folder>/.glean/connector_plan.md`, include:
 
 - Source entity to Glean entity mapping.
 - Glean object types and document IDs. For every object type, list the matching `configuration.object_definitions` entry that declares it (object type set on documents but not declared in the config is the most common cause of a 400 at upload).
+- Identity plan for permissions: which users appear in document ACLs and how they are indexed (`get_identities()` / `bulk_index_users`), since non-anonymous permissions require those users to be indexed before they grant access. Add groups/memberships only for group-based permissions.
 - Full-crawl upload choice: `bulk_index_documents`, `bulk_index_users`, `bulk_index_groups`, and/or `bulk_index_memberships`.
 - Test upload choice: small `index_documents` or focused bulk upload.
-- Status/debug checks to run after upload, including a `get_datasource_status` check that `indexed` counts (not just `uploaded`) are non-zero for each object type.
+- Status/debug checks to run after upload, including a `get_datasource_status` check that `indexed` counts (not just `uploaded`) are non-zero for each object type, and a `check_document_access` check that a real member can actually see a document.
 - Auth used for Glean indexing: `GLEAN_SERVER_URL` and `GLEAN_INDEXING_API_TOKEN`.
 - Production source auth, which may differ from the token used during API exploration.
 

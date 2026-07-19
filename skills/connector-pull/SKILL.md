@@ -17,9 +17,11 @@ Use this skill when implementing source API fetching for a connector after `<con
 ## Rules
 
 - Implement full-crawl source fetching for the AI-built connector. Do not implement incremental crawl unless the user explicitly asks for developer-owned follow-up work.
+- A full crawl must enumerate the complete current set of in-scope items every run, so source-side removals are reflected (an item absent from the crawl gets pruned by stale-document deletion downstream). When the source exposes deletions or edits only as events (e.g. a compliance/audit/event feed), reconcile them inside the crawl — for example, collect deleted ids in a pass and skip those in the document stream ("created minus deleted" over the window), and use the latest event's content for edits. Never leave deletions or edits for a future incremental crawl to fix.
 - Streaming and full crawl are compatible: use streaming/pagination to limit memory while still crawling all in-scope source data. Do not confuse streaming with incremental sync.
 - Use source API behavior proven by API exploration. Do not invent pagination, rate-limit, auth, or response fields.
 - Keep source fetching in the data client. Keep Glean mapping in the connector.
+- When documents are permission-trimmed, the data client must also be able to enumerate the ACL members for each in-scope container (e.g. a memberships endpoint), and should cache those lookups per crawl. The push layer needs this to index ACL identities *before* documents; expose it (for example, a method that returns the union of ACL users) rather than only yielding documents.
 - Use SDK pull recipes only. Inherit from the pull base classes and do not hand-roll ad hoc HTTP clients in generated connector code.
 - Redact secrets in logs and examples.
 

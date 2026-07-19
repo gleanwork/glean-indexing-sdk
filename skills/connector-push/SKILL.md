@@ -28,7 +28,7 @@ Use this skill when implementing the Glean-side upload, validation, and status-c
 
 Use `PushUploader` from `glean.indexing.push`:
 
-- `configure_datasource`: configures the datasource via the indexing datasource add API.
+- `configure_datasource`: configures the datasource via the indexing datasource add API. By default do NOT set `is_test` / `isTestDatasource=true` — a test datasource restricts visibility to designated test users, which makes `check_document_access` return `false` for ordinary users and blocks permission verification. Use a normal datasource (a distinct name for an isolated test run is fine).
 - `index_documents`: adds or updates a batch of documents (`/api/index/v1/indexdocuments`).
 - `bulk_index_documents`: full-crawl document replacement using bulk document upload.
 - `bulk_index_single_batch_upload`: uploads one pre-batched bulk document page.

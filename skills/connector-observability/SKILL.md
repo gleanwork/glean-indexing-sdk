@@ -68,6 +68,7 @@ A successful upload response only proves Glean **accepted** the batch. Do not re
 
 - Call `StatusClient.get_datasource_status` and read `documents.counts`. It reports both `uploaded` and `indexed` counts per object type. Treat indexing as confirmed only when the `indexed` count for your object type is non-zero and consistent with the number of documents pushed. `uploaded > indexed` shortly after a run is normal (indexing is asynchronous); `indexed` staying at zero indicates a real problem.
 - Check the latest entry in `documents.bulkUploadHistory` for your `uploadId`: `status: SUCCESSFUL` and `processingState: UPLOAD COMPLETED`.
+- For permission-trimmed documents, also confirm access resolves: `StatusClient.check_document_access` returns `true` for a user in the document's `allowed_users` (allow for async processing delay). This catches ACL identities that were never indexed — a `400 ... please index the user before adding permissions` at upload, or a silently unfindable document, means the identities were not indexed before the documents (see the `connector-push` skill).
 
 ## Required Plan Fields
 
@@ -90,4 +91,5 @@ For an implementation eval with credentials, verify:
 - Connector run emits lifecycle/fetch/transform/upload logs.
 - Upload status/debug checks are attempted only when Glean indexing credentials are available.
 - Indexing is confirmed via `get_datasource_status` (`indexed` counts non-zero for the object type), not inferred from a successful upload response alone.
+- For permission-trimmed connectors, access is confirmed via `check_document_access` for a real ACL member, confirming the ACL identities were indexed before the documents.
 - No secret values appear in logs or `.glean/` artifacts.

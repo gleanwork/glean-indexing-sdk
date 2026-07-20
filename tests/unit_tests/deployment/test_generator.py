@@ -47,6 +47,7 @@ def test_gcp_generates_all_expected_files():
         "terraform/variables.tf",
         "glean_deployment.yaml",
         ".env.example",
+        ".dockerignore",
     }
     assert set(artifacts.keys()) == expected
 
@@ -100,6 +101,7 @@ def test_aws_generates_all_expected_files():
         "terraform/variables.tf",
         "glean_deployment.yaml",
         ".env.example",
+        ".dockerignore",
     }
     assert set(artifacts.keys()) == expected
 

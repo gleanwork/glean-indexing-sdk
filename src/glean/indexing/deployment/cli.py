@@ -301,9 +301,23 @@ def status(config_path: str) -> None:
 @cli.command()
 @click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
 @click.option("--terraform-dir", default="terraform", show_default=True, type=click.Path(file_okay=False))
-@click.confirmation_option(prompt="This will destroy the connector deployment. Are you sure?")
-def destroy(config_path: str, terraform_dir: str) -> None:
-    """Tear down the connector deployment via terraform destroy."""
+@click.option("--yes", is_flag=True, default=False, help="Skip the confirmation prompts (use in CI only).")
+def destroy(config_path: str, terraform_dir: str, yes: bool) -> None:
+    """Tear down the connector deployment via terraform destroy.
+
+    Requires two confirmations: first an explicit 'yes' prompt, then typing
+    the connector name to prevent accidental teardown. Pass --yes to skip
+    both (intended for CI pipelines only).
+    """
+    config = _load_config(Path(config_path))
+    if not yes:
+        click.confirm(
+            f"This will permanently destroy the '{config.connector_name}' deployment and all managed cloud resources. Continue?",
+            abort=True,
+        )
+        typed = click.prompt(f"Type the connector name '{config.connector_name}' to confirm")
+        if typed != config.connector_name:
+            raise click.ClickException(f"Confirmation failed: expected '{config.connector_name}', got '{typed}'.")
     config = _load_config(Path(config_path))
     tf_dir = Path(terraform_dir)
     if not tf_dir.exists():

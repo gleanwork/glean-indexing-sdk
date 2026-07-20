@@ -134,8 +134,8 @@ Use the `glean-deploy` CLI:
 | `glean-deploy status` | Show CronJob status and recent job history. |
 | `glean-deploy logs` | Show logs from the most recent run. |
 | `glean-deploy logs -f` | Tail logs in follow mode. |
-| `glean-deploy destroy` | Tear down the deployment with confirmation. |
-| `glean-deploy destroy --yes` | Tear down the deployment without an interactive confirmation prompt. |
+| `glean-deploy destroy` | Tear down the deployment — two-step confirmation: y/n prompt then type the connector name. |
+| `glean-deploy destroy --yes` | Tear down without prompts (CI only). |
 
 For `glean-deploy init`, only `--cloud` is required. If omitted, `--connector-name` defaults to the current directory name, `--connector-class` defaults to `MyConnector`, and `--connector-module` defaults to `connector`. Pass those options when the generated connector uses different names.
 
@@ -257,10 +257,12 @@ After connector code and plan are ready:
 
 Use `glean-deploy destroy` only when the user explicitly wants teardown.
 
-For complete teardown:
+`destroy` requires two confirmations interactively: a y/n prompt then typing the connector name. This prevents accidental teardown of production deployments. For CI pipelines use `--yes` to skip both.
 
 ```bash
-glean-deploy destroy --yes
+glean-deploy destroy
+# Prompt 1: "This will permanently destroy 'my_connector'... Continue? [y/N]"
+# Prompt 2: "Type the connector name 'my_connector' to confirm:"
 ```
 
 ## Evaluation

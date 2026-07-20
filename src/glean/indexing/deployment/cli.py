@@ -318,7 +318,6 @@ def destroy(config_path: str, terraform_dir: str, yes: bool) -> None:
         typed = click.prompt(f"Type the connector name '{config.connector_name}' to confirm")
         if typed != config.connector_name:
             raise click.ClickException(f"Confirmation failed: expected '{config.connector_name}', got '{typed}'.")
-    config = _load_config(Path(config_path))
     tf_dir = Path(terraform_dir)
     if not tf_dir.exists():
         raise click.ClickException(f"Terraform directory not found: {tf_dir}.")

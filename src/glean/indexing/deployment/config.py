@@ -36,8 +36,9 @@ class DeploymentConfig(BaseModel):
         description=(
             "Override the GKE cluster API endpoint used by Terraform's kubernetes provider. "
             "Required for private-only GKE clusters (enablePublicEndpoint: false) that expose a "
-            "GKE DNS endpoint (*.gke.goog). Set this to the full DNS endpoint, e.g. "
-            "\"https://<hash>.gke.goog\". Leave unset for clusters with a public IP endpoint."
+            "GKE DNS endpoint (*.gke.goog). Set this to the bare hostname only, e.g. "
+            "\"abc123.gke.goog\" — Terraform prepends https:// automatically. "
+            "Leave unset for clusters with a public IP endpoint."
         ),
     )
 

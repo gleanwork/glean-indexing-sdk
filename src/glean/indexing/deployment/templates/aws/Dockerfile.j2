@@ -17,13 +17,20 @@ RUN useradd --create-home --shell /bin/bash connector
 
 WORKDIR /app
 
-# Upgrade pip and setuptools so modern pyproject.toml build backends are available.
-RUN pip install --no-cache-dir --upgrade pip setuptools
+# Upgrade pip so modern pyproject.toml build backends are available.
+RUN pip install --no-cache-dir --upgrade pip
 
-# Copy connector source and install dependencies.
+# Install connector dependencies declared in pyproject.toml.
+# Uses Python 3.11 built-in tomllib to parse deps without packaging the connector
+# module — avoids setuptools auto-discovery errors when run.py and connector.py coexist.
 COPY pyproject.toml ./
+RUN python -c "\
+import tomllib, subprocess, sys; \
+data = tomllib.load(open('pyproject.toml', 'rb')); \
+deps = data.get('project', {}).get('dependencies', []); \
+deps and subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-cache-dir'] + deps, check=True)"
+
 COPY . .
-RUN pip install --no-cache-dir .
 
 USER connector
 

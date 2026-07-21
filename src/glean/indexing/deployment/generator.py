@@ -28,6 +28,7 @@ _AWS_ARTIFACTS: list[tuple[str, str]] = [
 _COMMON_ARTIFACTS: list[tuple[str, str]] = [
     ("glean_deployment.yaml", "common/glean_deployment.yaml.j2"),
     (".env.example", "common/env_example.j2"),
+    (".dockerignore", "common/dockerignore.j2"),
 ]
 
 

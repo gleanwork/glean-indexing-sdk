@@ -118,14 +118,15 @@ def test_secrets_upload_calls_upload_secrets(runner, tmp_path, gcp_deployment_ya
     env_file = tmp_path / ".env"
     env_file.write_text("API_KEY=secret\n")
 
-    with patch("glean.indexing.deployment.secrets.upload_secrets") as mock_upload:
-        mock_upload.return_value = {"CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_API_KEY": "created"}
+    mock_backend = MagicMock()
+    mock_backend.upload.return_value = {"CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_API_KEY": "created"}
+    with patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend):
         result = runner.invoke(
             cli,
             ["secrets", "upload", "--env-file", str(env_file), "--config", str(gcp_deployment_yaml)],
         )
         assert result.exit_code == 0, result.output
-        mock_upload.assert_called_once()
+        mock_backend.upload.assert_called_once()
         assert "created" in result.output
 
 
@@ -133,8 +134,9 @@ def test_secrets_upload_no_secrets(runner, tmp_path, gcp_deployment_yaml):
     env_file = tmp_path / ".env"
     env_file.write_text("")
 
-    with patch("glean.indexing.deployment.secrets.upload_secrets") as mock_upload:
-        mock_upload.return_value = {}
+    mock_backend = MagicMock()
+    mock_backend.upload.return_value = {}
+    with patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend):
         result = runner.invoke(
             cli,
             ["secrets", "upload", "--env-file", str(env_file), "--config", str(gcp_deployment_yaml)],
@@ -144,15 +146,15 @@ def test_secrets_upload_no_secrets(runner, tmp_path, gcp_deployment_yaml):
 
 
 # ---------------------------------------------------------------------------
-# destroy (confirmation prompt)
+# destroy (2-step confirmation)
 # ---------------------------------------------------------------------------
 
 
-def test_destroy_prompts_for_confirmation(runner, tmp_path, gcp_deployment_yaml):
+def test_destroy_first_prompt_abort(runner, tmp_path, gcp_deployment_yaml):
     tf_dir = tmp_path / "terraform"
     tf_dir.mkdir()
 
-    # Answer "n" to abort
+    # Answer "n" to the first prompt — terraform must not run
     with patch("subprocess.run") as mock_run:
         result = runner.invoke(
             cli,
@@ -160,23 +162,54 @@ def test_destroy_prompts_for_confirmation(runner, tmp_path, gcp_deployment_yaml)
             input="n\n",
         )
         assert result.exit_code != 0 or "Aborted" in result.output
-        # terraform destroy should NOT have been called
         mock_run.assert_not_called()
 
 
-def test_destroy_proceeds_with_yes(runner, tmp_path, gcp_deployment_yaml):
+def test_destroy_wrong_connector_name_aborts(runner, tmp_path, gcp_deployment_yaml):
     tf_dir = tmp_path / "terraform"
     tf_dir.mkdir()
 
+    # Say "y" to the first prompt but type the wrong connector name
+    with patch("subprocess.run") as mock_run:
+        result = runner.invoke(
+            cli,
+            ["destroy", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+            input="y\nwrong_name\n",
+        )
+        assert result.exit_code != 0
+        assert "Confirmation failed" in result.output or "Error" in result.output
+        mock_run.assert_not_called()
+
+
+def test_destroy_two_step_confirmation_succeeds(runner, tmp_path, gcp_deployment_yaml):
+    tf_dir = tmp_path / "terraform"
+    tf_dir.mkdir()
+
+    # First: "y", second: connector name from fixture ("my_salesforce")
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
             cli,
             ["destroy", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
-            input="y\n",
+            input="y\nmy_salesforce\n",
         )
         assert result.exit_code == 0, result.output
-        mock_run.assert_called_once()
+        assert mock_run.called
+
+
+def test_destroy_yes_flag_skips_prompts(runner, tmp_path, gcp_deployment_yaml):
+    tf_dir = tmp_path / "terraform"
+    tf_dir.mkdir()
+
+    # --yes should skip both confirmation prompts entirely
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(
+            cli,
+            ["destroy", "--yes", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+        )
+        assert result.exit_code == 0, result.output
+        assert mock_run.called
 
 
 # ---------------------------------------------------------------------------
@@ -204,8 +237,13 @@ def test_build_invokes_docker_build(runner, tmp_path, gcp_deployment_yaml):
         )
         assert result.exit_code == 0, result.output
         build_call = mock_run.call_args_list[0]
-        assert "docker" in build_call.args[0]
-        assert "build" in build_call.args[0]
+        cmd = build_call.args[0]
+        assert "docker" in cmd
+        assert "buildx" in cmd
+        assert "build" in cmd
+        assert "--platform" in cmd
+        assert "linux/amd64" in cmd
+        assert "--load" in cmd  # no --push → load into local daemon
 
 
 def test_build_uses_config_parent_as_cwd(runner, tmp_path, gcp_deployment_yaml):
@@ -224,10 +262,11 @@ def test_build_push_calls_docker_push(runner, tmp_path, gcp_deployment_yaml):
             ["build", "--push", "--config", str(gcp_deployment_yaml)],
         )
         assert result.exit_code == 0, result.output
-        assert mock_run.call_count == 2
-        push_call = mock_run.call_args_list[1]
-        assert "docker" in push_call.args[0]
-        assert "push" in push_call.args[0]
+        # buildx build --push is a single command (no separate docker push step)
+        assert mock_run.call_count == 1
+        cmd = mock_run.call_args_list[0].args[0]
+        assert "--push" in cmd
+        assert "--load" not in cmd
 
 
 def test_build_missing_config_shows_error(runner, tmp_path):

@@ -31,6 +31,16 @@ class DeploymentConfig(BaseModel):
     project_id: Optional[str] = Field(default=None, description="GCP project ID. Required when cloud=gcp.")
     artifact_registry_repo: Optional[str] = Field(default=None, description="Artifact Registry repo URL. Required when cloud=gcp.")
     service_account_name: Optional[str] = Field(default=None, description="GCP service account for Workload Identity. Defaults to <connector_name>-sa.")
+    cluster_endpoint: Optional[str] = Field(
+        default=None,
+        description=(
+            "Override the GKE cluster API endpoint used by Terraform's kubernetes provider. "
+            "Required for private-only GKE clusters (enablePublicEndpoint: false) that expose a "
+            "GKE DNS endpoint (*.gke.goog). Set this to the bare hostname only, e.g. "
+            "\"abc123.gke.goog\" — Terraform prepends https:// automatically. "
+            "Leave unset for clusters with a public IP endpoint."
+        ),
+    )
 
     # AWS-specific
     account_id: Optional[str] = Field(default=None, description="AWS account ID. Required when cloud=aws.")

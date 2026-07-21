@@ -34,3 +34,15 @@ variable "image" {
   type        = string
   default     = "{{ config.image_name }}:latest"
 }
+
+variable "cluster_endpoint" {
+  description = <<-EOT
+    Override the GKE cluster API endpoint used by the Terraform kubernetes provider.
+    Required for private-only GKE clusters (enablePublicEndpoint: false) that expose a GKE DNS
+    endpoint (*.gke.goog). Set to the bare DNS hostname, e.g. "abc123.gke.goog".
+    Leave null to use the endpoint auto-discovered from the cluster data source.
+    Reference: https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-architecture#control_plane_endpoint_modes
+  EOT
+  type        = string
+  default     = {{ ('"%s"' % config.cluster_endpoint) if config.cluster_endpoint else 'null' }}
+}

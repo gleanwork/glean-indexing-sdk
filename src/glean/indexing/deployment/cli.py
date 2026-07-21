@@ -107,21 +107,37 @@ def init(cloud: str, connector_name: str | None, connector_class: str, connector
 @cli.command()
 @click.option("--push", is_flag=True, help="Push image to registry after building.")
 @click.option("--tag", default="latest", show_default=True)
+@click.option(
+    "--platform",
+    default="linux/amd64",
+    show_default=True,
+    help="Target platform for buildx (e.g. linux/amd64, linux/arm64). "
+    "GKE/EKS nodes are typically linux/amd64; set this when building on Apple Silicon (arm64).",
+)
 @click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
-def build(push: bool, tag: str, config_path: str) -> None:
-    """Build (and optionally push) the connector container image."""
+def build(push: bool, tag: str, platform: str, config_path: str) -> None:
+    """Build (and optionally push) the connector container image.
+
+    Uses ``docker buildx`` to support cross-platform builds. When ``--push`` is
+    supplied the image is pushed directly from the builder — no separate
+    ``docker push`` step is needed.
+    """
     config = _load_config(Path(config_path))
     image = f"{config.image_name}:{tag}"
     build_dir = Path(config_path).resolve().parent
 
-    click.echo(f"Building image: {image}")
-    if subprocess.run(["docker", "build", "-t", image, "."], cwd=build_dir, check=False).returncode != 0:
-        raise click.ClickException("docker build failed.")
-
+    # buildx build with explicit platform; --push sends directly to the registry,
+    # --load pulls the result into the local docker daemon (single-platform only).
+    cmd = ["docker", "buildx", "build", "--platform", platform, "-t", image]
     if push:
-        click.echo(f"Pushing image: {image}")
-        if subprocess.run(["docker", "push", image], check=False).returncode != 0:
-            raise click.ClickException("docker push failed.")
+        cmd.append("--push")
+    else:
+        cmd.append("--load")
+    cmd.append(".")
+
+    click.echo(f"Building image: {image}  (platform={platform})")
+    if subprocess.run(cmd, cwd=build_dir, check=False).returncode != 0:
+        raise click.ClickException("docker buildx build failed.")
 
     click.echo(f"Done: {image}")
 
@@ -213,6 +229,8 @@ def apply(config_path: str, terraform_dir: str) -> None:
             f"-var=namespace={config.namespace}",
             f"-var=image={config.image_name}:latest",
         ]
+        if config.cluster_endpoint:
+            var_flags.append(f"-var=cluster_endpoint={config.cluster_endpoint}")
     else:
         var_flags = [
             f"-var=account_id={config.account_id}",
@@ -283,10 +301,23 @@ def status(config_path: str) -> None:
 @cli.command()
 @click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
 @click.option("--terraform-dir", default="terraform", show_default=True, type=click.Path(file_okay=False))
-@click.confirmation_option(prompt="This will destroy the connector deployment. Are you sure?")
-def destroy(config_path: str, terraform_dir: str) -> None:
-    """Tear down the connector deployment via terraform destroy."""
+@click.option("--yes", is_flag=True, default=False, help="Skip the confirmation prompts (use in CI only).")
+def destroy(config_path: str, terraform_dir: str, yes: bool) -> None:
+    """Tear down the connector deployment via terraform destroy.
+
+    Requires two confirmations: first an explicit 'yes' prompt, then typing
+    the connector name to prevent accidental teardown. Pass --yes to skip
+    both (intended for CI pipelines only).
+    """
     config = _load_config(Path(config_path))
+    if not yes:
+        click.confirm(
+            f"This will permanently destroy the '{config.connector_name}' deployment and all managed cloud resources. Continue?",
+            abort=True,
+        )
+        typed = click.prompt(f"Type the connector name '{config.connector_name}' to confirm")
+        if typed != config.connector_name:
+            raise click.ClickException(f"Confirmation failed: expected '{config.connector_name}', got '{typed}'.")
     tf_dir = Path(terraform_dir)
     if not tf_dir.exists():
         raise click.ClickException(f"Terraform directory not found: {tf_dir}.")
@@ -299,6 +330,8 @@ def destroy(config_path: str, terraform_dir: str) -> None:
             f"-var=namespace={config.namespace}",
             f"-var=image={config.image_name}:latest",
         ]
+        if config.cluster_endpoint:
+            var_flags.append(f"-var=cluster_endpoint={config.cluster_endpoint}")
     else:
         var_flags = [
             f"-var=account_id={config.account_id}",

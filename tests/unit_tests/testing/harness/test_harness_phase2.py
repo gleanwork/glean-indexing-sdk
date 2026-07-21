@@ -196,6 +196,21 @@ class TestRunIntegrationTestCacheHit:
 
 
 class TestRunIntegrationTestMaxItems:
+    def test_default_max_items_limits_each_registered_client(self, tmp_path: Path):
+        docs = [{"id": str(i), "title": f"Doc {i}"} for i in range(6)]
+        real_client = _CountingDataClient(docs)
+        connector = DatasourceFake(name="ds", data_client=real_client)
+        config = TestConfig(cache_dir=str(tmp_path))
+
+        harness = TestHarness(
+            connector=connector, config=config, clients={"data_client": real_client}
+        )
+        result = harness.run_integration_test()
+
+        result.assert_documents_posted(count=5)
+        data_path = _fixture_data_path(tmp_path, "ds", "data_client")
+        assert len(data_path.read_text().splitlines()) == 5
+
     def test_max_items_limits_recorded_items(self, tmp_path: Path):
         real_client = _CountingDataClient(_DOCS)  # 3 items
         connector = DatasourceFake(name="ds", data_client=real_client)

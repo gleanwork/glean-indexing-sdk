@@ -26,15 +26,15 @@ class ClientConfig:
 
     Attributes:
         max_items: Maximum number of items to fetch/replay for this client.
-            ``None`` means no limit.
+            Defaults to 5. Set to ``None`` to disable the limit.
     """
 
-    max_items: Optional[int] = None
+    max_items: Optional[int] = 5
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ClientConfig":
         """Construct a ``ClientConfig`` from a plain dict."""
-        return cls(max_items=data.get("max_items"))
+        return cls(max_items=data.get("max_items", 5))
 
 
 @dataclass

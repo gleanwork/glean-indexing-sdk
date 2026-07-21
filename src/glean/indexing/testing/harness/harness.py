@@ -42,7 +42,7 @@ from glean.indexing.testing.harness.cache.replay_client import (
     ReplayDataClientWrapper,
     ReplayStreamingClientWrapper,
 )
-from glean.indexing.testing.harness.config import TestConfig
+from glean.indexing.testing.harness.config import ClientConfig, TestConfig
 from glean.indexing.testing.harness.permissions import assert_negative_identities_absent
 from glean.indexing.testing.mock_client import MockGleanClient
 from glean.indexing.testing.runner import run_connector, run_connector_async
@@ -99,9 +99,7 @@ def _wrap_client(
     max_items: Optional[int],
 ) -> AnyDataClient:
     """Return a recording or replay wrapper for *client*."""
-    manifest_path = (
-        cache_dir / connector_name / "integration" / attr_name / _MANIFEST_FILENAME
-    )
+    manifest_path = cache_dir / connector_name / "integration" / attr_name / _MANIFEST_FILENAME
     if _should_use_cache(manifest_path, use_cache=use_cache, refresh_cache=refresh_cache):
         logger.debug("Cache HIT for client '%s'", attr_name)
         if isinstance(client, BaseAsyncStreamingDataClient):
@@ -179,8 +177,8 @@ def _patched_clients(
                 )
             originals[attr_name] = getattr(connector, attr_name)
 
-            client_cfg = config.clients.get(attr_name)
-            max_items = client_cfg.max_items if client_cfg else None
+            client_cfg = config.clients.get(attr_name, ClientConfig())
+            max_items = client_cfg.max_items
 
             wrapped = _wrap_client(
                 attr_name,

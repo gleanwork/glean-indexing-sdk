@@ -10,6 +10,7 @@ from glean.api_client.models import (
     DebugDocumentRequest,
     DocumentDefinition,
     EmployeeInfoDefinition,
+    ProcessAllDocumentsRequest,
 )
 
 from glean.indexing import StatusClient as TopLevelStatusClient
@@ -119,6 +120,17 @@ def test_delete_document_calls_generated_client():
         object_type="Article",
         id="doc-1",
         version=3,
+    )
+
+
+def test_process_all_documents_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        uploader.process_all_documents()
+
+    client.indexing.documents.process_all.assert_called_once_with(
+        request=ProcessAllDocumentsRequest(datasource="test_datasource")
     )
 
 

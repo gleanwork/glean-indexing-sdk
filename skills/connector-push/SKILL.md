@@ -31,6 +31,7 @@ Use `PushUploader` from `glean.indexing.push`:
 - `index_documents`: adds or updates a batch of documents (`/api/index/v1/indexdocuments`).
 - `bulk_index_documents`: full-crawl document replacement using bulk document upload.
 - `bulk_index_single_batch_upload`: uploads one pre-batched bulk document page.
+- `process_all_documents`: requests immediate processing after a test upload; let the test harness invoke it rather than adding connector-specific calls.
 - `delete_document`: deletes one document when explicitly required.
 - `index_user`: adds or updates one datasource user.
 - `bulk_index_users`: full-crawl datasource user replacement.

@@ -21,6 +21,7 @@ Phase 3 (end-to-end — real source, real Glean):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import contextmanager
 from pathlib import Path
@@ -43,6 +44,10 @@ from glean.indexing.testing.harness.cache.replay_client import (
     ReplayStreamingClientWrapper,
 )
 from glean.indexing.testing.harness.config import ClientConfig, TestConfig
+from glean.indexing.testing.harness.indexing_wait import (
+    capture_document_uploads,
+    wait_for_documents_to_index,
+)
 from glean.indexing.testing.harness.permissions import assert_negative_identities_absent
 from glean.indexing.testing.mock_client import MockGleanClient
 from glean.indexing.testing.runner import run_connector, run_connector_async
@@ -400,8 +405,17 @@ class TestHarness:
             self._config.run_id_prefix,
             mode.name,
         )
-        with _patched_clients(self._connector, self._clients, self._config):
-            self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+        with capture_document_uploads() as uploaded_documents:
+            with _patched_clients(self._connector, self._clients, self._config):
+                self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+
+        wait_for_documents_to_index(
+            self._connector.name,  # type: ignore[attr-defined]
+            uploaded_documents,
+            initial_wait_seconds=self._config.initial_index_wait_seconds,
+            poll_interval_seconds=self._config.index_poll_interval_seconds,
+            timeout_seconds=self._config.index_wait_timeout_seconds,
+        )
 
     async def run_end_to_end_async(
         self,
@@ -436,11 +450,21 @@ class TestHarness:
             self._config.run_id_prefix,
             mode.name,
         )
-        with _patched_clients(self._connector, self._clients, self._config):
-            if isinstance(self._connector, BaseAsyncStreamingDatasourceConnector):
-                await self._connector.index_data_async(mode=mode, options=options)
-            else:
-                self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+        with capture_document_uploads() as uploaded_documents:
+            with _patched_clients(self._connector, self._clients, self._config):
+                if isinstance(self._connector, BaseAsyncStreamingDatasourceConnector):
+                    await self._connector.index_data_async(mode=mode, options=options)
+                else:
+                    self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+
+        await asyncio.to_thread(
+            wait_for_documents_to_index,
+            self._connector.name,  # type: ignore[attr-defined]
+            uploaded_documents,
+            initial_wait_seconds=self._config.initial_index_wait_seconds,
+            poll_interval_seconds=self._config.index_poll_interval_seconds,
+            timeout_seconds=self._config.index_wait_timeout_seconds,
+        )
 
     # ------------------------------------------------------------------
     # Internals

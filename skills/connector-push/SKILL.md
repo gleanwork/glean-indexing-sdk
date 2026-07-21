@@ -17,6 +17,7 @@ Use this skill when implementing the Glean-side upload, validation, and status-c
 ## Rules
 
 - Use only the SDK push/status wrappers listed below. Do not call undocumented Glean APIs or generated-client methods directly from generated connector code.
+- Keep document object types and datasource configuration bidirectionally consistent: every non-empty `object_type` or `container_object_type` emitted by a `DocumentDefinition` must have a matching `ObjectDefinition.name` in `CustomDatasourceConfig.object_definitions`, and every configured object definition must be used by the connector. Configure the datasource with the complete set before uploading documents; otherwise Glean rejects undeclared object types.
 - Use full-crawl bulk operations for AI-built connectors. Incremental, partial-update, or delete-heavy behavior needs explicit developer attention after full crawl works.
 - Record which Glean-side methods are used in `<connector-folder>/.glean/connector_plan.md`.
 - Use the load and crawl-frequency decisions from the confirmed connector plan.

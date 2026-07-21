@@ -50,7 +50,6 @@ An incremental crawl processes only changes since a durable checkpoint, includin
    - fields available from each endpoint that matter for search, URLs, timestamps, authors, permissions, and metadata
    - full-crawl behavior and any incremental follow-up notes
    - test/API-exploration auth and production auth, including when they differ
-   - every known test-to-production difference, the implementation or configuration change required to resolve it, and how the production behavior will be validated
    - SDK usage mode: full connector flow, push-layer-only, or another confirmed combination
    - Glean-side upload/status endpoints from the `connector-push` skill
    - runtime logging, metrics, and evaluation checks from the `connector-observability` skill

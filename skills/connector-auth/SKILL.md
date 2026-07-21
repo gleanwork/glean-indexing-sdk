@@ -33,7 +33,6 @@ Document one of these in `<connector-folder>/.glean/connector_plan.md` and `<con
 - Basic auth via environment variables.
 - OAuth bearer token supplied by the deployment environment.
 - OAuth refresh flow, if the source API and SDK support are both clear.
-- Custom auth, tracked as an unresolved production-readiness gap until it can be represented safely, implemented, and validated.
 
 ## Required Plan Fields
 

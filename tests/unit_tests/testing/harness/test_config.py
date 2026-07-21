@@ -11,7 +11,7 @@ from glean.indexing.testing.harness.config import ClientConfig, TestConfig
 class TestClientConfig:
     def test_defaults(self):
         cfg = ClientConfig()
-        assert cfg.max_items is None
+        assert cfg.max_items == 5
 
     def test_from_dict_full(self):
         cfg = ClientConfig.from_dict({"max_items": 100})
@@ -19,6 +19,10 @@ class TestClientConfig:
 
     def test_from_dict_empty(self):
         cfg = ClientConfig.from_dict({})
+        assert cfg.max_items == 5
+
+    def test_explicit_none_disables_limit(self):
+        cfg = ClientConfig.from_dict({"max_items": None})
         assert cfg.max_items is None
 
 

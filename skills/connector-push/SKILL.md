@@ -47,6 +47,8 @@ Use `StatusClient` from `glean.indexing.push`:
 - `get_documents_status`: checks upload, indexing, and permission status for specific documents.
 - `check_document_access`: checks whether a user has access to a document.
 
+When interpreting `get_documents_status`, keep `permissionIdentityStatus` separate from the document upload/processing status. `permissionIdentityStatus` only reports whether permission identities were uploaded and has the values `UPLOADED`, `NOT_UPLOADED`, or `UNKNOWN`; it never returns `INDEXED`. `INDEXED` belongs to the document upload/processing status.
+
 Use these debug helpers only through `PushUploader`:
 
 - `get_document_lifecycle_events`: gets lifecycle events for a datasource document.

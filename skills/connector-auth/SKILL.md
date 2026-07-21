@@ -17,11 +17,11 @@ Use this skill when deciding how the connector authenticates to the source API d
 ## Rules
 
 - Separate test/API-exploration auth from production source auth.
-- If test auth and production auth differ, both must be described in the initial confirmed plan before implementation. Do not test with a PAT and later switch to OAuth without updating the plan and calling out what remains untested.
+- If test auth and production auth differ, both must be described in the initial confirmed plan before implementation and the difference must be tracked as a production-readiness gap. Implement, configure, and validate the production mechanism before calling the connector complete or beginning deployment.
 - Never persist raw credentials, tokens, cookies, or secrets in `.glean/`, generated code, examples, or logs.
 - Store only environment variable names, secret names, auth flow descriptions, scopes, and setup instructions.
 - If the user provides a temporary token for exploration, treat it as test-only.
-- If OAuth is required, document scopes, token endpoint, refresh behavior, and whether the SDK has enough support or needs developer follow-up.
+- If OAuth is required, document scopes, token endpoint, refresh behavior, and whether the SDK has enough support. Missing support required by the production plan blocks completion until it is implemented and validated.
 - If auth docs are missing or ambiguous, ask the user for API auth documentation or sample auth configuration before implementation.
 
 ## Supported Auth Plans
@@ -33,7 +33,7 @@ Document one of these in `<connector-folder>/.glean/connector_plan.md` and `<con
 - Basic auth via environment variables.
 - OAuth bearer token supplied by the deployment environment.
 - OAuth refresh flow, if the source API and SDK support are both clear.
-- Custom auth, marked as developer follow-up if it cannot be represented safely with current SDK patterns.
+- Custom auth, tracked as an unresolved production-readiness gap until it can be represented safely, implemented, and validated.
 
 ## Required Plan Fields
 
@@ -44,7 +44,7 @@ Before validation, ensure the artifacts include filled-in values for:
 - `Auth validation gap`: anything production auth requires that was not exercised during exploration/testing.
 - Required scopes or permissions.
 - Environment variable names or secret names.
-- Any auth limitations or follow-up work.
+- Any auth limitations or production-readiness gaps, their required resolution, and current validation status.
 
 Example:
 

@@ -31,6 +31,7 @@ An incremental crawl processes only changes since a durable checkpoint, includin
 - The AI-building workflow generates full-crawl connectors only. Do not implement incremental crawl in generated code; record it only as developer follow-up after full crawl works end-to-end.
 - Do not add unit tests during initial connector generation. First get a full-crawl connector compiling and passing an end-to-end smoke run; add focused regression tests only after the E2E path is confirmed.
 - Always ask the user connector data-model questions before drafting the connector plan. Do not infer final scope from API docs alone.
+- Treat every observed difference between test/exploration and the intended production environment as a production-readiness gap, regardless of domain. This includes authentication, scopes, endpoints, data coverage, permissions, rate limits, volume, secret names, runtime configuration, and deployment behavior. A gap may be recorded while development continues, but it is not an optional developer follow-up: implement or configure the production behavior, validate it at the highest feasible fidelity, and update the plan before calling the connector complete or beginning deployment. Reserve developer follow-ups for optional enhancements that are not required by the confirmed production plan.
 - After making connector or harness implementation changes, use the `connector-testing` skill and ask once whether to proceed to the testing step.
 - At the start of a connector-building session, check whether this plugin is up to date: compare the locally installed version (`claude plugin list`) against the latest in the open-source repo (the `version` in `package.json` on `main` in `gleanwork/glean-indexing-sdk`, falling back to `feature/v0-workstream` if `package.json` is unavailable on `main`). If they differ, tell the user an update is available and give them the exact commands from the README's "Updating the plugin" section (`git pull && npm run build:plugins && claude plugin marketplace update glean-indexing-sdk-agent-plugin && claude plugin update glean-connector-builder@glean-indexing-sdk-agent-plugin`). These commands are for Claude Code; for other AI tools, tell the user the equivalent plugin-update commands for their environment. If the versions match or the check fails, continue without interrupting the user.
 
@@ -49,6 +50,7 @@ An incremental crawl processes only changes since a durable checkpoint, includin
    - fields available from each endpoint that matter for search, URLs, timestamps, authors, permissions, and metadata
    - full-crawl behavior and any incremental follow-up notes
    - test/API-exploration auth and production auth, including when they differ
+   - every known test-to-production difference, the implementation or configuration change required to resolve it, and how the production behavior will be validated
    - SDK usage mode: full connector flow, push-layer-only, or another confirmed combination
    - Glean-side upload/status endpoints from the `connector-push` skill
    - runtime logging, metrics, and evaluation checks from the `connector-observability` skill
@@ -62,7 +64,8 @@ python scripts/connector_builder/connector_builder.py validate <connector-folder
 ```
 
 7. Implement the data client and connector using the `connector-auth`, `connector-pull`, `connector-push`, `connector-observability`, and `connector-deployment` skills as applicable. Post-validation code generation is handled by the agent following the skills, not by the local validator.
-8. Evaluate with compile checks and an end-to-end full-crawl smoke run first. Add unit tests only after that path works and the behavior is stable enough for regression coverage.
+8. Before calling the connector complete or starting deployment, re-read the plan and source investigation, compare the tested implementation and configuration with every confirmed production requirement, resolve all test-to-production differences, update the plan with the result, and rerun the relevant validation. Stop and ask for the required decision, credential setup, implementation, or configuration when a production-readiness gap cannot yet be resolved.
+9. Evaluate with compile checks and an end-to-end full-crawl smoke run first. Add unit tests only after that path works and the behavior is stable enough for regression coverage.
 
 ## Required Artifacts
 
@@ -97,3 +100,4 @@ Evaluate connector quality by checking:
 - Deployment artifacts or deployment plan match the confirmed hosting scope, if deployment is in scope.
 - After deployment, actual deployed connector logs show lifecycle, fetch, transform, upload, and failure/success signals without secrets.
 - Connector behavior matches the confirmed plan, especially full vs incremental crawl constraints.
+- No required production behavior remains test-only, unimplemented, unconfigured, unvalidated, or recorded as a developer follow-up.

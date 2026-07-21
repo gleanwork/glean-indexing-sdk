@@ -1,0 +1,48 @@
+{
+  "datasource": "webex",
+  "display_name": "Cisco Webex (Messaging)",
+  "api_base_url": "https://webexapis.com/v1",
+  "confirmed_by_user": true,
+  "confirmed_docs": [
+    {
+      "title": "Access the Webex API (Getting Started / Auth)",
+      "url": "https://developer.webex.com/docs/getting-started",
+      "purpose": "Authentication model: Authorization bearer header; personal access token (12h, non-prod), Bot token, OAuth Integration"
+    },
+    {
+      "title": "REST API Basics (Pagination & Rate Limiting)",
+      "url": "https://developer.webex.com/docs/basics",
+      "purpose": "RFC5988 Link-header pagination, max page size, 429 + Retry-After rate limiting"
+    },
+    {
+      "title": "List Rooms",
+      "url": "https://developer.webex.com/docs/api/v1/rooms/list-rooms",
+      "purpose": "Container listing (spaces)"
+    },
+    {
+      "title": "Get Room Details",
+      "url": "https://developer.webex.com/docs/api/v1/rooms/get-room-details",
+      "purpose": "Container detail"
+    },
+    {
+      "title": "List Messages",
+      "url": "https://developer.webex.com/docs/api/v1/messages/list-messages",
+      "purpose": "Message content per room (documents)"
+    },
+    {
+      "title": "List People",
+      "url": "https://developer.webex.com/docs/api/v1/people/list-people",
+      "purpose": "User identities"
+    },
+    {
+      "title": "Get My Own Details",
+      "url": "https://developer.webex.com/docs/api/v1/people/get-my-own-details",
+      "purpose": "Auth smoke test + org id"
+    },
+    {
+      "title": "List Memberships",
+      "url": "https://developer.webex.com/docs/api/v1/memberships/list-memberships",
+      "purpose": "Room membership for permissions"
+    }
+  ]
+}

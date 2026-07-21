@@ -15,6 +15,12 @@ Use this skill when the user wants to build, evaluate, or iterate on a connector
 
 Follow this loop: ask scope -> plan -> implement -> local validation -> deploy if requested -> inspect real deployed logs -> fix and re-run validation if needed.
 
+## Crawl Semantics
+
+A full crawl is complete, self-contained replacement of the indexed state. One successful run must bring Glean to the correct end state on its own: fetch and index every document that currently falls within the confirmed source scope, then use full-crawl stale-document deletion to remove previously indexed documents that are absent from the run. This includes documents deleted at the source and documents that have aged out of a configured coverage window. Pagination and streaming may bound memory usage, but the completed run must still cover the entire confirmed scope. Never finalize a partial or failed fetch as a full crawl, because doing so can delete valid documents as stale.
+
+An incremental crawl processes only changes since a durable checkpoint, including a reliable source-side deletion signal or equivalent reconciliation mechanism. It is an optimization over a correct full-crawl implementation, not the default connector mode. The AI-building workflow supports full crawl only; record incremental crawl as developer-owned follow-up work after full crawl works end-to-end.
+
 ## Rules
 
 - Do not generate code until API exploration is complete and the user confirms the connector plan.

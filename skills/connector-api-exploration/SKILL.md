@@ -40,6 +40,7 @@ Write outputs to the connector folder:
 - Redact credentials in all persisted commands, headers, responses, and logs.
 - Record skipped endpoints and why they were skipped.
 - Do not claim incremental sync support unless the API exposes a reliable updated/deleted signal for the relevant entity.
+- Investigate coverage before asking the user to choose it. Determine what each relevant API and credential type can actually retrieve: only content visible to the authenticated account, a configurable subset, or organization-wide content. Look for documented admin, audit, export, compliance, or events APIs that broaden coverage, and record their required roles, scopes, licensing, retention windows, and other constraints. Mark each coverage option as feasible, infeasible, or unverified from the available evidence.
 - Do not hide uncertainty. Put unresolved questions in `.glean/source_investigation.md`.
 
 ## API Exploration Steps
@@ -58,13 +59,14 @@ Write outputs to the connector folder:
    - incremental filters
    - permission fields
    - deletion signals
+   - coverage boundary and any broader-coverage alternative
    - source citation
 5. If credentials are available, run minimal read-only probes against endpoints needed for the first connector version. For each probe, log the redacted request, status, headers relevant to rate limits/pagination, and representative response shape.
 6. If credentials are unavailable or a call fails, document the gap and fall back to docs-only analysis.
 7. Write a human-readable endpoint catalog to `<connector-folder>/.glean/api_inventory.md`.
 8. Write the structured endpoint inventory to `<connector-folder>/.glean/api_endpoints.json`.
 9. Write read-only probe results to `<connector-folder>/.glean/api_calls_log.md` with secrets redacted.
-10. Update `<connector-folder>/.glean/source_investigation.md` with auth, sync, permission, load, and unknowns.
+10. Update `<connector-folder>/.glean/source_investigation.md` with auth, coverage options and feasibility, sync, permission, load, and unknowns.
 
 ## Live Probe Guidance
 
@@ -106,7 +108,9 @@ Add optional fields when known:
 - `response_fields`
 - `permission_fields`
 - `deletion_behavior`
+- `coverage`
+- `coverage_requirements`
 
 ## Completion Criteria
 
-This skill is complete when the output files above contain a cited endpoint inventory, structured endpoint JSON, source investigation notes, and redacted live-probe notes when credentials were available. The top-level `connector-builder` skill owns planning, validation, and implementation sequencing.
+This skill is complete when the output files above contain a cited endpoint inventory, structured endpoint JSON, evidence-backed coverage options, source investigation notes, and redacted live-probe notes when credentials were available. The top-level `connector-builder` skill owns planning, validation, and implementation sequencing.

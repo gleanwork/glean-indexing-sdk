@@ -3,8 +3,9 @@
 #
 # This script runs inside the Kubernetes CronJob container. It:
 #   1. Reads deployment env vars from the pod spec.
-#   2. Loads connector secrets from AWS Secrets Manager.
-#   3. Imports the connector class and runs indexing.
+#   2. Configures structured logging.
+#   3. Loads connector secrets from AWS Secrets Manager.
+#   4. Imports the connector class and runs indexing.
 #
 # References:
 #   AWS Secrets Manager Python SDK: https://docs.aws.amazon.com/secretsmanager/latest/userguide/retrieving-secrets_cache-python.html
@@ -15,6 +16,8 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+
+from glean.indexing.observability import setup_connector_logging
 
 # ---------------------------------------------------------------------------
 # 1. Read required deployment env vars (set in Terraform CronJob spec).
@@ -46,7 +49,17 @@ connector_class_name = os.environ["CONNECTOR_CLASS"]
 connector_module_path = os.environ["CONNECTOR_MODULE"]
 
 # ---------------------------------------------------------------------------
-# 2. Load connector secrets from AWS Secrets Manager.
+# 2. Configure structured logging (JSON output, captured by CloudWatch Logs).
+# ---------------------------------------------------------------------------
+
+setup_connector_logging(
+    connector_name=connector_name,
+    log_level=os.getenv("LOG_LEVEL", "INFO"),
+    use_structured_logging=True,
+)
+
+# ---------------------------------------------------------------------------
+# 3. Load connector secrets from AWS Secrets Manager.
 #
 #    Secrets are stored with prefix: CUSTOM_DATASOURCE_PLATFORM_<NAME>_<KEY>
 #    See: https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html
@@ -86,7 +99,7 @@ for page in paginator.paginate(Filters=[{"Key": "name", "Values": [prefix]}]):
 print(f"Loaded {secrets_loaded} secret(s) from AWS Secrets Manager.")
 
 # ---------------------------------------------------------------------------
-# 3. Import and run the connector.
+# 4. Import and run the connector.
 # ---------------------------------------------------------------------------
 
 print(f"Importing connector: {connector_module_path}.{connector_class_name}")

@@ -186,7 +186,11 @@ def test_destroy_two_step_confirmation_succeeds(runner, tmp_path, gcp_deployment
     tf_dir.mkdir()
 
     # First: "y", second: connector name from fixture ("my_salesforce")
-    with patch("subprocess.run") as mock_run:
+    mock_backend = MagicMock()
+    mock_backend.list.return_value = []
+    with patch("subprocess.run") as mock_run, patch(
+        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
             cli,
@@ -202,7 +206,11 @@ def test_destroy_yes_flag_skips_prompts(runner, tmp_path, gcp_deployment_yaml):
     tf_dir.mkdir()
 
     # --yes should skip both confirmation prompts entirely
-    with patch("subprocess.run") as mock_run:
+    mock_backend = MagicMock()
+    mock_backend.list.return_value = []
+    with patch("subprocess.run") as mock_run, patch(
+        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
             cli,
@@ -210,6 +218,92 @@ def test_destroy_yes_flag_skips_prompts(runner, tmp_path, gcp_deployment_yaml):
         )
         assert result.exit_code == 0, result.output
         assert mock_run.called
+
+
+def test_destroy_cleans_up_secrets_by_default(runner, tmp_path, gcp_deployment_yaml):
+    tf_dir = tmp_path / "terraform"
+    tf_dir.mkdir()
+
+    mock_backend = MagicMock()
+    mock_backend.list.return_value = ["API_KEY", "API_SECRET"]
+    with patch("subprocess.run") as mock_run, patch(
+        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(
+            cli,
+            ["destroy", "--yes", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Cleaning up secrets" in result.output
+        assert mock_backend.list.called
+        assert mock_backend.delete.call_count == 2
+        mock_backend.delete.assert_any_call("API_KEY")
+        mock_backend.delete.assert_any_call("API_SECRET")
+
+
+def test_destroy_keep_secrets_flag_skips_cleanup(runner, tmp_path, gcp_deployment_yaml):
+    tf_dir = tmp_path / "terraform"
+    tf_dir.mkdir()
+
+    mock_backend = MagicMock()
+    with patch("subprocess.run") as mock_run, patch(
+        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(
+            cli,
+            ["destroy", "--yes", "--keep-secrets", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Skipping secret cleanup" in result.output
+        mock_backend.list.assert_not_called()
+        mock_backend.delete.assert_not_called()
+
+
+def test_destroy_no_secrets_shows_graceful_message(runner, tmp_path, gcp_deployment_yaml):
+    tf_dir = tmp_path / "terraform"
+    tf_dir.mkdir()
+
+    mock_backend = MagicMock()
+    mock_backend.list.return_value = []
+    with patch("subprocess.run") as mock_run, patch(
+        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(
+            cli,
+            ["destroy", "--yes", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+        )
+        assert result.exit_code == 0, result.output
+        assert "No secrets found" in result.output
+        assert "already cleaned up or never uploaded" in result.output
+
+
+def test_destroy_handles_partial_secret_deletion_failures(runner, tmp_path, gcp_deployment_yaml):
+    tf_dir = tmp_path / "terraform"
+    tf_dir.mkdir()
+
+    mock_backend = MagicMock()
+    mock_backend.list.return_value = ["API_KEY", "API_SECRET"]
+
+    def delete_side_effect(key: str) -> None:
+        if key == "API_SECRET":
+            raise Exception("Secret already deleted")
+
+    mock_backend.delete.side_effect = delete_side_effect
+
+    with patch("subprocess.run") as mock_run, patch(
+        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(
+            cli,
+            ["destroy", "--yes", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+        )
+        assert result.exit_code == 0, result.output
+        assert "deleted  API_KEY" in result.output
+        assert "failed   API_SECRET" in result.output
 
 
 # ---------------------------------------------------------------------------

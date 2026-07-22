@@ -303,7 +303,7 @@ def test_destroy_handles_partial_secret_deletion_failures(runner, tmp_path, gcp_
         )
         assert result.exit_code == 0, result.output
         assert "deleted  API_KEY" in result.output
-        assert "failed   API_SECRET" in result.output
+        assert "failed   API_SECRET" in result.stderr
 
 
 # ---------------------------------------------------------------------------

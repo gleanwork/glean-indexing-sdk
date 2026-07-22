@@ -360,19 +360,29 @@ def destroy(config_path: str, terraform_dir: str, yes: bool, keep_secrets: bool)
 
         click.echo("\nCleaning up secrets from Secret Manager...")
         backend = get_secrets_backend(config)
-        secrets = backend.list()
 
-        if not secrets:
-            click.echo("  No secrets found (already cleaned up or never uploaded).")
+        try:
+            secrets = backend.list()
+        except ImportError as exc:
+            click.echo(f"  Warning: secret cleanup skipped (missing cloud SDK dependency): {exc}", err=True)
+        except Exception as exc:
+            click.echo(f"  Warning: secret cleanup skipped (failed to list secrets): {exc}", err=True)
         else:
-            click.echo(f"  Deleting {len(secrets)} secret(s)...")
-            for key in secrets:
-                try:
-                    backend.delete(key)
-                    click.echo(f"    deleted  {key}")
-                except Exception as exc:
-                    click.echo(f"    failed   {key}: {exc}", err=True)
-            click.echo(f"  Deleted {len(secrets)} secret(s).")
+            if not secrets:
+                click.echo("  No secrets found (already cleaned up or never uploaded).")
+            else:
+                click.echo(f"  Deleting {len(secrets)} secret(s)...")
+                deleted = 0
+                failed = 0
+                for key in secrets:
+                    try:
+                        backend.delete(key)
+                        deleted += 1
+                        click.echo(f"    deleted  {key}")
+                    except Exception as exc:
+                        failed += 1
+                        click.echo(f"    failed   {key}: {exc}", err=True)
+                click.echo(f"  Secret cleanup complete (deleted={deleted}, failed={failed}).")
     else:
         click.echo("\nSkipping secret cleanup (--keep-secrets specified).")
 

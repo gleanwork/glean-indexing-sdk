@@ -63,8 +63,10 @@ python scripts/connector_builder/connector_builder.py validate <connector-folder
 ```
 
 7. Implement the data client and connector using the `connector-auth`, `connector-pull`, `connector-push`, `connector-observability`, and `connector-deployment` skills as applicable. Post-validation code generation is handled by the agent following the skills, not by the local validator.
-8. Before calling the connector complete or starting deployment, re-read the plan and source investigation, compare the tested implementation and configuration with every confirmed production requirement, resolve all test-to-production differences, update the plan with the result, and rerun the relevant validation. Stop and ask for the required decision, credential setup, implementation, or configuration when a production-readiness gap cannot yet be resolved.
-9. Evaluate with compile checks and an end-to-end full-crawl smoke run first. Add unit tests only after that path works and the behavior is stable enough for regression coverage.
+
+8. Evaluate with compile checks and an end-to-end full-crawl smoke run. Add unit tests only after that path works and the behavior is stable enough for regression coverage.
+9. Before calling the connector complete or starting deployment, re-read the plan and source investigation, compare the tested implementation and configuration with every confirmed production requirement, resolve all test-to-production differences, update the plan with the result, and rerun the relevant validation. Stop and ask for the required decision, credential setup, implementation, or configuration when a production-readiness gap cannot yet be resolved.
+
 
 ## Required Artifacts
 

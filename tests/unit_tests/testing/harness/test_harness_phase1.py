@@ -136,7 +136,12 @@ class TestRunFullMockAsync:
 
 
 class TestPublicImport:
-    """Verify that TestHarness and TestConfig are importable from the top-level testing package."""
+    """Verify that harness APIs are importable from the top-level testing package."""
 
     def test_top_level_import(self):
-        from glean.indexing.testing import ClientConfig, TestConfig, TestHarness  # noqa: F401
+        from glean.indexing.testing import (  # noqa: F401
+            ClientConfig,
+            IndexingWaitResult,
+            TestConfig,
+            TestHarness,
+        )

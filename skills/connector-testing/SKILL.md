@@ -28,6 +28,7 @@ The existing harness pytest suite validates all three harness levels:
 3. End-to-end: source side real, Glean side real.
    - Interface and wiring are covered by `tests/unit_tests/testing/harness/test_harness_phase3.py`.
    - A live E2E run requires Glean credentials and a test instance; do not assume it is included in the unit suite.
+   - After uploading documents, the harness waits for normal indexing, requests `processalldocuments` once when needed, ignores a rate-limit response from that request, and polls document status for a bounded period. If the result is `PENDING`, tell the user: "Source data was pulled successfully, and Glean accepted the document upload without validation errors. The documents are queued for asynchronous indexing, which may take longer." Then determine the next step from the confirmed connector plan and ask whether they want to proceed. Do not treat pending asynchronous indexing as a connector failure or generate connector-specific processing code.
 
 ## Credential Context
 

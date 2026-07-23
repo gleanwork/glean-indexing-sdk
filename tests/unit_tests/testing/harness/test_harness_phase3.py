@@ -15,8 +15,8 @@ import pytest
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.models import IndexingMode
-from glean.indexing.testing import StaticDataClient
-from glean.indexing.testing.harness import TestConfig, TestHarness
+from glean.indexing.testing import StaticDataClient, mock_glean_client
+from glean.indexing.testing.harness import IndexingWaitResult, TestConfig, TestHarness
 from glean.indexing.testing.harness.config import ClientConfig
 from tests.unit_tests.testing._fakes import AsyncStreamingFake, DatasourceFake
 
@@ -67,6 +67,23 @@ class TestRunEndToEnd:
         with patch.object(connector, "index_data") as mock_index:
             harness.run_end_to_end(mode=IndexingMode.INCREMENTAL)
             mock_index.assert_called_once_with(mode=IndexingMode.INCREMENTAL, options=None)
+
+    @patch("glean.indexing.testing.harness.harness.wait_for_documents_to_index")
+    def test_waits_for_uploaded_documents(self, wait_for_documents, tmp_path: Path):
+        wait_for_documents.return_value = IndexingWaitResult.PENDING
+        connector = DatasourceFake(name="ds", data_client=StaticDataClient(_DOCS))
+        config = TestConfig(cache_dir=str(tmp_path))
+        harness = TestHarness(connector=connector, config=config)
+
+        with mock_glean_client():
+            result = harness.run_end_to_end()
+
+        assert result is IndexingWaitResult.PENDING
+        wait_for_documents.assert_called_once()
+        args, kwargs = wait_for_documents.call_args
+        assert args[0] == "ds"
+        assert len(args[1]) == len(_DOCS)
+        assert kwargs == {}
 
     def test_max_items_applied_to_client(self, tmp_path: Path):
         """Clients should be patched with recording wrappers that enforce max_items."""

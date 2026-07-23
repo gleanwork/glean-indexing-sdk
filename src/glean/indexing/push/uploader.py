@@ -18,6 +18,7 @@ from glean.api_client.models import (
     DebugUserResponse,
     DocumentDefinition,
     EmployeeInfoDefinition,
+    ProcessAllDocumentsRequest,
 )
 
 from glean.indexing.common import BatchProcessor, DocumentBatchProcessor, api_client
@@ -288,6 +289,18 @@ class PushUploader:
                     object_type=object_type,
                     id=document_id,
                     version=version,
+                    **self._request_options(),
+                ),
+            )
+
+    def process_all_documents(self) -> None:
+        """Request immediate processing for all documents in the datasource."""
+        request = ProcessAllDocumentsRequest(datasource=self.datasource)
+        with api_client() as client:
+            self._call_api(
+                "documents.process_all",
+                lambda: client.indexing.documents.process_all(
+                    request=request,
                     **self._request_options(),
                 ),
             )
@@ -727,7 +740,9 @@ class PushUploader:
             raise
         finally:
             if self.observability:
-                self.observability.record_api_request_latency(self._elapsed_ms(start_time), endpoint)
+                self.observability.record_api_request_latency(
+                    self._elapsed_ms(start_time), endpoint
+                )
 
     @staticmethod
     def _elapsed_ms(start_time: float) -> int:

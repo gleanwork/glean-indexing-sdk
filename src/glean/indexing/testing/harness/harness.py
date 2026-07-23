@@ -21,6 +21,7 @@ Phase 3 (end-to-end — real source, real Glean):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import contextmanager
 from pathlib import Path
@@ -43,6 +44,11 @@ from glean.indexing.testing.harness.cache.replay_client import (
     ReplayStreamingClientWrapper,
 )
 from glean.indexing.testing.harness.config import ClientConfig, TestConfig
+from glean.indexing.testing.harness.indexing_wait import (
+    IndexingWaitResult,
+    capture_document_uploads,
+    wait_for_documents_to_index,
+)
 from glean.indexing.testing.harness.permissions import assert_negative_identities_absent
 from glean.indexing.testing.mock_client import MockGleanClient
 from glean.indexing.testing.runner import run_connector, run_connector_async
@@ -368,7 +374,7 @@ class TestHarness:
         *,
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
-    ) -> None:
+    ) -> IndexingWaitResult | None:
         """Run the connector against the real source and real Glean.
 
         The Glean API is **not** mocked — this exercises the full indexing
@@ -390,6 +396,9 @@ class TestHarness:
             mode: Indexing mode forwarded to ``connector.index_data``.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
 
+        Returns:
+            The document indexing outcome, or ``None`` when no documents were uploaded.
+
         Raises:
             ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
                 ``GLEAN_INDEXING_API_TOKEN`` or the server URL is missing from
@@ -400,15 +409,21 @@ class TestHarness:
             self._config.run_id_prefix,
             mode.name,
         )
-        with _patched_clients(self._connector, self._clients, self._config):
-            self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+        with capture_document_uploads() as uploaded_documents:
+            with _patched_clients(self._connector, self._clients, self._config):
+                self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+
+        return wait_for_documents_to_index(
+            self._connector.name,  # type: ignore[attr-defined]
+            uploaded_documents,
+        )
 
     async def run_end_to_end_async(
         self,
         *,
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
-    ) -> None:
+    ) -> IndexingWaitResult | None:
         """Async variant of :meth:`run_end_to_end`.
 
         For :class:`~glean.indexing.connectors.BaseAsyncStreamingDatasourceConnector`
@@ -423,6 +438,9 @@ class TestHarness:
             mode: Indexing mode forwarded to the connector.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
 
+        Returns:
+            The document indexing outcome, or ``None`` when no documents were uploaded.
+
         Raises:
             ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
                 environment variables for the Glean client are missing.
@@ -436,11 +454,18 @@ class TestHarness:
             self._config.run_id_prefix,
             mode.name,
         )
-        with _patched_clients(self._connector, self._clients, self._config):
-            if isinstance(self._connector, BaseAsyncStreamingDatasourceConnector):
-                await self._connector.index_data_async(mode=mode, options=options)
-            else:
-                self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+        with capture_document_uploads() as uploaded_documents:
+            with _patched_clients(self._connector, self._clients, self._config):
+                if isinstance(self._connector, BaseAsyncStreamingDatasourceConnector):
+                    await self._connector.index_data_async(mode=mode, options=options)
+                else:
+                    self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+
+        return await asyncio.to_thread(
+            wait_for_documents_to_index,
+            self._connector.name,  # type: ignore[attr-defined]
+            uploaded_documents,
+        )
 
     # ------------------------------------------------------------------
     # Internals

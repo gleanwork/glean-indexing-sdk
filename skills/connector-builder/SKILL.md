@@ -13,7 +13,7 @@ Use this skill when the user wants to build, evaluate, or iterate on a connector
 
 ## Mental Model
 
-Follow this loop: ask scope -> plan -> implement -> local validation -> deploy if requested -> inspect real deployed logs -> fix and re-run validation if needed.
+Follow this loop: ask scope -> plan -> run pre-implementation validation -> implement -> test with the `connector-testing` skill after one user confirmation -> deploy if requested -> inspect real deployed logs -> fix and re-run testing if needed.
 
 ## Crawl Semantics
 
@@ -33,7 +33,7 @@ An incremental crawl processes only changes since a durable checkpoint, includin
 - Always ask the user connector data-model questions before drafting the connector plan. Do not infer final scope from API docs alone.
 - Treat every observed difference between test/exploration and the intended production environment as a production-readiness gap, regardless of domain. This includes authentication, scopes, endpoints, data coverage, permissions, rate limits, volume, secret names, runtime configuration, and deployment behavior. A gap may be recorded while development continues, but it is not an optional developer follow-up: implement or configure the production behavior, validate it at the highest feasible fidelity, and update the plan before calling the connector complete or beginning deployment. Reserve developer follow-ups for optional enhancements that are not required by the confirmed production plan.
 - Do not ask the user to choose a coverage model until API exploration has established which options are feasible for that source. After exploration, offer only evidence-backed feasible choices; mention infeasible or unverified alternatives separately when useful, but do not present them as selectable options. Explain the required API, roles, scopes, licensing, retention limits, and operational tradeoffs. Recommend organization-wide coverage whenever the source provides a feasible supported path; never present it as available when the research does not support it.
-- After making connector or harness implementation changes, use the `connector-testing` skill and ask once whether to proceed to the testing step.
+- After making connector or harness implementation changes, you must use the `connector-testing` skill and ask once whether to proceed to the testing step.
 - At the start of a connector-building session, check whether this plugin is up to date: compare the locally installed version (`claude plugin list`) against the latest in the open-source repo (the `version` in `package.json` on `main` in `gleanwork/glean-indexing-sdk`, falling back to `feature/v0-workstream` if `package.json` is unavailable on `main`). If they differ, tell the user an update is available and give them the exact commands from the README's "Updating the plugin" section (`git pull && npm run build:plugins && claude plugin marketplace update glean-indexing-sdk-agent-plugin && claude plugin update glean-connector-builder@glean-indexing-sdk-agent-plugin`). These commands are for Claude Code; for other AI tools, tell the user the equivalent plugin-update commands for their environment. If the versions match or the check fails, continue without interrupting the user.
 
 ## Workflow

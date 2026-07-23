@@ -248,6 +248,11 @@ Rules for write-back:
   environment back. Static config (categories, base URLs, User-Agent) and the Glean
   indexing token must not be rewritten — doing so churns a new secret version every run
   and can clobber a value rotated out-of-band.
+- **For OAuth, persist BOTH the access token and the refresh token.** Many providers use
+  refresh-token rotation — each refresh returns a new refresh token and invalidates the
+  old one. Write back both the refreshed access token and the new refresh token (as their
+  own scoped secrets). If only the access token is persisted, the next run authenticates
+  with a stale refresh token and fails.
 - **Grant the minimum IAM, scoped to the one secret**, and only after explicit user
   confirmation (this changes the connector's runtime security posture):
 
@@ -277,6 +282,13 @@ def persist_secret(project_id: str, secret_id: str, value: str) -> None:
         parent=f"projects/{project_id}/secrets/{secret_id}",
         payload={"data": value.encode("utf-8")},
     )
+
+# After an OAuth refresh, persist BOTH tokens (refresh-token rotation invalidates the old
+# refresh token). Only write a token whose value actually changed.
+if new_access_token != old_access_token:
+    persist_secret(project_id, "CUSTOM_DATASOURCE_PLATFORM_<NAME>_ACCESS_TOKEN", new_access_token)
+if new_refresh_token != old_refresh_token:
+    persist_secret(project_id, "CUSTOM_DATASOURCE_PLATFORM_<NAME>_REFRESH_TOKEN", new_refresh_token)
 ```
 
 Record in `connector_plan.md` which secret keys are written back and why, and confirm the

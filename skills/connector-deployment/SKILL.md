@@ -23,6 +23,7 @@ Use this skill when deployment or hosting is in scope for a connector build. It 
 - Resolve every known follow-up recorded in the connector plan or source investigation before deployment.
 - Never commit `.env` or raw secrets. Use `.env.example` as the template and upload real secrets through `glean-deploy secrets upload`.
 - Keep deployment-control variables separate from connector secrets. Deployment-control variables are not uploaded as connector secrets.
+- The runtime is read-only toward the secret manager by default. Enable secret write-back only for refreshable short-lived tokens, scoped to the specific token secret, with a secret-scoped write IAM grant and explicit user confirmation. Never write the whole environment back and never rewrite static config or the Glean indexing token. See "Persisting refreshed tokens at runtime (secret write-back)".
 - Keep `.glean` planning artifacts inside the connector folder, and deployment artifacts in the connector folder root.
 - Use the connector folder as the container image build directory by default. Do not ask the user to choose an image directory.
 - When pushing the image to the configured cloud container registry, use only the connector name as its repository path. Do not ask the user to choose an image path.
@@ -228,6 +229,58 @@ To inspect currently uploaded connector secrets:
 ```bash
 glean-deploy secrets list
 ```
+
+### Persisting refreshed tokens at runtime (secret write-back)
+
+By default the runtime is read-only: `run.py` loads secrets from the secret manager
+into the process environment at the start of every run and never writes anything back.
+The pod's service account is granted only read roles
+(`roles/secretmanager.secretAccessor` + `roles/secretmanager.viewer` on GCP).
+
+Enable write-back **only** for connectors that authenticate with a **refreshable,
+short-lived credential** (OAuth access/refresh tokens, session tokens) that the source
+issues anew during a run and that must survive to the next run. This is the correct use
+of the secret manager. Do **not** enable write-back to "save the environment" generally.
+
+Rules for write-back:
+
+- **Scope the write to the specific token secret(s) only.** Never write the whole
+  environment back. Static config (categories, base URLs, User-Agent) and the Glean
+  indexing token must not be rewritten — doing so churns a new secret version every run
+  and can clobber a value rotated out-of-band.
+- **Grant the minimum IAM, scoped to the one secret**, and only after explicit user
+  confirmation (this changes the connector's runtime security posture):
+
+  ```bash
+  # GCP: allow adding new versions of ONE secret, not project-wide
+  gcloud secrets add-iam-policy-binding \
+    CUSTOM_DATASOURCE_PLATFORM_<CONNECTOR_NAME>_<TOKEN_KEY> \
+    --project <project_id> \
+    --member "serviceAccount:<connector_name>-sa@<project_id>.iam.gserviceaccount.com" \
+    --role roles/secretmanager.secretVersionAdder
+  ```
+
+  On AWS, grant `secretsmanager:PutSecretValue` on the single secret ARN via the
+  connector's IRSA role.
+- **Write a new version only when the value actually changed**, right after the refresh,
+  so a failed run never persists a partial or empty token.
+
+Minimal helper the connector calls after refreshing a token (GCP):
+
+```python
+from google.cloud import secretmanager
+
+def persist_secret(project_id: str, secret_id: str, value: str) -> None:
+    """Add a new version of a single secret (e.g. a refreshed OAuth token)."""
+    client = secretmanager.SecretManagerServiceClient()
+    client.add_secret_version(
+        parent=f"projects/{project_id}/secrets/{secret_id}",
+        payload={"data": value.encode("utf-8")},
+    )
+```
+
+Record in `connector_plan.md` which secret keys are written back and why, and confirm the
+scoped IAM grant with the user before applying it.
 
 ## Plan Fields
 

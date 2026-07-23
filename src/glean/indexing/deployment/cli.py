@@ -302,8 +302,15 @@ def status(config_path: str) -> None:
 @click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
 @click.option("--terraform-dir", default="terraform", show_default=True, type=click.Path(file_okay=False))
 @click.option("--yes", is_flag=True, default=False, help="Skip the confirmation prompts (use in CI only).")
-def destroy(config_path: str, terraform_dir: str, yes: bool) -> None:
+@click.option("--keep-secrets", is_flag=True, default=False, help="Keep secrets in Secret Manager (don't delete them).")
+def destroy(config_path: str, terraform_dir: str, yes: bool, keep_secrets: bool) -> None:
     """Tear down the connector deployment via terraform destroy.
+
+    Destroys all Terraform-managed resources (CronJob, ServiceAccount, IAM bindings)
+    and by default also deletes connector secrets from Secret Manager.
+
+    Handles partial deployments gracefully - safe to run even if deployment was
+    never completed or some resources were already deleted manually.
 
     Requires two confirmations: first an explicit 'yes' prompt, then typing
     the connector name to prevent accidental teardown. Pass --yes to skip
@@ -344,4 +351,39 @@ def destroy(config_path: str, terraform_dir: str, yes: bool) -> None:
     click.echo("Running terraform destroy...")
     if subprocess.run(["terraform", "destroy", "-auto-approve"] + var_flags, cwd=tf_dir, check=False).returncode != 0:
         raise click.ClickException("terraform destroy failed.")
-    click.echo("Deployment destroyed.")
+
+    click.echo("Terraform resources destroyed.")
+
+    # Clean up secrets unless --keep-secrets was specified
+    if not keep_secrets:
+        from glean.indexing.deployment.secrets import get_secrets_backend
+
+        click.echo("\nCleaning up secrets from Secret Manager...")
+        backend = get_secrets_backend(config)
+
+        try:
+            secrets = backend.list()
+        except ImportError as exc:
+            click.echo(f"  Warning: secret cleanup skipped (missing cloud SDK dependency): {exc}", err=True)
+        except Exception as exc:
+            click.echo(f"  Warning: secret cleanup skipped (failed to list secrets): {exc}", err=True)
+        else:
+            if not secrets:
+                click.echo("  No secrets found (already cleaned up or never uploaded).")
+            else:
+                click.echo(f"  Deleting {len(secrets)} secret(s)...")
+                deleted = 0
+                failed = 0
+                for key in secrets:
+                    try:
+                        backend.delete(key)
+                        deleted += 1
+                        click.echo(f"    deleted  {key}")
+                    except Exception as exc:
+                        failed += 1
+                        click.echo(f"    failed   {key}: {exc}", err=True)
+                click.echo(f"  Secret cleanup complete (deleted={deleted}, failed={failed}).")
+    else:
+        click.echo("\nSkipping secret cleanup (--keep-secrets specified).")
+
+    click.echo("\nDestroy complete.")

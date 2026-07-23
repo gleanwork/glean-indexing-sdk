@@ -16,6 +16,7 @@ from glean.api_client.models import (
 from glean.indexing.push import PushUploader
 from glean.indexing.testing import mock_glean_client
 from glean.indexing.testing.harness.indexing_wait import (
+    IndexingWaitResult,
     capture_document_uploads,
     wait_for_documents_to_index,
 )
@@ -67,14 +68,12 @@ def test_already_indexed_skips_process_all(
 ):
     get_status.return_value = _status("INDEXED")
 
-    wait_for_documents_to_index(
+    result = wait_for_documents_to_index(
         "test_datasource",
         [_document()],
-        initial_wait_seconds=45,
-        poll_interval_seconds=30,
-        timeout_seconds=300,
     )
 
+    assert result is IndexingWaitResult.INDEXED
     sleep.assert_called_once_with(45)
     process_all.assert_not_called()
 
@@ -89,14 +88,12 @@ def test_pending_document_triggers_process_all_then_poll(
 ):
     get_status.side_effect = [_status("NOT_INDEXED"), _status("INDEXED")]
 
-    wait_for_documents_to_index(
+    result = wait_for_documents_to_index(
         "test_datasource",
         [_document()],
-        initial_wait_seconds=45,
-        poll_interval_seconds=30,
-        timeout_seconds=300,
     )
 
+    assert result is IndexingWaitResult.INDEXED
     process_all.assert_called_once_with()
     assert sleep.call_args_list == [call(45), call(30)]
 
@@ -113,14 +110,12 @@ def test_process_all_rate_limit_is_ignored(
     process_all.side_effect = ApiGleanError("rate limited", response)
     get_status.side_effect = [_status("NOT_INDEXED"), _status("INDEXED")]
 
-    wait_for_documents_to_index(
+    result = wait_for_documents_to_index(
         "test_datasource",
         [_document()],
-        initial_wait_seconds=45,
-        poll_interval_seconds=30,
-        timeout_seconds=300,
     )
 
+    assert result is IndexingWaitResult.INDEXED
     process_all.assert_called_once_with()
 
 
@@ -140,31 +135,28 @@ def test_process_all_non_rate_limit_error_is_raised(
         wait_for_documents_to_index(
             "test_datasource",
             [_document()],
-            initial_wait_seconds=45,
-            poll_interval_seconds=30,
-            timeout_seconds=300,
         )
 
 
+@patch("glean.indexing.testing.harness.indexing_wait._INDEX_WAIT_TIMEOUT_SECONDS", 60)
 @patch("glean.indexing.testing.harness.indexing_wait.time.sleep")
 @patch("glean.indexing.testing.harness.indexing_wait.PushUploader.process_all_documents")
 @patch("glean.indexing.testing.harness.indexing_wait.StatusClient.get_documents_status")
-def test_polling_times_out_after_configured_duration(
+def test_polling_returns_pending_with_actionable_message(
     get_status: Mock,
     process_all: Mock,
     sleep: Mock,
+    caplog: pytest.LogCaptureFixture,
 ):
     get_status.return_value = _status("NOT_INDEXED")
 
-    with pytest.raises(TimeoutError, match="did not finish indexing within 60 seconds"):
-        wait_for_documents_to_index(
-            "test_datasource",
-            [_document()],
-            initial_wait_seconds=45,
-            poll_interval_seconds=30,
-            timeout_seconds=60,
-        )
+    result = wait_for_documents_to_index(
+        "test_datasource",
+        [_document()],
+    )
 
+    assert result is IndexingWaitResult.PENDING
+    assert "queued for asynchronous indexing, which may take longer" in caplog.text
     process_all.assert_called_once_with()
     assert sleep.call_args_list == [call(45), call(30), call(30)]
     assert get_status.call_count == 3

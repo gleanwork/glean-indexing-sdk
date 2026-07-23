@@ -45,6 +45,7 @@ from glean.indexing.testing.harness.cache.replay_client import (
 )
 from glean.indexing.testing.harness.config import ClientConfig, TestConfig
 from glean.indexing.testing.harness.indexing_wait import (
+    IndexingWaitResult,
     capture_document_uploads,
     wait_for_documents_to_index,
 )
@@ -373,7 +374,7 @@ class TestHarness:
         *,
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
-    ) -> None:
+    ) -> IndexingWaitResult | None:
         """Run the connector against the real source and real Glean.
 
         The Glean API is **not** mocked — this exercises the full indexing
@@ -395,6 +396,9 @@ class TestHarness:
             mode: Indexing mode forwarded to ``connector.index_data``.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
 
+        Returns:
+            The document indexing outcome, or ``None`` when no documents were uploaded.
+
         Raises:
             ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
                 ``GLEAN_INDEXING_API_TOKEN`` or the server URL is missing from
@@ -409,12 +413,9 @@ class TestHarness:
             with _patched_clients(self._connector, self._clients, self._config):
                 self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
 
-        wait_for_documents_to_index(
+        return wait_for_documents_to_index(
             self._connector.name,  # type: ignore[attr-defined]
             uploaded_documents,
-            initial_wait_seconds=self._config.initial_index_wait_seconds,
-            poll_interval_seconds=self._config.index_poll_interval_seconds,
-            timeout_seconds=self._config.index_wait_timeout_seconds,
         )
 
     async def run_end_to_end_async(
@@ -422,7 +423,7 @@ class TestHarness:
         *,
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
-    ) -> None:
+    ) -> IndexingWaitResult | None:
         """Async variant of :meth:`run_end_to_end`.
 
         For :class:`~glean.indexing.connectors.BaseAsyncStreamingDatasourceConnector`
@@ -436,6 +437,9 @@ class TestHarness:
         Args:
             mode: Indexing mode forwarded to the connector.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
+
+        Returns:
+            The document indexing outcome, or ``None`` when no documents were uploaded.
 
         Raises:
             ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
@@ -457,13 +461,10 @@ class TestHarness:
                 else:
                     self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
 
-        await asyncio.to_thread(
+        return await asyncio.to_thread(
             wait_for_documents_to_index,
             self._connector.name,  # type: ignore[attr-defined]
             uploaded_documents,
-            initial_wait_seconds=self._config.initial_index_wait_seconds,
-            poll_interval_seconds=self._config.index_poll_interval_seconds,
-            timeout_seconds=self._config.index_wait_timeout_seconds,
         )
 
     # ------------------------------------------------------------------

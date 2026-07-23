@@ -7,6 +7,7 @@ import math
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from enum import Enum
 from unittest.mock import patch
 
 from glean.api_client.errors import GleanError as ApiGleanError
@@ -15,6 +16,17 @@ from glean.api_client.models import DebugDocumentRequest, DebugDocumentsResponse
 from glean.indexing.push import PushUploader, StatusClient
 
 logger = logging.getLogger(__name__)
+
+_INITIAL_INDEX_WAIT_SECONDS = 45
+_INDEX_POLL_INTERVAL_SECONDS = 30
+_INDEX_WAIT_TIMEOUT_SECONDS = 300
+
+
+class IndexingWaitResult(str, Enum):
+    """Outcome of waiting for uploaded documents to finish indexing."""
+
+    INDEXED = "indexed"
+    PENDING = "pending"
 
 
 @contextmanager
@@ -74,22 +86,16 @@ def capture_document_uploads() -> Iterator[list[DocumentDefinition]]:
 def wait_for_documents_to_index(
     datasource: str,
     documents: Sequence[DocumentDefinition],
-    *,
-    initial_wait_seconds: float,
-    poll_interval_seconds: float,
-    timeout_seconds: float,
-) -> None:
+) -> IndexingWaitResult | None:
     """Wait for uploaded documents to index, requesting immediate processing if needed."""
     debug_documents = _debug_document_requests(documents)
     if not debug_documents:
-        return
-    if initial_wait_seconds < 0 or timeout_seconds < 0 or poll_interval_seconds <= 0:
-        raise ValueError("Indexing wait durations must be non-negative and poll interval positive")
+        return None
 
     status_client = StatusClient(datasource=datasource)
-    time.sleep(initial_wait_seconds)
+    time.sleep(_INITIAL_INDEX_WAIT_SECONDS)
     if _all_documents_indexed(status_client.get_documents_status(debug_documents), debug_documents):
-        return
+        return IndexingWaitResult.INDEXED
 
     try:
         PushUploader(datasource=datasource).process_all_documents()
@@ -101,19 +107,20 @@ def wait_for_documents_to_index(
             datasource,
         )
 
-    poll_count = math.ceil(timeout_seconds / poll_interval_seconds)
+    poll_count = math.ceil(_INDEX_WAIT_TIMEOUT_SECONDS / _INDEX_POLL_INTERVAL_SECONDS)
     for _ in range(poll_count):
-        time.sleep(poll_interval_seconds)
+        time.sleep(_INDEX_POLL_INTERVAL_SECONDS)
         if _all_documents_indexed(
             status_client.get_documents_status(debug_documents),
             debug_documents,
         ):
-            return
+            return IndexingWaitResult.INDEXED
 
-    raise TimeoutError(
-        f"{len(debug_documents)} document(s) for datasource {datasource!r} "
-        f"did not finish indexing within {timeout_seconds:g} seconds"
+    logger.warning(
+        "Source data was pulled successfully, and Glean accepted the document upload without "
+        "validation errors. The documents are queued for asynchronous indexing, which may take longer."
     )
+    return IndexingWaitResult.PENDING
 
 
 def _debug_document_requests(

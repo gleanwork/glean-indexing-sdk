@@ -46,9 +46,6 @@ class TestConfig:
         use_cache: Whether to replay from cache when available.
         refresh_cache: Force re-recording even when a cache hit exists.
         run_id_prefix: Prefix for upload run IDs in Phase 3 (end-to-end).
-        initial_index_wait_seconds: Delay before the first document status check.
-        index_poll_interval_seconds: Delay between document status checks.
-        index_wait_timeout_seconds: Maximum polling duration after requesting processing.
         clients: Per-client configuration keyed by client name.
         negative_test_identities: Identities that must NOT appear in any
             transformed document's ``allowedUsers`` or ``allowedGroups``.
@@ -59,9 +56,6 @@ class TestConfig:
     use_cache: bool = True
     refresh_cache: bool = False
     run_id_prefix: str = "sdk_test"
-    initial_index_wait_seconds: float = 45
-    index_poll_interval_seconds: float = 30
-    index_wait_timeout_seconds: float = 300
     clients: Dict[str, ClientConfig] = field(default_factory=dict)
     negative_test_identities: List[str] = field(default_factory=list)
 
@@ -115,9 +109,6 @@ class TestConfig:
             use_cache=data.get("use_cache", True),
             refresh_cache=data.get("refresh_cache", False),
             run_id_prefix=data.get("run_id_prefix", "sdk_test"),
-            initial_index_wait_seconds=data.get("initial_index_wait_seconds", 45),
-            index_poll_interval_seconds=data.get("index_poll_interval_seconds", 30),
-            index_wait_timeout_seconds=data.get("index_wait_timeout_seconds", 300),
             clients=clients,
             negative_test_identities=list(data.get("negative_test_identities") or []),
         )

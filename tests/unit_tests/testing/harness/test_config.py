@@ -33,9 +33,6 @@ class TestTestConfigDefaults:
         assert cfg.use_cache is True
         assert cfg.refresh_cache is False
         assert cfg.run_id_prefix == "sdk_test"
-        assert cfg.initial_index_wait_seconds == 45
-        assert cfg.index_poll_interval_seconds == 30
-        assert cfg.index_wait_timeout_seconds == 300
         assert cfg.clients == {}
         assert cfg.negative_test_identities == []
 
@@ -47,9 +44,6 @@ class TestTestConfigFromDict:
             "use_cache": False,
             "refresh_cache": True,
             "run_id_prefix": "my_test",
-            "initial_index_wait_seconds": 35,
-            "index_poll_interval_seconds": 10,
-            "index_wait_timeout_seconds": 120,
             "clients": {
                 "tickets": {"max_items": 50},
                 "comments": {"max_items": 200},
@@ -62,9 +56,6 @@ class TestTestConfigFromDict:
         assert cfg.use_cache is False
         assert cfg.refresh_cache is True
         assert cfg.run_id_prefix == "my_test"
-        assert cfg.initial_index_wait_seconds == 35
-        assert cfg.index_poll_interval_seconds == 10
-        assert cfg.index_wait_timeout_seconds == 120
         assert cfg.clients["tickets"].max_items == 50
         assert cfg.clients["comments"].max_items == 200
         assert cfg.negative_test_identities == ["denied@example.com", "bad_group"]

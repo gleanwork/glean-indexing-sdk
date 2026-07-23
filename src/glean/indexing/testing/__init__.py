@@ -17,6 +17,7 @@ from glean.indexing.testing.data_clients import (
 )
 from glean.indexing.testing.harness import (
     ClientConfig,
+    IndexingWaitResult,
     PermissionRefs,
     TestConfig,
     TestHarness,
@@ -33,6 +34,7 @@ from glean.indexing.testing.runner import run_connector, run_connector_async
 
 __all__ = [
     "ClientConfig",
+    "IndexingWaitResult",
     "MockDataSource",
     "MockGleanClient",
     "PermissionRefs",

@@ -3,30 +3,23 @@
 from __future__ import annotations
 
 import logging
-import math
-import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from enum import Enum
 from unittest.mock import patch
 
 from glean.api_client.errors import GleanError as ApiGleanError
-from glean.api_client.models import DebugDocumentRequest, DebugDocumentsResponse, DocumentDefinition
+from glean.api_client.models import DocumentDefinition
 
-from glean.indexing.push import PushUploader, StatusClient
+from glean.indexing.push import PushUploader
+from glean.indexing.testing.indexing_status import (
+    IndexingWaitResult,
+    document_status_requests,
+    poll_documents_status,
+)
 
 logger = logging.getLogger(__name__)
 
 _INITIAL_INDEX_WAIT_SECONDS = 45
-_INDEX_POLL_INTERVAL_SECONDS = 30
-_INDEX_WAIT_TIMEOUT_SECONDS = 300
-
-
-class IndexingWaitResult(str, Enum):
-    """Outcome of waiting for uploaded documents to finish indexing."""
-
-    INDEXED = "indexed"
-    PENDING = "pending"
 
 
 @contextmanager
@@ -88,65 +81,36 @@ def wait_for_documents_to_index(
     documents: Sequence[DocumentDefinition],
 ) -> IndexingWaitResult | None:
     """Wait for uploaded documents to index, requesting immediate processing if needed."""
-    debug_documents = _debug_document_requests(documents)
+    debug_documents = document_status_requests(documents)
     if not debug_documents:
         return None
 
-    status_client = StatusClient(datasource=datasource)
-    time.sleep(_INITIAL_INDEX_WAIT_SECONDS)
-    if _all_documents_indexed(status_client.get_documents_status(debug_documents), debug_documents):
-        return IndexingWaitResult.INDEXED
+    if len(debug_documents) != len(documents):
+        logger.warning("Skipping status checks for documents without both id and object_type")
 
-    try:
-        PushUploader(datasource=datasource).process_all_documents()
-    except ApiGleanError as error:
-        if error.raw_response.status_code != 429:
-            raise
-        logger.warning(
-            "Immediate document processing is rate-limited for datasource %r; continuing to poll",
-            datasource,
-        )
+    def process_all_documents() -> None:
+        try:
+            PushUploader(datasource=datasource).process_all_documents()
+        except ApiGleanError as error:
+            if error.raw_response.status_code != 429:
+                raise
+            logger.warning(
+                "Immediate document processing is rate-limited for datasource %r; "
+                "continuing to poll",
+                datasource,
+            )
 
-    poll_count = math.ceil(_INDEX_WAIT_TIMEOUT_SECONDS / _INDEX_POLL_INTERVAL_SECONDS)
-    for _ in range(poll_count):
-        time.sleep(_INDEX_POLL_INTERVAL_SECONDS)
-        if _all_documents_indexed(
-            status_client.get_documents_status(debug_documents),
-            debug_documents,
-        ):
-            return IndexingWaitResult.INDEXED
+    snapshot = poll_documents_status(
+        datasource,
+        debug_documents,
+        initial_wait_seconds=_INITIAL_INDEX_WAIT_SECONDS,
+        on_pending=process_all_documents,
+    )
+    if snapshot.result is IndexingWaitResult.INDEXED:
+        return snapshot.result
 
     logger.warning(
         "Source data was pulled successfully, and Glean accepted the document upload without "
         "validation errors. The documents are queued for asynchronous indexing, which may take longer."
     )
     return IndexingWaitResult.PENDING
-
-
-def _debug_document_requests(
-    documents: Sequence[DocumentDefinition],
-) -> list[DebugDocumentRequest]:
-    requests: dict[tuple[str, str], DebugDocumentRequest] = {}
-    for document in documents:
-        if not document.id or not document.object_type:
-            logger.warning(
-                "Skipping indexing status check for a document without both id and object_type"
-            )
-            continue
-        key = (document.object_type, document.id)
-        requests[key] = DebugDocumentRequest(object_type=key[0], doc_id=key[1])
-    return list(requests.values())
-
-
-def _all_documents_indexed(
-    response: DebugDocumentsResponse,
-    expected_documents: Sequence[DebugDocumentRequest],
-) -> bool:
-    indexed: set[tuple[str, str]] = set()
-    for item in response.document_statuses or []:
-        status = item.debug_info.status if item.debug_info else None
-        if item.object_type and item.doc_id and status and status.indexing_status == "INDEXED":
-            indexed.add((item.object_type, item.doc_id))
-
-    expected = {(document.object_type, document.doc_id) for document in expected_documents}
-    return expected <= indexed

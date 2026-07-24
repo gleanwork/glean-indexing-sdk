@@ -17,12 +17,17 @@ from glean.indexing.testing.data_clients import (
 )
 from glean.indexing.testing.harness import (
     ClientConfig,
-    IndexingWaitResult,
     PermissionRefs,
     TestConfig,
     TestHarness,
     assert_negative_identities_absent,
     extract_permission_refs,
+)
+from glean.indexing.testing.indexing_status import (
+    IndexingStatusSnapshot,
+    IndexingWaitResult,
+    check_documents_status,
+    poll_documents_status,
 )
 from glean.indexing.testing.mock_client import (
     MockGleanClient,
@@ -34,6 +39,7 @@ from glean.indexing.testing.runner import run_connector, run_connector_async
 
 __all__ = [
     "ClientConfig",
+    "IndexingStatusSnapshot",
     "IndexingWaitResult",
     "MockDataSource",
     "MockGleanClient",
@@ -44,8 +50,10 @@ __all__ = [
     "TestConfig",
     "TestHarness",
     "assert_negative_identities_absent",
+    "check_documents_status",
     "extract_permission_refs",
     "mock_glean_client",
+    "poll_documents_status",
     "run_connector",
     "run_connector_async",
     "with_mock_glean_client",

@@ -58,29 +58,31 @@ def test_capture_document_uploads_records_incremental_and_bulk_documents():
     assert captured == [incremental, bulk]
 
 
-@patch("glean.indexing.testing.harness.indexing_wait.time.sleep")
+@patch("glean.indexing.testing.indexing_status.time.sleep")
 @patch("glean.indexing.testing.harness.indexing_wait.PushUploader.process_all_documents")
-@patch("glean.indexing.testing.harness.indexing_wait.StatusClient.get_documents_status")
+@patch("glean.indexing.testing.indexing_status.StatusClient.get_documents_status")
 def test_already_indexed_skips_process_all(
     get_status: Mock,
     process_all: Mock,
     sleep: Mock,
+    caplog: pytest.LogCaptureFixture,
 ):
     get_status.return_value = _status("INDEXED")
 
     result = wait_for_documents_to_index(
         "test_datasource",
-        [_document()],
+        [_document(), _document()],
     )
 
     assert result is IndexingWaitResult.INDEXED
+    assert "Skipping status checks" not in caplog.text
     sleep.assert_called_once_with(45)
     process_all.assert_not_called()
 
 
-@patch("glean.indexing.testing.harness.indexing_wait.time.sleep")
+@patch("glean.indexing.testing.indexing_status.time.sleep")
 @patch("glean.indexing.testing.harness.indexing_wait.PushUploader.process_all_documents")
-@patch("glean.indexing.testing.harness.indexing_wait.StatusClient.get_documents_status")
+@patch("glean.indexing.testing.indexing_status.StatusClient.get_documents_status")
 def test_pending_document_triggers_process_all_then_poll(
     get_status: Mock,
     process_all: Mock,
@@ -98,9 +100,9 @@ def test_pending_document_triggers_process_all_then_poll(
     assert sleep.call_args_list == [call(45), call(30)]
 
 
-@patch("glean.indexing.testing.harness.indexing_wait.time.sleep")
+@patch("glean.indexing.testing.indexing_status.time.sleep")
 @patch("glean.indexing.testing.harness.indexing_wait.PushUploader.process_all_documents")
-@patch("glean.indexing.testing.harness.indexing_wait.StatusClient.get_documents_status")
+@patch("glean.indexing.testing.indexing_status.StatusClient.get_documents_status")
 def test_process_all_rate_limit_is_ignored(
     get_status: Mock,
     process_all: Mock,
@@ -119,9 +121,9 @@ def test_process_all_rate_limit_is_ignored(
     process_all.assert_called_once_with()
 
 
-@patch("glean.indexing.testing.harness.indexing_wait.time.sleep")
+@patch("glean.indexing.testing.indexing_status.time.sleep")
 @patch("glean.indexing.testing.harness.indexing_wait.PushUploader.process_all_documents")
-@patch("glean.indexing.testing.harness.indexing_wait.StatusClient.get_documents_status")
+@patch("glean.indexing.testing.indexing_status.StatusClient.get_documents_status")
 def test_process_all_non_rate_limit_error_is_raised(
     get_status: Mock,
     process_all: Mock,
@@ -138,10 +140,10 @@ def test_process_all_non_rate_limit_error_is_raised(
         )
 
 
-@patch("glean.indexing.testing.harness.indexing_wait._INDEX_WAIT_TIMEOUT_SECONDS", 60)
-@patch("glean.indexing.testing.harness.indexing_wait.time.sleep")
+@patch("glean.indexing.testing.indexing_status.POLL_TIMEOUT_SECONDS", 60)
+@patch("glean.indexing.testing.indexing_status.time.sleep")
 @patch("glean.indexing.testing.harness.indexing_wait.PushUploader.process_all_documents")
-@patch("glean.indexing.testing.harness.indexing_wait.StatusClient.get_documents_status")
+@patch("glean.indexing.testing.indexing_status.StatusClient.get_documents_status")
 def test_polling_returns_pending_with_actionable_message(
     get_status: Mock,
     process_all: Mock,

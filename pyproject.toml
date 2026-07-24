@@ -51,6 +51,7 @@ gcp = [
 
 [project.scripts]
 glean-deploy = "glean.indexing.deployment.cli:cli"
+glean-index-status = "glean.indexing.testing.status_cli:cli"
 
 [project.urls]
 "Source Code" = "https://github.com/glean-io/glean-indexing-sdk"

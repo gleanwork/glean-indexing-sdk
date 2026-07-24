@@ -29,6 +29,8 @@ Use these SDK files and their public exports:
 - `src/glean/indexing/testing/harness/cache/`: source recording and replay
 - `src/glean/indexing/testing/harness/permissions.py`: permission-payload assertions
 - `src/glean/indexing/testing/validation.py`: deterministic connector-output validation
+- `src/glean/indexing/testing/indexing_status.py`: shared one-shot and polling status checks
+- `src/glean/indexing/testing/status_cli.py`: `glean-index-status` command
 
 ## Connector Validation Phases
 
@@ -71,6 +73,10 @@ After upload, the harness waits for normal indexing, requests `processalldocumen
 Then determine the next step from the confirmed connector plan and ask whether they want to proceed. Do not treat pending asynchronous indexing as connector failure or generate connector-specific processing code.
 
 If live credentials are unavailable, explicitly report that Phase 3 was skipped. Full-mock and integration results do not prove that Glean accepted or indexed the documents.
+
+## Document Indexing Status
+
+For checking document status during testing, use `glean-index-status --datasource <datasource> --document <object-type> <document-id> --poll`; omit `--poll` for an ad-hoc single check. Repeat `--document <object-type> <document-id>` to check multiple documents.
 
 ## Run Report
 

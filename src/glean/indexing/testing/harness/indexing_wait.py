@@ -85,7 +85,7 @@ def wait_for_documents_to_index(
     if not debug_documents:
         return None
 
-    if len(debug_documents) != len(documents):
+    if any(not document.id or not document.object_type for document in documents):
         logger.warning("Skipping status checks for documents without both id and object_type")
 
     def process_all_documents() -> None:

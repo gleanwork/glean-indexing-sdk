@@ -65,15 +65,17 @@ def test_already_indexed_skips_process_all(
     get_status: Mock,
     process_all: Mock,
     sleep: Mock,
+    caplog: pytest.LogCaptureFixture,
 ):
     get_status.return_value = _status("INDEXED")
 
     result = wait_for_documents_to_index(
         "test_datasource",
-        [_document()],
+        [_document(), _document()],
     )
 
     assert result is IndexingWaitResult.INDEXED
+    assert "Skipping status checks" not in caplog.text
     sleep.assert_called_once_with(45)
     process_all.assert_not_called()
 

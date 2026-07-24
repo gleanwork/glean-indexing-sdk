@@ -38,26 +38,7 @@ Use the existing task context to determine whether required tokens are present. 
 
 ## Document Indexing Status
 
-Use the SDK's `glean-index-status` command instead of generating ad-hoc Python status helpers. It uses the same status and polling implementation as the E2E harness.
-
-Check once:
-
-```bash
-glean-index-status \
-  --datasource <datasource> \
-  --document <object-type> <document-id>
-```
-
-Poll every 30 seconds for up to five minutes:
-
-```bash
-glean-index-status \
-  --datasource <datasource> \
-  --document <object-type> <document-id> \
-  --poll
-```
-
-Repeat `--document <object-type> <document-id>` to check multiple documents. The command is read-only: it never uploads documents or calls `processalldocuments`.
+For checking document status during testing, use `glean-index-status --datasource <datasource> --document <object-type> <document-id> --poll`; omit `--poll` for an ad-hoc single check. Repeat `--document <object-type> <document-id>` to check multiple documents.
 
 ## Existing Harness Suite
 

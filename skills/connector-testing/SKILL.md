@@ -13,6 +13,7 @@ Use this skill to validate the SDK testing harness introduced under `glean.index
 - In the same testing-step prompt, say which validation levels will run. Use the existing task context, including the connector-local `.env` file if already identified, to determine whether required Glean and connector source tokens are present. If token presence is missing or unknown, say that E2E testing is recommended but will not happen unless the required tokens are present.
 - If you make any code changes after a test run, ask the user whether to run the harness validation again.
 - Never print secrets, commit `.env`, or include recorded source data.
+- Ensure test data includes at least one representative document for every type the connector can emit across mock, integration, and live end-to-end validation when available.
 
 ## Validation Levels
 
@@ -20,7 +21,6 @@ The existing harness pytest suite validates all three harness levels:
 
 1. Full mock: source side mocked, Glean side mocked.
    - Covered by `tests/unit_tests/testing/harness/test_harness_phase1.py`.
-   - `run_connector` automatically verifies that every emitted `object_type` and `container_object_type` is declared in `CustomDatasourceConfig.object_definitions`. Include at least one representative fixture for every object type the connector can emit so this deterministic offline check covers the complete mapping.
 
 2. Integration: source side real or recorded, Glean side mocked.
    - Covered by `tests/unit_tests/testing/harness/test_harness_phase2.py`.

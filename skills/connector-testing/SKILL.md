@@ -36,6 +36,10 @@ Live E2E validation requires Glean credentials (`GLEAN_INDEXING_API_TOKEN` and `
 
 Use the existing task context to determine whether required tokens are present. If the tokens are missing, or if their presence is unknown, tell the user that live E2E testing is recommended but will not happen unless the required Glean and connector tokens are present. The existing pytest harness suite can still validate the full mock, integration/cache, and E2E interface structure.
 
+## Document Indexing Status
+
+For checking document status during testing, use `glean-index-status --datasource <datasource> --document <object-type> <document-id> --poll`; omit `--poll` for an ad-hoc single check. Repeat `--document <object-type> <document-id>` to check multiple documents.
+
 ## Existing Harness Suite
 
 For normal harness validation, ask before running:

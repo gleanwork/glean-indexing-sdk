@@ -10,12 +10,12 @@ Typical import::
 
 from glean.indexing.testing.harness.config import ClientConfig, TestConfig
 from glean.indexing.testing.harness.harness import TestHarness
-from glean.indexing.testing.harness.indexing_wait import IndexingWaitResult
 from glean.indexing.testing.harness.permissions import (
     PermissionRefs,
     assert_negative_identities_absent,
     extract_permission_refs,
 )
+from glean.indexing.testing.indexing_status import IndexingWaitResult
 
 __all__ = [
     "ClientConfig",

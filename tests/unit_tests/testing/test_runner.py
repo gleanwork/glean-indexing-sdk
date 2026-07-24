@@ -1,6 +1,9 @@
 """Tests for run_connector / run_connector_async."""
 
+from typing import Sequence
+
 import pytest
+from glean.api_client.models import DocumentDefinition
 
 from glean.indexing.models import ConnectorOptions, IndexingMode
 from glean.indexing.testing import (
@@ -22,6 +25,22 @@ _EMPS = [
     {"email": "a@b.com", "first_name": "A", "last_name": "B"},
     {"email": "c@b.com", "first_name": "C", "last_name": "D"},
 ]
+
+
+class UndeclaredDatasourceFake(DatasourceFake):
+    def transform(self, data: Sequence[dict]) -> Sequence[DocumentDefinition]:
+        documents = list(super().transform(data))
+        for document in documents:
+            document.object_type = "Article"
+        return documents
+
+
+class UndeclaredAsyncStreamingFake(AsyncStreamingFake):
+    def transform(self, data: Sequence[dict]) -> Sequence[DocumentDefinition]:
+        documents = list(super().transform(data))
+        for document in documents:
+            document.object_type = "Article"
+        return documents
 
 
 class TestRunConnectorSync:
@@ -50,6 +69,18 @@ class TestRunConnectorSync:
     def test_rejects_non_connector(self):
         with pytest.raises(TypeError, match="BaseConnector"):
             run_connector("not-a-connector")  # type: ignore[arg-type]
+
+    def test_rejects_undeclared_document_object_type(self):
+        connector = UndeclaredDatasourceFake(
+            name="invalid",
+            data_client=StaticDataClient(_DOCS[:1]),
+        )
+
+        with pytest.raises(
+            AssertionError,
+            match=r"missing from CustomDatasourceConfig.object_definitions",
+        ):
+            run_connector(connector)
 
 
 class TestRunConnectorPropagation:
@@ -99,3 +130,16 @@ class TestRunConnectorAsync:
     async def test_rejects_non_connector(self):
         with pytest.raises(TypeError, match="BaseConnector"):
             await run_connector_async("not-a-connector")  # type: ignore[arg-type]
+
+    @pytest.mark.asyncio
+    async def test_rejects_undeclared_async_document_object_type(self):
+        connector = UndeclaredAsyncStreamingFake(
+            name="invalid_async",
+            async_data_client=StaticAsyncStreamingDataClient(_DOCS[:1]),
+        )
+
+        with pytest.raises(
+            AssertionError,
+            match=r"missing from CustomDatasourceConfig.object_definitions",
+        ):
+            await run_connector_async(connector)

@@ -1,55 +1,91 @@
 ---
 name: connector-testing
-description: Validate the Glean Indexing SDK TestHarness implementation with the existing pytest suite. Use when checking the full mock, integration/cache, or end-to-end harness structure, and after an agent changes harness implementation code.
+description: Test a generated connector through full-mock, integration/cache, and live end-to-end phases using the public utilities under glean.indexing.testing.
 ---
 
 # Connector Testing
 
-Use this skill to validate the SDK testing harness introduced under `glean.indexing.testing.harness`.
+Use this skill after implementing or changing a connector. Exercise the connector with the public SDK testing layer under `src/glean/indexing/testing/`; do not test the SDK testing layer itself.
 
 ## Rules
 
-- Before running validations, ask for confirmation once for the whole testing step. Include every command that will run in that single prompt; do not ask again for each command in the same validation batch.
-- In the same testing-step prompt, say which validation levels will run. Use the existing task context, including the connector-local `.env` file if already identified, to determine whether required Glean and connector source tokens are present. If token presence is missing or unknown, say that E2E testing is recommended but will not happen unless the required tokens are present.
-- If you make any code changes after a test run, ask the user whether to run the harness validation again.
+- Never run files under the repository's `tests/` directory while using this skill. Those tests validate the SDK implementation and belong to SDK-maintainer CI, not the connector-building workflow.
+- Use only public utilities exported by `glean.indexing.testing`, including `TestHarness`, `TestConfig`, static data clients, `MockGleanClient`, and `run_connector`.
+- Before validation, ask for confirmation once for the whole testing step and state which phases will run. Do not ask again for each phase in the same batch.
+- Use the existing task context, including the connector-local `.env` file if identified, to determine whether source and Glean credentials are present.
+- If connector code changes after a run, ask whether to run the connector validation again.
 - Never print secrets, commit `.env`, or include recorded source data.
+- Ensure test data includes at least one representative document for every type the connector can emit across mock, integration, and live end-to-end validation when available.
 
-## Validation Levels
+## Public Testing Layer
 
-The existing harness pytest suite validates all three harness levels:
+Use these SDK files and their public exports:
 
-1. Full mock: source side mocked, Glean side mocked.
-   - Covered by `tests/unit_tests/testing/harness/test_harness_phase1.py`.
+- `src/glean/indexing/testing/harness/harness.py`: `TestHarness`
+- `src/glean/indexing/testing/harness/config.py`: `TestConfig`, `ClientConfig`
+- `src/glean/indexing/testing/data_clients.py`: static sync, streaming, and async clients
+- `src/glean/indexing/testing/mock_client.py`: `MockGleanClient`
+- `src/glean/indexing/testing/runner.py`: `run_connector`, `run_connector_async`
+- `src/glean/indexing/testing/harness/cache/`: source recording and replay
+- `src/glean/indexing/testing/harness/permissions.py`: permission-payload assertions
+- `src/glean/indexing/testing/validation.py`: deterministic connector-output validation
+- `src/glean/indexing/testing/indexing_status.py`: shared one-shot and polling status checks
+- `src/glean/indexing/testing/status_cli.py`: `glean-index-status` command
 
-2. Integration: source side real or recorded, Glean side mocked.
-   - Covered by `tests/unit_tests/testing/harness/test_harness_phase2.py`.
-   - Cache, recording, replay, config, and negative identity behavior are covered by the harness subdirectory.
+## Connector Validation Phases
 
-3. End-to-end: source side real, Glean side real.
-   - Interface and wiring are covered by `tests/unit_tests/testing/harness/test_harness_phase3.py`.
-   - A live E2E run requires Glean credentials and a test instance; do not assume it is included in the unit suite.
-   - After uploading documents, the harness waits for normal indexing, requests `processalldocuments` once when needed, ignores a rate-limit response from that request, and polls document status for a bounded period. If the result is `PENDING`, tell the user: "Source data was pulled successfully, and Glean accepted the document upload without validation errors. The documents are queued for asynchronous indexing, which may take longer." Then determine the next step from the confirmed connector plan and ask whether they want to proceed. Do not treat pending asynchronous indexing as a connector failure or generate connector-specific processing code.
+### 1. Full mock
 
-## Credential Context
+Use static test data representative of every connector output type. Run:
 
-Live E2E validation requires Glean credentials (`GLEAN_INDEXING_API_TOKEN` and `GLEAN_SERVER_URL` or `GLEAN_INSTANCE`) plus any connector-specific source tokens required by the connector. These are usually in the connector-local `.env` file copied from `.env.example`.
+```python
+harness.run_full_mock()
+```
 
-Use the existing task context to determine whether required tokens are present. If the tokens are missing, or if their presence is unknown, tell the user that live E2E testing is recommended but will not happen unless the required Glean and connector tokens are present. The existing pytest harness suite can still validate the full mock, integration/cache, and E2E interface structure.
+This phase must not call the source or Glean. Inspect the returned `MockGleanClient` for emitted documents, users, groups, memberships, and employees. Deterministic output validation runs automatically.
+
+### 2. Integration/cache
+
+Register the connector's real source clients in `TestHarness.clients`, keep Glean mocked, and run:
+
+```python
+harness.run_integration_test()
+```
+
+This phase fetches a bounded source sample on a cache miss and records it locally; later runs replay the cache. Verify source parsing, transformation, document counts, and permission payloads without calling Glean.
+
+Use `run_integration_test_async()` for async streaming connectors.
+
+### 3. Live end-to-end
+
+Run only when source credentials and `GLEAN_INDEXING_API_TOKEN` plus `GLEAN_SERVER_URL` or `GLEAN_INSTANCE` are available:
+
+```python
+harness.run_end_to_end()
+```
+
+Use `run_end_to_end_async()` for async streaming connectors. This phase uses the real bounded source client and real Glean APIs.
+
+After upload, the harness waits for normal indexing, requests `processalldocuments` once when needed, ignores a rate-limit response from that request, and polls status for a bounded period. If the result is `PENDING`, tell the user:
+
+> Source data was pulled successfully, and Glean accepted the document upload without validation errors. The documents are queued for asynchronous indexing, which may take longer.
+
+Then determine the next step from the confirmed connector plan and ask whether they want to proceed. Do not treat pending asynchronous indexing as connector failure or generate connector-specific processing code.
+
+If live credentials are unavailable, explicitly report that Phase 3 was skipped. Full-mock and integration results do not prove that Glean accepted or indexed the documents.
 
 ## Document Indexing Status
 
 For checking document status during testing, use `glean-index-status --datasource <datasource> --document <object-type> <document-id> --poll`; omit `--poll` for an ad-hoc single check. Repeat `--document <object-type> <document-id>` to check multiple documents.
 
-## Existing Harness Suite
+## Run Report
 
-For normal harness validation, ask before running:
+After the selected phases finish, report:
 
-```bash
-uv run pytest tests/unit_tests/testing/harness -v
-```
-
-If public testing exports or shared testing utilities changed, ask before widening to:
-
-```bash
-uv run pytest tests/unit_tests/testing -v
-```
+- phases run and skipped
+- source records fetched or replayed
+- documents and identities emitted
+- object types represented
+- deterministic validation results
+- live upload and indexing result, when E2E ran
+- any remaining production-readiness gaps

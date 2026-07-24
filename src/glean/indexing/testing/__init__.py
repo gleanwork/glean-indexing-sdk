@@ -36,9 +36,14 @@ from glean.indexing.testing.mock_client import (
 )
 from glean.indexing.testing.mock_data_source import MockDataSource
 from glean.indexing.testing.runner import run_connector, run_connector_async
+from glean.indexing.testing.validation import (
+    ConnectorOutputValidationError,
+    validate_connector_output,
+)
 
 __all__ = [
     "ClientConfig",
+    "ConnectorOutputValidationError",
     "IndexingStatusSnapshot",
     "IndexingWaitResult",
     "MockDataSource",
@@ -56,5 +61,6 @@ __all__ = [
     "poll_documents_status",
     "run_connector",
     "run_connector_async",
+    "validate_connector_output",
     "with_mock_glean_client",
 ]

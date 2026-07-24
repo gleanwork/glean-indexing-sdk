@@ -105,12 +105,16 @@ class MockGleanClient:
 
     @property
     def documents_posted(self) -> List[DocumentDefinition]:
-        """All documents passed to `client.indexing.documents.bulk_index` so far.
+        """All documents passed to incremental or bulk document indexing calls.
 
         Flattened across batches: a connector with `batch_size=2` and 5 docs
         produces a single 5-element list here, not 3 batched lists.
         """
-        return _flatten_kwarg(self._mock.indexing.documents.bulk_index.call_args_list, "documents")
+        calls = [
+            *self._mock.indexing.documents.index.call_args_list,
+            *self._mock.indexing.documents.bulk_index.call_args_list,
+        ]
+        return _flatten_kwarg(calls, "documents")
 
     @property
     def employees_posted(self) -> List[EmployeeInfoDefinition]:
@@ -153,15 +157,17 @@ class MockGleanClient:
         count: Optional[int] = None,
         datasource: Optional[str] = None,
     ) -> None:
-        """Assert that documents were posted to `bulk_index`.
+        """Assert that documents were posted through incremental or bulk indexing.
 
         Args:
             count: Expected number of documents. If `None`, asserts at least one.
             datasource: If set, only count documents posted to this datasource.
         """
-        actual = self._filtered_count(
-            self._mock.indexing.documents.bulk_index.call_args_list, datasource, "documents"
-        )
+        calls = [
+            *self._mock.indexing.documents.index.call_args_list,
+            *self._mock.indexing.documents.bulk_index.call_args_list,
+        ]
+        actual = self._filtered_count(calls, datasource, "documents")
         _assert_count(actual, count, label="documents", datasource=datasource)
 
     def assert_employees_posted(self, count: Optional[int] = None) -> None:

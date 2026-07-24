@@ -20,6 +20,7 @@ The existing harness pytest suite validates all three harness levels:
 
 1. Full mock: source side mocked, Glean side mocked.
    - Covered by `tests/unit_tests/testing/harness/test_harness_phase1.py`.
+   - `run_connector` automatically verifies that every emitted `object_type` and `container_object_type` is declared in `CustomDatasourceConfig.object_definitions`. Include at least one representative fixture for every object type the connector can emit so this deterministic offline check covers the complete mapping.
 
 2. Integration: source side real or recorded, Glean side mocked.
    - Covered by `tests/unit_tests/testing/harness/test_harness_phase2.py`.

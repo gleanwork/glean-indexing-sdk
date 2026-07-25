@@ -2,6 +2,7 @@
 
 import json
 import logging
+import sys
 from io import StringIO
 
 import pytest
@@ -35,6 +36,18 @@ class TestSetupConnectorLogging:
         gl = _glean_logger()
         assert gl.level == logging.INFO
         assert len(gl.handlers) > 0
+
+    def test_default_handler_writes_to_stdout(self):
+        """Test that default connector logs use the workload logging stream."""
+        setup_connector_logging("test_connector")
+
+        stream_handlers = [
+            handler
+            for handler in _glean_logger().handlers
+            if isinstance(handler, logging.StreamHandler)
+        ]
+        assert stream_handlers
+        assert all(handler.stream is sys.stdout for handler in stream_handlers)
 
     def test_default_is_structured(self):
         """Test that default logging produces structured JSON output."""
@@ -71,6 +84,7 @@ class TestSetupConnectorLogging:
 
         assert log_data["message"] == "Test structured message"
         assert log_data["level"] == "INFO"
+        assert log_data["severity"] == "INFO"
         assert log_data["custom_field"] == "custom_value"
         assert "timestamp" in log_data
 

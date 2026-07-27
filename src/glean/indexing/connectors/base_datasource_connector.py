@@ -10,6 +10,7 @@ from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.exceptions import InconsistentDataError, InvalidDatasourceConfigError
 from glean.indexing.models import (
+    DEFAULT_UPLOAD_MAX_WORKERS,
     ConnectorOptions,
     CustomDatasourceConfig,
     DatasourceIdentityDefinitions,
@@ -194,6 +195,9 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                     datasource=self.name,
                     timeout_ms=options.upload_timeout_ms if options else None,
                     observability=self._observability,
+                    upload_max_workers=options.upload_max_workers
+                    if options
+                    else DEFAULT_UPLOAD_MAX_WORKERS,
                 ).bulk_index_documents(
                     documents=documents,
                     batch_size=self.batch_size,

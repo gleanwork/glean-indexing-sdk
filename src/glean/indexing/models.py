@@ -24,6 +24,8 @@ TSourceData = TypeVar("TSourceData")
 TIndexableEntityDefinition = TypeVar("TIndexableEntityDefinition")
 """Type variable for the Glean API entity definition produced by the connector (e.g., DocumentDefinition, EmployeeInfoDefinition)."""
 
+DEFAULT_UPLOAD_MAX_WORKERS = 5
+
 
 @dataclass
 class ConnectorOptions:
@@ -39,12 +41,15 @@ class ConnectorOptions:
             Use this when uploading large batches that may exceed the default timeout.
         document_batch_size_bytes: Maximum serialized byte size for document
             bulk upload batches. Set to None to only use document count batching.
+        upload_max_workers: Maximum number of concurrent middle-page bulk uploads.
+            The first and last pages are always uploaded synchronously.
     """
 
     force_restart: bool = False
     disable_stale_deletion_check: bool = False
     upload_timeout_ms: Optional[int] = None
     document_batch_size_bytes: Optional[int] = 5 * 1024 * 1024
+    upload_max_workers: int = DEFAULT_UPLOAD_MAX_WORKERS
 
 
 class DatasourceIdentityDefinitions(TypedDict, total=False):
@@ -66,4 +71,5 @@ __all__ = [
     "DatasourceIdentityDefinitions",
     "TSourceData",
     "TIndexableEntityDefinition",
+    "DEFAULT_UPLOAD_MAX_WORKERS",
 ]

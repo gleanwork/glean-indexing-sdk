@@ -2,7 +2,9 @@
 
 import time
 import uuid
-from typing import Any, Callable, Mapping, Optional, Sequence, TypeVar
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, TypeVar
 
 from glean.api_client.models import (
     CheckDocumentAccessResponse,
@@ -23,6 +25,7 @@ from glean.api_client.models import (
 
 from glean.indexing.common import BatchProcessor, DocumentBatchProcessor, api_client
 from glean.indexing.common.batch_processor import DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
+from glean.indexing.models import DEFAULT_UPLOAD_MAX_WORKERS
 from glean.indexing.observability import ConnectorObservability
 
 T = TypeVar("T")
@@ -110,6 +113,7 @@ class PushUploader:
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
         observability: Optional[ConnectorObservability] = None,
+        upload_max_workers: int = DEFAULT_UPLOAD_MAX_WORKERS,
     ) -> None:
         """Initialize an uploader for a datasource.
 
@@ -120,13 +124,17 @@ class PushUploader:
             timeout_ms: Optional per-call timeout override in milliseconds.
             http_headers: Optional per-call HTTP headers.
             observability: Optional observability instance for upload logs and metrics.
+            upload_max_workers: Maximum number of concurrent middle-page uploads.
         """
+        if upload_max_workers <= 0:
+            raise ValueError("upload_max_workers must be greater than 0")
         self.datasource = datasource
         self.retries = retries
         self.server_url = server_url
         self.timeout_ms = timeout_ms
         self.http_headers = http_headers
         self.observability = observability
+        self.upload_max_workers = upload_max_workers
 
     def configure_datasource(self, config: CustomDatasourceConfig) -> None:
         """Configure a datasource using `datasources.add()`."""
@@ -185,32 +193,93 @@ class PushUploader:
         if not document_list:
             return
 
-        batches = list(
+        self.bulk_index_document_batches(
             DocumentBatchProcessor(
-                document_list,
-                batch_size=batch_size,
-                max_batch_bytes=max_batch_bytes,
-            )
+                document_list, batch_size=batch_size, max_batch_bytes=max_batch_bytes
+            ),
+            upload_id=upload_id,
+            force_restart_upload=force_restart_upload,
+            disable_stale_document_deletion_check=disable_stale_document_deletion_check,
         )
-        if not batches:
+
+    def bulk_index_document_batches(
+        self,
+        batches: Iterable[Sequence[DocumentDefinition]],
+        *,
+        upload_id: Optional[str] = None,
+        force_restart_upload: Optional[bool] = None,
+        disable_stale_document_deletion_check: Optional[bool] = None,
+    ) -> None:
+        """Upload pre-batched documents with ordered boundary pages and parallel middle pages."""
+        batch_iterator = iter(batches)
+        first_batch = next(batch_iterator, None)
+        if first_batch is None:
             return
 
         upload_id = self._upload_id(upload_id)
-        for i, batch in enumerate(batches):
-            is_first_page = i == 0
-            is_last_page = i == len(batches) - 1
+        second_batch = next(batch_iterator, None)
+        if second_batch is None:
             self.bulk_index_single_batch_upload(
-                documents=list(batch),
+                documents=list(first_batch),
                 upload_id=upload_id,
-                is_first_page=is_first_page,
-                is_last_page=is_last_page,
-                batch_index=i,
-                batch_count=len(batches),
-                force_restart_upload=self._first_page_value(force_restart_upload, is_first_page),
+                is_first_page=True,
+                is_last_page=True,
+                force_restart_upload=self._first_page_value(force_restart_upload, True),
                 disable_stale_document_deletion_check=self._last_page_value(
-                    disable_stale_document_deletion_check, is_last_page
+                    disable_stale_document_deletion_check, True
                 ),
             )
+            return
+
+        self.bulk_index_single_batch_upload(
+            documents=list(first_batch),
+            upload_id=upload_id,
+            is_first_page=True,
+            is_last_page=False,
+            batch_index=0,
+            force_restart_upload=self._first_page_value(force_restart_upload, True),
+            disable_stale_document_deletion_check=None,
+        )
+
+        pending: deque[Future[None]] = deque()
+        current_batch = second_batch
+        batch_index = 1
+        with ThreadPoolExecutor(max_workers=self.upload_max_workers) as executor:
+            while True:
+                next_batch = next(batch_iterator, None)
+                if next_batch is None:
+                    break
+                pending.append(
+                    executor.submit(
+                        self.bulk_index_single_batch_upload,
+                        documents=list(current_batch),
+                        upload_id=upload_id,
+                        is_first_page=False,
+                        is_last_page=False,
+                        batch_index=batch_index,
+                        force_restart_upload=None,
+                        disable_stale_document_deletion_check=None,
+                    )
+                )
+                if len(pending) >= self.upload_max_workers:
+                    pending.popleft().result()
+                current_batch = next_batch
+                batch_index += 1
+
+            while pending:
+                pending.popleft().result()
+
+        self.bulk_index_single_batch_upload(
+            documents=list(current_batch),
+            upload_id=upload_id,
+            is_first_page=False,
+            is_last_page=True,
+            batch_index=batch_index,
+            force_restart_upload=None,
+            disable_stale_document_deletion_check=self._last_page_value(
+                disable_stale_document_deletion_check, True
+            ),
+        )
 
     def bulk_index_single_batch_upload(
         self,

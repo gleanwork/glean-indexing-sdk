@@ -1,6 +1,7 @@
 """Tests for logger providers."""
 
 import logging
+import sys
 
 import pytest
 
@@ -26,6 +27,14 @@ class TestConsoleLoggerProvider:
         handler = provider.setup_handler("test_connector", logging.DEBUG)
 
         assert handler.level == logging.DEBUG
+
+    def test_setup_handler_writes_to_stdout(self):
+        """Test that console logs use the workload logging stream."""
+        provider = ConsoleLoggerProvider()
+        handler = provider.setup_handler("test_connector")
+
+        assert isinstance(handler, logging.StreamHandler)
+        assert handler.stream is sys.stdout
 
     def test_setup_handler_default_log_level(self):
         """Test that default log level is INFO."""

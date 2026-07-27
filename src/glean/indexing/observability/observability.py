@@ -2,6 +2,7 @@
 
 import functools
 import logging
+import sys
 import time
 import uuid
 from collections import defaultdict
@@ -721,7 +722,7 @@ def setup_connector_logging(
     if logger_provider is not None:
         handlers = [logger_provider.setup_handler(connector_name, level)]
     else:
-        handlers = [logging.StreamHandler()]
+        handlers = [logging.StreamHandler(sys.stdout)]
 
     if extra_handlers:
         handlers.extend(extra_handlers)

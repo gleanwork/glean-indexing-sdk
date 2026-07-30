@@ -217,7 +217,7 @@ def test_oauth2_token_provider_reuses_rotated_token_after_restart(httpx_mock):
         json={
             "access_token": "access-2",
             "refresh_token": "refresh-2",
-            "expires_in": 1,
+            "expires_in": -1,
         },
     )
     httpx_mock.add_response(
@@ -233,15 +233,11 @@ def test_oauth2_token_provider_reuses_rotated_token_after_restart(httpx_mock):
         token_url=token_url,
         client_id="client-1",
         token_store=store,
-        clock=lambda: 0,
-        expiry_skew_seconds=0,
     )
     second_run = OAuth2TokenProvider(
         token_url=token_url,
         client_id="client-1",
         token_store=store,
-        clock=lambda: 2,
-        expiry_skew_seconds=0,
     )
 
     assert first_run() == "access-2"

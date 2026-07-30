@@ -40,12 +40,11 @@ class OAuth2Token:
     refresh_token: str | None = None
     expires_at: float | None = None
 
-    def is_expired(self, *, now: float | None = None, skew_seconds: float = 60.0) -> bool:
+    def is_expired(self, *, skew_seconds: float = 60.0) -> bool:
         """Return whether the access token should be refreshed."""
         if self.expires_at is None:
             return False
-        current_time = time.time() if now is None else now
-        return current_time >= self.expires_at - skew_seconds
+        return time.time() >= self.expires_at - skew_seconds
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize token state to JSON-compatible data."""
@@ -102,7 +101,6 @@ class OAuth2TokenProvider:
         client: httpx.Client | None = None,
         extra_token_params: Mapping[str, str] | None = None,
         expiry_skew_seconds: float = 60.0,
-        clock: Callable[[], float] = time.time,
     ) -> None:
         """Initialize the provider.
 
@@ -114,7 +112,6 @@ class OAuth2TokenProvider:
             client: Optional injected HTTP client.
             extra_token_params: Extra form params for provider-specific token endpoints.
             expiry_skew_seconds: Refresh tokens this many seconds before expiry.
-            clock: Clock used for expiry calculations.
         """
         self.token_url = token_url
         self.client_id = client_id
@@ -124,14 +121,12 @@ class OAuth2TokenProvider:
         self._owns_client = client is None
         self.extra_token_params = dict(extra_token_params or {})
         self.expiry_skew_seconds = expiry_skew_seconds
-        self._clock = clock
         self._token: OAuth2Token | None = None
 
     def __call__(self) -> str:
         """Return a valid access token, refreshing or minting as needed."""
         token = self._current_token()
         if token is not None and not token.is_expired(
-            now=self._clock(),
             skew_seconds=self.expiry_skew_seconds,
         ):
             return token.access_token
@@ -192,7 +187,7 @@ class OAuth2TokenProvider:
         expires_in = payload.get("expires_in")
         if expires_in is not None and not isinstance(expires_in, (int, float)):
             raise OAuth2TokenError("OAuth2 token endpoint expires_in must be a number")
-        expires_at = self._clock() + float(expires_in) if expires_in is not None else None
+        expires_at = time.time() + float(expires_in) if expires_in is not None else None
 
         return OAuth2Token(
             access_token=access_token,

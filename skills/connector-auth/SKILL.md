@@ -38,7 +38,7 @@ For a deployed OAuth refresh flow:
 
 - Set `oauth_token_persistence: true` in `glean_deployment.yaml`.
 - Initialize `SOURCE_OAUTH_TOKEN_STATE` in `.env` with the access token, refresh token, and expiry timestamp before running `glean-deploy secrets upload`.
-- Build `OAuth2TokenProvider` with `get_oauth2_token_store_from_environment()`.
+- Build `OAuth2TokenProvider` with the store returned by `get_oauth2_token_store_from_environment()`. If no token state is configured, skip the refresh flow.
 - Do not persist refreshed tokens in connector files or process-local storage.
 
 ## Required Plan Fields

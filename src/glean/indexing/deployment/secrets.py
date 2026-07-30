@@ -8,13 +8,15 @@ get_secrets_backend(config) to obtain the right one at runtime.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from glean.indexing.recipes.pull.auth import OAuth2Token, OAuth2TokenError
+from glean.indexing.observability import ConnectorObservability
+from glean.indexing.recipes.pull.auth import OAuth2Token, OAuth2TokenError, OAuth2TokenStore
 
 if TYPE_CHECKING:
     from glean.indexing.deployment.config import DeploymentConfig
@@ -35,6 +37,8 @@ _REDLIST: frozenset[str] = frozenset(
 )
 
 OAUTH_TOKEN_STATE_ENV_VAR = "SOURCE_OAUTH_TOKEN_STATE"
+
+logger = logging.getLogger(__name__)
 
 
 def parse_env_file(env_file: Path) -> dict[str, str]:
@@ -323,25 +327,50 @@ class AWSOAuth2TokenStore:
         return self._client
 
 
+class _TransientOAuth2TokenStore:
+    """Keep OAuth2 token state in memory when cloud persistence is unavailable."""
+
+    def __init__(self, token: OAuth2Token) -> None:
+        self._token = token
+
+    def load(self) -> OAuth2Token:
+        return self._token
+
+    def save(self, token: OAuth2Token) -> None:
+        self._token = token
+
+
 def get_oauth2_token_store_from_environment(
     environ: Mapping[str, str] | None = None,
-) -> GCPOAuth2TokenStore | AWSOAuth2TokenStore:
+    observability: ConnectorObservability | None = None,
+) -> OAuth2TokenStore | None:
     """Create the cloud token store configured by deployment environment variables."""
     values = os.environ if environ is None else environ
-    cloud = _required_environment_value(values, "CLOUD_PLATFORM").lower()
-    connector_name = _required_environment_value(values, "DATASOURCE_NAME")
+    serialized_token = values.get(OAUTH_TOKEN_STATE_ENV_VAR)
+    if not serialized_token:
+        return None
+
+    cloud = values.get("CLOUD_PLATFORM", "").lower()
 
     if cloud == "gcp":
         return GCPOAuth2TokenStore(
             project_id=_required_environment_value(values, "GOOGLE_CLOUD_PROJECT"),
-            connector_name=connector_name,
+            connector_name=_required_environment_value(values, "DATASOURCE_NAME"),
         )
     if cloud == "aws":
         return AWSOAuth2TokenStore(
             region=_required_environment_value(values, "AWS_REGION"),
-            connector_name=connector_name,
+            connector_name=_required_environment_value(values, "DATASOURCE_NAME"),
         )
-    raise OAuth2TokenError(f"Unsupported cloud platform for OAuth2 token storage: {cloud}")
+
+    extra = {"operation": "oauth_token_persistence_skipped", "cloud_platform": cloud or "unset"}
+    if observability is not None:
+        extra = observability.get_common_fields(**extra)
+    logger.warning(
+        "OAuth2 token persistence is unavailable for this cloud platform; refreshed tokens will remain in memory",
+        extra=extra,
+    )
+    return _TransientOAuth2TokenStore(_deserialize_oauth2_token(serialized_token))
 
 
 def _required_environment_value(environ: Mapping[str, str], name: str) -> str:

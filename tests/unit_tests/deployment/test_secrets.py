@@ -1,5 +1,6 @@
 """Unit tests for glean-deploy secrets module."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,7 +17,8 @@ from glean.indexing.deployment.secrets import (
     get_secrets_backend,
     parse_env_file,
 )
-from glean.indexing.recipes.pull import OAuth2Token, OAuth2TokenError
+from glean.indexing.observability import ConnectorObservability
+from glean.indexing.recipes.pull import OAuth2Token
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +405,7 @@ def test_oauth_token_store_factory_uses_deployed_cloud():
             "CLOUD_PLATFORM": "gcp",
             "DATASOURCE_NAME": "my_connector",
             "GOOGLE_CLOUD_PROJECT": "my-project",
+            "SOURCE_OAUTH_TOKEN_STATE": '{"access_token":"access-1"}',
         }
     )
     aws_store = get_oauth2_token_store_from_environment(
@@ -410,6 +413,7 @@ def test_oauth_token_store_factory_uses_deployed_cloud():
             "CLOUD_PLATFORM": "aws",
             "DATASOURCE_NAME": "my_connector",
             "AWS_REGION": "us-east-1",
+            "SOURCE_OAUTH_TOKEN_STATE": '{"access_token":"access-1"}',
         }
     )
 
@@ -417,11 +421,25 @@ def test_oauth_token_store_factory_uses_deployed_cloud():
     assert type(aws_store).__name__ == "AWSOAuth2TokenStore"
 
 
-def test_oauth_token_store_factory_rejects_unknown_cloud():
-    with pytest.raises(OAuth2TokenError, match="Unsupported cloud platform"):
-        get_oauth2_token_store_from_environment(
+def test_oauth_token_store_factory_uses_transient_store_for_unknown_cloud(caplog):
+    observability = ConnectorObservability("test_connector")
+
+    with caplog.at_level(logging.WARNING):
+        store = get_oauth2_token_store_from_environment(
             {
                 "CLOUD_PLATFORM": "azure",
-                "DATASOURCE_NAME": "my_connector",
-            }
+                "SOURCE_OAUTH_TOKEN_STATE": '{"access_token":"access-1"}',
+            },
+            observability=observability,
         )
+
+    assert store is not None
+    token = store.load()
+    assert token is not None
+    assert token.access_token == "access-1"
+    assert "refreshed tokens will remain in memory" in caplog.text
+    assert getattr(caplog.records[0], "connector") == "test_connector"
+
+
+def test_oauth_token_store_factory_skips_when_token_state_is_absent():
+    assert get_oauth2_token_store_from_environment({"CLOUD_PLATFORM": "gcp"}) is None

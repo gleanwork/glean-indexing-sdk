@@ -8,6 +8,8 @@ from typing import Protocol
 
 import httpx
 
+_EXPIRY_SKEW_SECONDS = 60.0
+
 
 class OAuth2TokenError(RuntimeError):
     """Raised when OAuth2 token loading, storage, or refresh fails."""
@@ -40,11 +42,11 @@ class OAuth2Token:
     refresh_token: str | None = None
     expires_at: float | None = None
 
-    def is_expired(self, *, skew_seconds: float = 60.0) -> bool:
+    def is_expired(self) -> bool:
         """Return whether the access token should be refreshed."""
         if self.expires_at is None:
             return False
-        return time.time() >= self.expires_at - skew_seconds
+        return time.time() >= self.expires_at - _EXPIRY_SKEW_SECONDS
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize token state to JSON-compatible data."""
@@ -99,8 +101,6 @@ class OAuth2TokenProvider:
         token_store: OAuth2TokenStore,
         client_secret: str | None = None,
         client: httpx.Client | None = None,
-        extra_token_params: Mapping[str, str] | None = None,
-        expiry_skew_seconds: float = 60.0,
     ) -> None:
         """Initialize the provider.
 
@@ -110,8 +110,6 @@ class OAuth2TokenProvider:
             token_store: Persistent storage for OAuth2 token state.
             client_secret: Optional OAuth2 client secret.
             client: Optional injected HTTP client.
-            extra_token_params: Extra form params for provider-specific token endpoints.
-            expiry_skew_seconds: Refresh tokens this many seconds before expiry.
         """
         self.token_url = token_url
         self.client_id = client_id
@@ -119,16 +117,12 @@ class OAuth2TokenProvider:
         self.client_secret = client_secret
         self._client = client or httpx.Client()
         self._owns_client = client is None
-        self.extra_token_params = dict(extra_token_params or {})
-        self.expiry_skew_seconds = expiry_skew_seconds
         self._token: OAuth2Token | None = None
 
     def __call__(self) -> str:
         """Return a valid access token, refreshing or minting as needed."""
         token = self._current_token()
-        if token is not None and not token.is_expired(
-            skew_seconds=self.expiry_skew_seconds,
-        ):
+        if token is not None and not token.is_expired():
             return token.access_token
 
         if token is None:
@@ -157,7 +151,6 @@ class OAuth2TokenProvider:
             "grant_type": "refresh_token",
             "client_id": self.client_id,
             "refresh_token": refresh_token,
-            **self.extra_token_params,
         }
         if self.client_secret is not None:
             data["client_secret"] = self.client_secret

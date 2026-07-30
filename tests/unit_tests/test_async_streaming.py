@@ -1,5 +1,7 @@
 """Tests for async streaming base classes."""
 
+import threading
+import time
 from typing import AsyncGenerator, Sequence
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +13,7 @@ from glean.indexing.connectors import (
     BaseAsyncStreamingDatasourceConnector,
 )
 from glean.indexing.models import ConnectorOptions
+from glean.indexing.push import PushUploader
 
 
 class DummyAsyncDataClient(BaseAsyncStreamingDataClient[dict]):
@@ -149,6 +152,39 @@ class TestBaseAsyncStreamingDatasourceConnector:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async()
             assert bulk_index.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_index_data_async_uploads_middle_pages_concurrently(self):
+        client = DummyAsyncDataClient(
+            items=[
+                {"id": f"doc-{i}", "title": f"Doc {i}", "content": f"Content {i}"}
+                for i in range(10)
+            ]
+        )
+        connector = DummyAsyncConnector("test", client)
+        connector.batch_size = 2
+        barrier = threading.Barrier(2)
+        lock = threading.Lock()
+        active_uploads = 0
+        max_active_uploads = 0
+
+        def upload_batch(*, batch_index=0, is_first_page, is_last_page, **kwargs):
+            nonlocal active_uploads, max_active_uploads
+            if is_first_page or is_last_page:
+                return
+            with lock:
+                active_uploads += 1
+                max_active_uploads = max(max_active_uploads, active_uploads)
+            if batch_index in {1, 2}:
+                barrier.wait(timeout=1)
+            time.sleep(0.01)
+            with lock:
+                active_uploads -= 1
+
+        with patch.object(PushUploader, "bulk_index_single_batch_upload", side_effect=upload_batch):
+            await connector.index_data_async(options=ConnectorOptions(upload_max_workers=2))
+
+        assert max_active_uploads == 2
 
     @pytest.mark.asyncio
     async def test_index_data_async_exact_batch_size_multiple(self):

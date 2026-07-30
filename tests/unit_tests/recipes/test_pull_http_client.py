@@ -2,15 +2,14 @@
 
 from email.utils import formatdate
 from time import time
+from typing import cast
 
 import httpx
 import pytest
 
+from glean.indexing.observability import ConnectorObservability
 from glean.indexing.recipes.pull import (
-    ApiKeyAuth,
     BasePullHttpStreamingDataClient,
-    BasicAuth,
-    BearerTokenAuth,
     OAuth2Token,
     OAuth2TokenError,
     OAuth2TokenProvider,
@@ -18,7 +17,9 @@ from glean.indexing.recipes.pull import (
     PullHttpError,
     PullOptions,
     PullRetryOptions,
+    RateLimitExceededError,
     RefreshingBearerTokenAuth,
+    TokenBucketRateLimiter,
 )
 
 
@@ -33,6 +34,59 @@ class InMemoryOAuth2TokenStore:
         self.token = token
 
 
+class MutableClock:
+    def __init__(self, now: float = 0.0) -> None:
+        self.now = now
+        self.sleeps: list[float] = []
+
+    def time(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class CountingRateLimiter:
+    def __init__(self) -> None:
+        self.timeout_seconds_by_call: list[float | None] = []
+
+    def acquire(self, tokens: float = 1.0, timeout_seconds: float | None = None) -> None:
+        self.timeout_seconds_by_call.append(timeout_seconds)
+
+
+class RecordingObservability:
+    def __init__(self) -> None:
+        self.api_counts: list[str] = []
+        self.api_latencies: list[str] = []
+        self.api_errors: list[tuple[str, str]] = []
+        self.retries: list[str] = []
+        self.data_fetch_starts: list[dict] = []
+        self.data_fetch_completions: list[dict] = []
+
+    def record_api_request_count(self, endpoint: str) -> None:
+        self.api_counts.append(endpoint)
+
+    def record_api_request_latency(self, latency_ms: float, endpoint: str) -> None:
+        self.api_latencies.append(endpoint)
+
+    def record_api_request_error(self, endpoint: str, error_type: str) -> None:
+        self.api_errors.append((endpoint, error_type))
+
+    def record_retry(self, operation: str) -> None:
+        self.retries.append(operation)
+
+    def log_data_fetch_started(self, **kwargs) -> None:
+        self.data_fetch_starts.append(kwargs)
+
+    def log_data_fetch_completed(self, item_count: int, duration_ms: int, **kwargs) -> None:
+        self.data_fetch_completions.append({"item_count": item_count, "duration_ms": duration_ms, **kwargs})
+
+
+def _observability_arg(observability: RecordingObservability) -> ConnectorObservability:
+    return cast(ConnectorObservability, observability)
+
+
 def _fast_options(max_attempts: int = 2) -> PullOptions:
     return PullOptions(
         retries=PullRetryOptions(
@@ -42,102 +96,6 @@ def _fast_options(max_attempts: int = 2) -> PullOptions:
             jitter_seconds=0,
         )
     )
-
-
-def test_bearer_token_auth_sends_authorization_header(httpx_mock):
-    httpx_mock.add_response(
-        url="https://example.com/v1/items",
-        json={"items": []},
-        headers={"Content-Type": "application/json"},
-    )
-
-    client = PullHttpClient(
-        base_url="https://example.com/v1", auth=BearerTokenAuth("token-1"), options=_fast_options()
-    )
-
-    client.get("/items")
-
-    request = httpx_mock.get_request()
-    assert request is not None
-    assert request.headers["Authorization"] == "Bearer token-1"
-
-
-def test_bearer_token_auth_supports_custom_scheme(httpx_mock):
-    httpx_mock.add_response(
-        url="https://example.com/v1/items",
-        json={"items": []},
-        headers={"Content-Type": "application/json"},
-    )
-
-    client = PullHttpClient(
-        base_url="https://example.com/v1",
-        auth=BearerTokenAuth("token-1", scheme="token"),
-        options=_fast_options(),
-    )
-
-    client.get("/items")
-
-    request = httpx_mock.get_request()
-    assert request is not None
-    assert request.headers["Authorization"] == "token token-1"
-
-
-def test_api_key_auth_sends_configured_header(httpx_mock):
-    httpx_mock.add_response(
-        url="https://example.com/v1/items",
-        json={"items": []},
-        headers={"Content-Type": "application/json"},
-    )
-
-    client = PullHttpClient(
-        base_url="https://example.com/v1",
-        auth=ApiKeyAuth("key-1", header_name="X-API-Key"),
-        options=_fast_options(),
-    )
-
-    client.get("/items")
-
-    request = httpx_mock.get_request()
-    assert request is not None
-    assert request.headers["X-API-Key"] == "key-1"
-
-
-def test_api_key_auth_supports_prefix(httpx_mock):
-    httpx_mock.add_response(
-        url="https://example.com/v1/items",
-        json={"items": []},
-        headers={"Content-Type": "application/json"},
-    )
-
-    client = PullHttpClient(
-        base_url="https://example.com/v1",
-        auth=ApiKeyAuth("key-1", header_name="Authorization", prefix="Token"),
-        options=_fast_options(),
-    )
-
-    client.get("/items")
-
-    request = httpx_mock.get_request()
-    assert request is not None
-    assert request.headers["Authorization"] == "Token key-1"
-
-
-def test_basic_auth_sends_encoded_authorization_header(httpx_mock):
-    httpx_mock.add_response(
-        url="https://example.com/v1/items",
-        json={"items": []},
-        headers={"Content-Type": "application/json"},
-    )
-
-    client = PullHttpClient(
-        base_url="https://example.com/v1", auth=BasicAuth("user", "pass"), options=_fast_options()
-    )
-
-    client.get("/items")
-
-    request = httpx_mock.get_request()
-    assert request is not None
-    assert request.headers["Authorization"] == "Basic dXNlcjpwYXNz"
 
 
 def test_refreshing_bearer_token_auth_uses_provider_per_request(httpx_mock):
@@ -245,49 +203,72 @@ def test_oauth2_token_provider_saves_rotated_refresh_token(httpx_mock):
     assert stored_token.refresh_token == "refresh-2"
 
 
-def test_oauth2_token_provider_mints_client_credentials_token_with_scopes(httpx_mock):
+def test_oauth2_token_provider_reuses_rotated_token_after_restart(httpx_mock):
     token_url = "https://auth.example.com/oauth/token"
-    store = InMemoryOAuth2TokenStore()
+    store = InMemoryOAuth2TokenStore(
+        OAuth2Token(
+            access_token="expired-access",
+            refresh_token="refresh-1",
+            expires_at=-1,
+        )
+    )
     httpx_mock.add_response(
         url=token_url,
         json={
-            "access_token": "service-access",
-            "expires_in": 1800,
-            "scope": "read write",
+            "access_token": "access-2",
+            "refresh_token": "refresh-2",
+            "expires_in": 1,
         },
     )
-    provider = OAuth2TokenProvider(
-        token_url=token_url,
-        client_id="client-1",
-        client_secret="secret-1",
-        scopes=("read", "write"),
-        token_store=store,
+    httpx_mock.add_response(
+        url=token_url,
+        json={
+            "access_token": "access-3",
+            "refresh_token": "refresh-3",
+            "expires_in": 1,
+        },
     )
 
-    assert provider() == "service-access"
+    first_run = OAuth2TokenProvider(
+        token_url=token_url,
+        client_id="client-1",
+        token_store=store,
+        clock=lambda: 0,
+        expiry_skew_seconds=0,
+    )
+    second_run = OAuth2TokenProvider(
+        token_url=token_url,
+        client_id="client-1",
+        token_store=store,
+        clock=lambda: 2,
+        expiry_skew_seconds=0,
+    )
 
-    request = httpx_mock.get_request()
-    assert request is not None
-    assert b"grant_type=client_credentials" in request.content
-    assert b"client_id=client-1" in request.content
-    assert b"client_secret=secret-1" in request.content
-    assert b"scope=read+write" in request.content
-    stored_token = store.load()
-    assert stored_token is not None
-    assert stored_token.scopes == ("read", "write")
+    assert first_run() == "access-2"
+    assert second_run() == "access-3"
+    assert b"refresh_token=refresh-2" in httpx_mock.get_requests()[1].content
 
 
-def test_oauth2_token_provider_raises_clear_error_without_access_token(httpx_mock):
-    token_url = "https://auth.example.com/oauth/token"
-    httpx_mock.add_response(url=token_url, json={"expires_in": 1800})
-    provider = OAuth2TokenProvider(token_url=token_url, client_id="client-1")
+def test_oauth2_token_provider_requires_stored_token_state():
+    provider = OAuth2TokenProvider(
+        token_url="https://auth.example.com/oauth/token",
+        client_id="client-1",
+        token_store=InMemoryOAuth2TokenStore(),
+    )
 
-    with pytest.raises(OAuth2TokenError, match="missing access_token"):
+    with pytest.raises(OAuth2TokenError, match="does not contain token state"):
         provider()
 
 
 def test_refreshing_bearer_token_auth_works_with_oauth2_token_provider(httpx_mock):
     token_url = "https://auth.example.com/oauth/token"
+    store = InMemoryOAuth2TokenStore(
+        OAuth2Token(
+            access_token="expired-access",
+            refresh_token="refresh-1",
+            expires_at=time() - 10,
+        )
+    )
     httpx_mock.add_response(
         url=token_url,
         json={
@@ -300,7 +281,11 @@ def test_refreshing_bearer_token_auth_works_with_oauth2_token_provider(httpx_moc
         json={"items": []},
         headers={"Content-Type": "application/json"},
     )
-    provider = OAuth2TokenProvider(token_url=token_url, client_id="client-1")
+    provider = OAuth2TokenProvider(
+        token_url=token_url,
+        client_id="client-1",
+        token_store=store,
+    )
     client = PullHttpClient(
         base_url="https://example.com/v1",
         auth=RefreshingBearerTokenAuth(provider),
@@ -330,7 +315,7 @@ def test_http_client_auth_headers_override_default_headers_and_request_headers_o
     client = PullHttpClient(
         base_url="https://example.com/v1",
         headers={"Authorization": "Bearer default-token", "Accept": "text/plain"},
-        auth=BearerTokenAuth("auth-token"),
+        auth=RefreshingBearerTokenAuth(lambda: "auth-token"),
         options=_fast_options(),
     )
 
@@ -352,7 +337,9 @@ def test_get_bytes_uses_auth_headers(httpx_mock):
     )
 
     client = PullHttpClient(
-        base_url="https://example.com/v1", auth=BearerTokenAuth("token-1"), options=_fast_options()
+        base_url="https://example.com/v1",
+        auth=RefreshingBearerTokenAuth(lambda: "token-1"),
+        options=_fast_options(),
     )
 
     content, _ = client.get_bytes("/file")
@@ -361,6 +348,153 @@ def test_get_bytes_uses_auth_headers(httpx_mock):
     assert request is not None
     assert request.headers["Authorization"] == "Bearer token-1"
     assert content == b"abc"
+
+
+def test_token_bucket_allows_initial_capacity_then_times_out():
+    clock = MutableClock()
+    limiter = TokenBucketRateLimiter(
+        rate_per_second=1,
+        capacity=2,
+        clock=clock.time,
+        sleep=clock.sleep,
+    )
+
+    limiter.acquire()
+    limiter.acquire()
+
+    with pytest.raises(RateLimitExceededError):
+        limiter.acquire(timeout_seconds=0)
+
+
+def test_token_bucket_refills_over_time_without_real_sleep():
+    clock = MutableClock()
+    limiter = TokenBucketRateLimiter(
+        rate_per_second=2,
+        capacity=5,
+        initial_tokens=0,
+        clock=clock.time,
+        sleep=clock.sleep,
+    )
+
+    limiter.acquire()
+
+    assert clock.sleeps == [0.5]
+    assert clock.now == 0.5
+
+
+def test_token_bucket_timeout_does_not_sleep_past_deadline():
+    clock = MutableClock()
+    limiter = TokenBucketRateLimiter(
+        rate_per_second=1,
+        capacity=1,
+        initial_tokens=0,
+        clock=clock.time,
+        sleep=clock.sleep,
+    )
+
+    with pytest.raises(RateLimitExceededError):
+        limiter.acquire(timeout_seconds=0.25)
+
+    assert clock.sleeps == []
+
+
+def test_token_bucket_rejects_invalid_configuration():
+    with pytest.raises(ValueError, match="rate_per_second"):
+        TokenBucketRateLimiter(rate_per_second=0, capacity=1)
+    with pytest.raises(ValueError, match="capacity"):
+        TokenBucketRateLimiter(rate_per_second=1, capacity=0)
+
+
+def test_http_client_uses_rate_limiter_for_each_attempt(httpx_mock):
+    limiter = CountingRateLimiter()
+    options = _fast_options(max_attempts=2)
+    options.rate_limit_timeout_seconds = 3
+    httpx_mock.add_response(url="https://example.com/v1/items", status_code=429)
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": [{"id": "item-1"}]},
+        headers={"Content-Type": "application/json"},
+    )
+
+    client = PullHttpClient(
+        base_url="https://example.com/v1",
+        options=options,
+        rate_limiter=limiter,
+        sleep=lambda _: None,
+    )
+
+    response = client.get("/items")
+
+    assert response.json_dict()["items"][0]["id"] == "item-1"
+    assert limiter.timeout_seconds_by_call == [3, 3]
+
+
+def test_http_client_records_api_metrics_for_success(httpx_mock):
+    observability = RecordingObservability()
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": [{"id": "item-1"}]},
+        headers={"Content-Type": "application/json"},
+    )
+
+    client = PullHttpClient(
+        base_url="https://example.com/v1",
+        options=_fast_options(),
+        observability=_observability_arg(observability),
+    )
+
+    client.get("/items")
+
+    assert observability.api_counts == ["GET /v1/items"]
+    assert observability.api_latencies == ["GET /v1/items"]
+    assert observability.api_errors == []
+
+
+def test_http_client_records_errors_and_retries(httpx_mock):
+    observability = RecordingObservability()
+    httpx_mock.add_response(url="https://example.com/v1/items", status_code=429)
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": []},
+        headers={"Content-Type": "application/json"},
+    )
+
+    client = PullHttpClient(
+        base_url="https://example.com/v1",
+        options=_fast_options(max_attempts=2),
+        observability=_observability_arg(observability),
+        sleep=lambda _: None,
+    )
+
+    client.get("/items")
+
+    assert observability.api_counts == ["GET /v1/items", "GET /v1/items"]
+    assert observability.api_errors == [("GET /v1/items", "http_429")]
+    assert observability.retries == ["GET /v1/items"]
+
+
+def test_http_streaming_data_client_records_fetch_lifecycle(httpx_mock):
+    observability = RecordingObservability()
+    httpx_mock.add_response(
+        url="https://example.com/v1/items",
+        json={"items": [{"id": "item-1"}, {"id": "item-2"}]},
+        headers={"Content-Type": "application/json"},
+    )
+
+    data_client = BasePullHttpStreamingDataClient[dict[str, object]](
+        base_url="https://example.com/v1",
+        path="/items",
+        pagination="none",
+        observability=_observability_arg(observability),
+        options=_fast_options(),
+    )
+
+    assert [item["id"] for item in data_client.get_source_data()] == ["item-1", "item-2"]
+
+    assert observability.data_fetch_starts == [{"path": "/items", "pagination": "none"}]
+    assert observability.data_fetch_completions[0]["item_count"] == 2
+    assert observability.data_fetch_completions[0]["path"] == "/items"
+    assert observability.data_fetch_completions[0]["pagination"] == "none"
 
 
 def test_http_client_uses_base_url_headers_and_parses_json(httpx_mock):
@@ -412,9 +546,7 @@ def test_http_client_retries_retryable_status_and_uses_retry_after(httpx_mock):
         headers={"Content-Type": "application/json"},
     )
 
-    client = PullHttpClient(
-        base_url="https://example.com/v1", options=_fast_options(), sleep=sleeps.append
-    )
+    client = PullHttpClient(base_url="https://example.com/v1", options=_fast_options(), sleep=sleeps.append)
     response = client.get("/items")
 
     assert response.json_dict()["items"][0]["id"] == "item-1"
@@ -436,9 +568,7 @@ def test_http_client_parses_http_date_retry_after(httpx_mock):
         headers={"Content-Type": "application/json"},
     )
 
-    client = PullHttpClient(
-        base_url="https://example.com/v1", options=_fast_options(), sleep=sleeps.append
-    )
+    client = PullHttpClient(base_url="https://example.com/v1", options=_fast_options(), sleep=sleeps.append)
     client.get("/items")
 
     assert len(sleeps) == 1
@@ -465,9 +595,7 @@ def test_http_client_retries_transport_errors(httpx_mock):
         headers={"Content-Type": "application/json"},
     )
 
-    client = PullHttpClient(
-        base_url="https://example.com/v1", options=_fast_options(), sleep=lambda _: None
-    )
+    client = PullHttpClient(base_url="https://example.com/v1", options=_fast_options(), sleep=lambda _: None)
     response = client.get("/items")
 
     assert response.json_dict()["items"][0]["id"] == "item-1"
@@ -756,9 +884,7 @@ def test_get_bytes_applies_size_cap(httpx_mock):
 
 
 def test_http_client_context_manager_does_not_close_injected_client():
-    inner_client = httpx.Client(
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True}))
-    )
+    inner_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True})))
     pull_client = PullHttpClient(base_url="https://example.com", client=inner_client)
 
     with pull_client:

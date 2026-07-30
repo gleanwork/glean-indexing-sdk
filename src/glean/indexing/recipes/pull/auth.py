@@ -1,15 +1,12 @@
 """Authentication helpers for source-side pull recipes."""
 
-import base64
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 from typing import Protocol
 
 import httpx
-
-TokenProvider = Callable[[], str]
 
 
 class OAuth2TokenError(RuntimeError):
@@ -25,58 +22,14 @@ class AuthProvider(Protocol):
 
 
 @dataclass(frozen=True)
-class BearerTokenAuth:
-    """Bearer token auth provider for PATs and already-issued OAuth tokens."""
-
-    token: str
-    header_name: str = "Authorization"
-    scheme: str = "Bearer"
-
-    def headers(self) -> Mapping[str, str]:
-        """Return the bearer authorization header."""
-        return {self.header_name: f"{self.scheme} {self.token}"}
-
-
-@dataclass(frozen=True)
-class ApiKeyAuth:
-    """API key auth provider for source APIs."""
-
-    key: str
-    header_name: str
-    prefix: str | None = None
-
-    def headers(self) -> Mapping[str, str]:
-        """Return an API key header."""
-        value = f"{self.prefix} {self.key}" if self.prefix else self.key
-        return {self.header_name: value}
-
-
-@dataclass(frozen=True)
-class BasicAuth:
-    """HTTP Basic auth provider for source APIs."""
-
-    username: str
-    password: str
-    header_name: str = "Authorization"
-
-    def headers(self) -> Mapping[str, str]:
-        """Return the Basic authorization header."""
-        credentials = f"{self.username}:{self.password}".encode()
-        token = base64.b64encode(credentials).decode()
-        return {self.header_name: f"Basic {token}"}
-
-
-@dataclass(frozen=True)
 class RefreshingBearerTokenAuth:
-    """Bearer auth provider backed by datasource-specific token refresh logic."""
+    """Bearer auth provider backed by an OAuth2 token provider."""
 
-    token_provider: TokenProvider
-    header_name: str = "Authorization"
-    scheme: str = "Bearer"
+    token_provider: Callable[[], str]
 
     def headers(self) -> Mapping[str, str]:
-        """Return a bearer header using the current token from the provider."""
-        return {self.header_name: f"{self.scheme} {self.token_provider()}"}
+        """Return a bearer header using the current OAuth2 access token."""
+        return {"Authorization": f"Bearer {self.token_provider()}"}
 
 
 @dataclass(frozen=True)
@@ -86,8 +39,6 @@ class OAuth2Token:
     access_token: str
     refresh_token: str | None = None
     expires_at: float | None = None
-    token_type: str = "Bearer"
-    scopes: tuple[str, ...] = ()
 
     def is_expired(self, *, now: float | None = None, skew_seconds: float = 60.0) -> bool:
         """Return whether the access token should be refreshed."""
@@ -102,8 +53,6 @@ class OAuth2Token:
             "access_token": self.access_token,
             "refresh_token": self.refresh_token,
             "expires_at": self.expires_at,
-            "token_type": self.token_type,
-            "scopes": list(self.scopes),
         }
 
     @classmethod
@@ -121,24 +70,10 @@ class OAuth2Token:
         if expires_at is not None and not isinstance(expires_at, (int, float)):
             raise OAuth2TokenError("Stored OAuth2 token expires_at must be a number")
 
-        token_type = data.get("token_type", "Bearer")
-        if not isinstance(token_type, str) or not token_type:
-            raise OAuth2TokenError("Stored OAuth2 token token_type must be a non-empty string")
-
-        scopes_value = data.get("scopes", [])
-        if isinstance(scopes_value, str):
-            scopes = tuple(scope for scope in scopes_value.split() if scope)
-        elif isinstance(scopes_value, Sequence):
-            scopes = tuple(scope for scope in scopes_value if isinstance(scope, str) and scope)
-        else:
-            raise OAuth2TokenError("Stored OAuth2 token scopes must be a list or string")
-
         return cls(
             access_token=access_token,
             refresh_token=refresh_token,
             expires_at=float(expires_at) if expires_at is not None else None,
-            token_type=token_type,
-            scopes=scopes,
         )
 
 
@@ -162,10 +97,8 @@ class OAuth2TokenProvider:
         *,
         token_url: str,
         client_id: str,
+        token_store: OAuth2TokenStore,
         client_secret: str | None = None,
-        scopes: Sequence[str] | None = None,
-        refresh_token: str | None = None,
-        token_store: OAuth2TokenStore | None = None,
         client: httpx.Client | None = None,
         extra_token_params: Mapping[str, str] | None = None,
         expiry_skew_seconds: float = 60.0,
@@ -176,10 +109,8 @@ class OAuth2TokenProvider:
         Args:
             token_url: OAuth2 token endpoint.
             client_id: OAuth2 client ID.
+            token_store: Persistent storage for OAuth2 token state.
             client_secret: Optional OAuth2 client secret.
-            scopes: Optional requested scopes.
-            refresh_token: Optional bootstrap refresh token.
-            token_store: Optional persistent token storage.
             client: Optional injected HTTP client.
             extra_token_params: Extra form params for provider-specific token endpoints.
             expiry_skew_seconds: Refresh tokens this many seconds before expiry.
@@ -187,10 +118,8 @@ class OAuth2TokenProvider:
         """
         self.token_url = token_url
         self.client_id = client_id
-        self.client_secret = client_secret
-        self.scopes = tuple(scopes or ())
-        self.refresh_token = refresh_token
         self.token_store = token_store
+        self.client_secret = client_secret
         self._client = client or httpx.Client()
         self._owns_client = client is None
         self.extra_token_params = dict(extra_token_params or {})
@@ -207,15 +136,14 @@ class OAuth2TokenProvider:
         ):
             return token.access_token
 
-        refresh_token = (token.refresh_token if token else None) or self.refresh_token
-        if refresh_token:
-            token = self._fetch_token("refresh_token", refresh_token=refresh_token)
-        else:
-            token = self._fetch_token("client_credentials")
+        if token is None:
+            raise OAuth2TokenError("OAuth2 token store does not contain token state")
+        if not token.refresh_token:
+            raise OAuth2TokenError("Expired OAuth2 token does not contain a refresh token")
 
+        token = self._fetch_token(refresh_token=token.refresh_token)
+        self.token_store.save(token)
         self._token = token
-        if self.token_store is not None:
-            self.token_store.save(token)
         return token.access_token
 
     def close(self) -> None:
@@ -226,23 +154,18 @@ class OAuth2TokenProvider:
     def _current_token(self) -> OAuth2Token | None:
         if self._token is not None:
             return self._token
-        if self.token_store is None:
-            return None
         self._token = self.token_store.load()
         return self._token
 
-    def _fetch_token(self, grant_type: str, *, refresh_token: str | None = None) -> OAuth2Token:
+    def _fetch_token(self, *, refresh_token: str) -> OAuth2Token:
         data = {
-            "grant_type": grant_type,
+            "grant_type": "refresh_token",
             "client_id": self.client_id,
+            "refresh_token": refresh_token,
             **self.extra_token_params,
         }
         if self.client_secret is not None:
             data["client_secret"] = self.client_secret
-        if self.scopes:
-            data["scope"] = " ".join(self.scopes)
-        if refresh_token is not None:
-            data["refresh_token"] = refresh_token
 
         try:
             response = self._client.post(self.token_url, data=data)
@@ -266,25 +189,13 @@ class OAuth2TokenProvider:
         if new_refresh_token is not None and not isinstance(new_refresh_token, str):
             raise OAuth2TokenError("OAuth2 token endpoint refresh_token must be a string")
 
-        token_type = payload.get("token_type", "Bearer")
-        if not isinstance(token_type, str) or not token_type:
-            raise OAuth2TokenError("OAuth2 token endpoint token_type must be a non-empty string")
-
         expires_in = payload.get("expires_in")
         if expires_in is not None and not isinstance(expires_in, (int, float)):
             raise OAuth2TokenError("OAuth2 token endpoint expires_in must be a number")
         expires_at = self._clock() + float(expires_in) if expires_in is not None else None
 
-        response_scope = payload.get("scope")
-        if isinstance(response_scope, str):
-            scopes = tuple(scope for scope in response_scope.split() if scope)
-        else:
-            scopes = self.scopes
-
         return OAuth2Token(
             access_token=access_token,
             refresh_token=new_refresh_token or refresh_token,
             expires_at=expires_at,
-            token_type=token_type,
-            scopes=scopes,
         )

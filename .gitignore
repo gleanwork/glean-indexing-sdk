@@ -9,6 +9,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+node_modules/
 develop-eggs/
 dist/
 downloads/
@@ -177,3 +178,4 @@ cython_debug/
 
 # Project specific
 .ruff_cache/
+.glean/

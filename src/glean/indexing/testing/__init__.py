@@ -15,6 +15,20 @@ from glean.indexing.testing.data_clients import (
     StaticDataClient,
     StaticStreamingDataClient,
 )
+from glean.indexing.testing.harness import (
+    ClientConfig,
+    PermissionRefs,
+    TestConfig,
+    TestHarness,
+    assert_negative_identities_absent,
+    extract_permission_refs,
+)
+from glean.indexing.testing.indexing_status import (
+    IndexingStatusSnapshot,
+    IndexingWaitResult,
+    check_documents_status,
+    poll_documents_status,
+)
 from glean.indexing.testing.mock_client import (
     MockGleanClient,
     mock_glean_client,
@@ -22,15 +36,31 @@ from glean.indexing.testing.mock_client import (
 )
 from glean.indexing.testing.mock_data_source import MockDataSource
 from glean.indexing.testing.runner import run_connector, run_connector_async
+from glean.indexing.testing.validation import (
+    ConnectorOutputValidationError,
+    validate_connector_output,
+)
 
 __all__ = [
+    "ClientConfig",
+    "ConnectorOutputValidationError",
+    "IndexingStatusSnapshot",
+    "IndexingWaitResult",
     "MockDataSource",
     "MockGleanClient",
+    "PermissionRefs",
     "StaticAsyncStreamingDataClient",
     "StaticDataClient",
     "StaticStreamingDataClient",
+    "TestConfig",
+    "TestHarness",
+    "assert_negative_identities_absent",
+    "check_documents_status",
+    "extract_permission_refs",
     "mock_glean_client",
+    "poll_documents_status",
     "run_connector",
     "run_connector_async",
+    "validate_connector_output",
     "with_mock_glean_client",
 ]

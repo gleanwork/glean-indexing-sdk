@@ -2,6 +2,8 @@
 
 import pytest
 
+from glean.api_client.models import DocumentDefinition
+from glean.indexing.push import PushUploader
 from glean.indexing.testing import (
     MockGleanClient,
     StaticDataClient,
@@ -75,6 +77,19 @@ class TestDocumentsAssertions:
         client = MockGleanClient()
         with pytest.raises(AssertionError, match="at least one"):
             client.assert_documents_posted()
+
+    def test_documents_posted_includes_incremental_index_calls(self):
+        document = DocumentDefinition(
+            datasource="incremental",
+            id="doc-1",
+            title="Document",
+        )
+
+        with mock_glean_client() as client:
+            PushUploader(datasource="incremental").index_documents([document])
+
+        assert client.documents_posted == [document]
+        client.assert_documents_posted(count=1, datasource="incremental")
 
 
 class TestEmployeesAssertions:

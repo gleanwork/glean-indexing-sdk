@@ -1,5 +1,10 @@
 """Tests for incremental push uploader wrappers."""
 
+import threading
+import time
+from unittest.mock import patch
+
+import pytest
 from glean.api_client.models import (
     ContentDefinition,
     CustomDatasourceConfig,
@@ -7,11 +12,14 @@ from glean.api_client.models import (
     DatasourceGroupDefinition,
     DatasourceMembershipDefinition,
     DatasourceUserDefinition,
+    DebugDocumentRequest,
     DocumentDefinition,
     EmployeeInfoDefinition,
+    ProcessAllDocumentsRequest,
 )
 
-from glean.indexing.push import PushUploader
+from glean.indexing import StatusClient as TopLevelStatusClient
+from glean.indexing.push import PushUploader, StatusClient
 from glean.indexing.testing import mock_glean_client
 
 
@@ -45,6 +53,53 @@ def test_configure_datasource_calls_generated_client():
     assert call_args["trust_url_regex_for_view_activity"] is True
 
 
+def test_status_client_is_exported_from_top_level_package():
+    assert TopLevelStatusClient is StatusClient
+
+
+def test_get_datasource_status_calls_generated_client():
+    status_client = StatusClient(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        status_client.get_datasource_status()
+
+    client.indexing.datasource.status.assert_called_once_with(datasource="test_datasource")
+
+
+def test_get_documents_status_calls_generated_client():
+    status_client = StatusClient(datasource="test_datasource")
+    documents = [
+        DebugDocumentRequest(object_type="Article", doc_id="doc-1"),
+        DebugDocumentRequest(object_type="Article", doc_id="doc-2"),
+    ]
+
+    with mock_glean_client() as client:
+        status_client.get_documents_status(documents)
+
+    client.indexing.documents.debug_many.assert_called_once_with(
+        datasource="test_datasource",
+        debug_documents=documents,
+    )
+
+
+def test_check_document_access_calls_generated_client():
+    status_client = StatusClient(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        status_client.check_document_access(
+            object_type="Article",
+            document_id="doc-1",
+            user_email="user@example.com",
+        )
+
+    client.indexing.documents.check_access.assert_called_once_with(
+        datasource="test_datasource",
+        object_type="Article",
+        doc_id="doc-1",
+        user_email="user@example.com",
+    )
+
+
 def test_index_documents_calls_generated_client():
     uploader = PushUploader(datasource="test_datasource")
     document = _document()
@@ -70,6 +125,41 @@ def test_delete_document_calls_generated_client():
         object_type="Article",
         id="doc-1",
         version=3,
+    )
+
+
+def test_process_all_documents_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        uploader.process_all_documents()
+
+    client.indexing.documents.process_all.assert_called_once_with(
+        request=ProcessAllDocumentsRequest(datasource="test_datasource")
+    )
+
+
+def test_get_document_lifecycle_events_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        response = uploader.get_document_lifecycle_events(
+            object_type="Article",
+            document_id="doc-1",
+            start_date="2025-05-01",
+            max_events=50,
+        )
+
+    assert (
+        response
+        == client.troubleshooting.post_api_index_v1_debug_datasource_document_events.return_value
+    )
+    client.troubleshooting.post_api_index_v1_debug_datasource_document_events.assert_called_once_with(
+        datasource="test_datasource",
+        object_type="Article",
+        doc_id="doc-1",
+        start_date="2025-05-01",
+        max_events=50,
     )
 
 
@@ -105,6 +195,75 @@ def test_bulk_index_documents_calls_generated_client():
         force_restart_upload=None,
         disable_stale_document_deletion_check=True,
     )
+
+
+def test_bulk_index_documents_uploads_middle_pages_concurrently():
+    uploader = PushUploader(datasource="test_datasource", upload_max_workers=2)
+    documents = [_document(f"doc-{index}") for index in range(5)]
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+    events: list[str] = []
+    active_middle_uploads = 0
+    max_active_middle_uploads = 0
+    completed_middle_uploads = 0
+
+    def upload_batch(*, documents, is_first_page, is_last_page, **kwargs):
+        nonlocal active_middle_uploads, max_active_middle_uploads, completed_middle_uploads
+        document_id = documents[0].id
+        if is_first_page:
+            assert active_middle_uploads == 0
+            events.append(f"first:{document_id}")
+            return
+        if is_last_page:
+            assert completed_middle_uploads == 3
+            events.append(f"last:{document_id}")
+            return
+
+        with lock:
+            active_middle_uploads += 1
+            max_active_middle_uploads = max(max_active_middle_uploads, active_middle_uploads)
+        if document_id in {"doc-1", "doc-2"}:
+            barrier.wait(timeout=1)
+        time.sleep(0.01)
+        with lock:
+            active_middle_uploads -= 1
+            completed_middle_uploads += 1
+
+    with patch.object(uploader, "bulk_index_single_batch_upload", side_effect=upload_batch):
+        uploader.bulk_index_documents(documents, batch_size=1)
+
+    assert events == ["first:doc-0", "last:doc-4"]
+    assert max_active_middle_uploads == 2
+
+
+def test_upload_max_workers_defaults_to_five():
+    assert PushUploader(datasource="test_datasource").upload_max_workers == 5
+
+
+def test_upload_max_workers_must_be_positive():
+    with pytest.raises(ValueError, match="upload_max_workers"):
+        PushUploader(datasource="test_datasource", upload_max_workers=0)
+
+
+def test_bulk_index_documents_does_not_finalize_after_middle_page_failure():
+    uploader = PushUploader(datasource="test_datasource", upload_max_workers=2)
+    documents = [_document(f"doc-{index}") for index in range(4)]
+    finalized = False
+
+    def upload_batch(*, documents, is_last_page, **kwargs):
+        nonlocal finalized
+        if is_last_page:
+            finalized = True
+        if documents[0].id == "doc-1":
+            raise RuntimeError("middle page failed")
+
+    with (
+        patch.object(uploader, "bulk_index_single_batch_upload", side_effect=upload_batch),
+        pytest.raises(RuntimeError, match="middle page failed"),
+    ):
+        uploader.bulk_index_documents(documents, batch_size=1)
+
+    assert finalized is False
 
 
 def test_bulk_index_documents_splits_batches_by_byte_size():
@@ -171,6 +330,19 @@ def test_index_user_calls_generated_client():
         datasource="test_datasource",
         user=user,
         version=3,
+    )
+
+
+def test_debug_user_calls_generated_client():
+    uploader = PushUploader(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        response = uploader.debug_user(email="user@example.com")
+
+    assert response == client.indexing.people.debug.return_value
+    client.indexing.people.debug.assert_called_once_with(
+        datasource="test_datasource",
+        email="user@example.com",
     )
 
 
@@ -342,7 +514,29 @@ def test_bulk_index_employees_calls_generated_client():
     )
 
 
-def test_request_options_are_forwarded_when_configured():
+def test_status_request_options_are_forwarded_when_configured():
+    retries = {"strategy": "backoff"}
+    status_client = StatusClient(
+        datasource="test_datasource",
+        retries=retries,
+        server_url="https://example-be.glean.com",
+        timeout_ms=120_000,
+        http_headers={"X-Test": "true"},
+    )
+
+    with mock_glean_client() as client:
+        status_client.get_datasource_status()
+
+    client.indexing.datasource.status.assert_called_once_with(
+        datasource="test_datasource",
+        retries=retries,
+        server_url="https://example-be.glean.com",
+        timeout_ms=120_000,
+        http_headers={"X-Test": "true"},
+    )
+
+
+def test_uploader_request_options_are_forwarded_when_configured():
     retries = {"strategy": "backoff"}
     uploader = PushUploader(
         datasource="test_datasource",

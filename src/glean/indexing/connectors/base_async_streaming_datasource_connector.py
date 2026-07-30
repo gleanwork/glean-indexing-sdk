@@ -6,9 +6,16 @@ import uuid
 from abc import ABC
 from typing import AsyncGenerator, List, Optional, Sequence
 
+from glean.api_client.models import DocumentDefinition
+
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
-from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
+from glean.indexing.models import (
+    DEFAULT_UPLOAD_MAX_WORKERS,
+    ConnectorOptions,
+    IndexingMode,
+    TSourceData,
+)
 from glean.indexing.push import PushUploader
 
 logger = logging.getLogger(__name__)
@@ -103,82 +110,131 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
 
         upload_id = self.generate_upload_id()
         self._force_restart = options.force_restart if options else False
-        is_first_batch = True
-        batch: List[TSourceData] = []
         batch_count = 0
+        upload_max_workers = options.upload_max_workers if options else DEFAULT_UPLOAD_MAX_WORKERS
+        uploader = PushUploader(
+            datasource=self.name,
+            timeout_ms=options.upload_timeout_ms if options else None,
+            observability=self._observability,
+            upload_max_workers=upload_max_workers,
+        )
 
         try:
-            data_iterator = self.get_data_async(since=since).__aiter__()
-            exhausted = False
 
-            while not exhausted:
-                try:
-                    item = await data_iterator.__anext__()
+            async def transformed_batches() -> AsyncGenerator[Sequence[DocumentDefinition], None]:
+                nonlocal batch_count
+                batch: List[TSourceData] = []
+                async for item in self.get_data_async(since=since):
                     batch.append(item)
+                    if len(batch) < self.batch_size:
+                        continue
+                    logger.info(f"Processing batch {batch_count} with {len(batch)} items")
+                    transformed_batch = self.transform(batch)
+                    logger.info(
+                        f"Transformed batch {batch_count}: {len(transformed_batch)} documents"
+                    )
+                    batch_count += 1
+                    yield transformed_batch
+                    batch = []
+                if batch:
+                    logger.info(f"Processing batch {batch_count} with {len(batch)} items")
+                    transformed_batch = self.transform(batch)
+                    logger.info(
+                        f"Transformed batch {batch_count}: {len(transformed_batch)} documents"
+                    )
+                    batch_count += 1
+                    yield transformed_batch
 
-                    if len(batch) == self.batch_size:
-                        try:
-                            next_item = await data_iterator.__anext__()
+            batch_iterator = transformed_batches().__aiter__()
+            try:
+                first_batch = await batch_iterator.__anext__()
+            except StopAsyncIteration:
+                first_batch = None
 
-                            logger.info(f"Processing batch {batch_count} with {len(batch)} items")
-                            transformed_batch = self.transform(batch)
-                            logger.info(
-                                f"Transformed batch {batch_count}: {len(transformed_batch)} documents"
-                            )
-
-                            if self._force_restart and is_first_batch:
-                                logger.info(
-                                    "Force restarting upload - discarding any previous upload progress"
-                                )
-
-                            PushUploader(
-                                datasource=self.name,
-                                timeout_ms=options.upload_timeout_ms if options else None,
-                            ).bulk_index_single_batch_upload(
-                                documents=list(transformed_batch),
-                                upload_id=upload_id,
-                                is_first_page=is_first_batch,
-                                is_last_page=False,
-                                force_restart_upload=True
-                                if (self._force_restart and is_first_batch)
-                                else None,
-                                disable_stale_document_deletion_check=None,
-                            )
-                            logger.info(f"Batch {batch_count} indexed successfully")
-
-                            batch_count += 1
-                            batch = [next_item]
-                            is_first_batch = False
-
-                        except StopAsyncIteration:
-                            exhausted = True
-
+            if first_batch is not None:
+                try:
+                    second_batch = await batch_iterator.__anext__()
                 except StopAsyncIteration:
-                    exhausted = True
+                    second_batch = None
 
-            if batch:
-                logger.info(f"Processing batch {batch_count} with {len(batch)} items")
-                transformed_batch = self.transform(batch)
-                logger.info(f"Transformed batch {batch_count}: {len(transformed_batch)} documents")
+                if second_batch is None:
+                    await asyncio.to_thread(
+                        uploader.bulk_index_single_batch_upload,
+                        documents=list(first_batch),
+                        upload_id=upload_id,
+                        is_first_page=True,
+                        is_last_page=True,
+                        force_restart_upload=True if self._force_restart else None,
+                        disable_stale_document_deletion_check=True
+                        if (options and options.disable_stale_deletion_check)
+                        else None,
+                    )
+                else:
+                    await asyncio.to_thread(
+                        uploader.bulk_index_single_batch_upload,
+                        documents=list(first_batch),
+                        upload_id=upload_id,
+                        is_first_page=True,
+                        is_last_page=False,
+                        force_restart_upload=True if self._force_restart else None,
+                        disable_stale_document_deletion_check=None,
+                    )
 
-                if self._force_restart and is_first_batch:
-                    logger.info("Force restarting upload - discarding any previous upload progress")
+                    pending: set[asyncio.Task[None]] = set()
+                    current_batch = second_batch
+                    current_index = 1
+                    try:
+                        while True:
+                            try:
+                                next_batch = await batch_iterator.__anext__()
+                            except StopAsyncIteration:
+                                break
+                            pending.add(
+                                asyncio.create_task(
+                                    asyncio.to_thread(
+                                        uploader.bulk_index_single_batch_upload,
+                                        documents=list(current_batch),
+                                        upload_id=upload_id,
+                                        is_first_page=False,
+                                        is_last_page=False,
+                                        batch_index=current_index,
+                                        force_restart_upload=None,
+                                        disable_stale_document_deletion_check=None,
+                                    )
+                                )
+                            )
+                            if len(pending) >= upload_max_workers:
+                                done, pending = await asyncio.wait(
+                                    pending, return_when=asyncio.FIRST_COMPLETED
+                                )
+                                errors = [
+                                    error
+                                    for task in done
+                                    if (error := task.exception()) is not None
+                                ]
+                                if errors:
+                                    raise errors[0]
+                            current_batch = next_batch
+                            current_index += 1
 
-                PushUploader(
-                    datasource=self.name,
-                    timeout_ms=options.upload_timeout_ms if options else None,
-                ).bulk_index_single_batch_upload(
-                    documents=list(transformed_batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_batch,
-                    is_last_page=True,
-                    force_restart_upload=True if (self._force_restart and is_first_batch) else None,
-                    disable_stale_document_deletion_check=True
-                    if (options and options.disable_stale_deletion_check)
-                    else None,
-                )
-                logger.info(f"Batch {batch_count} indexed successfully")
-                batch_count += 1
+                        if pending:
+                            await asyncio.gather(*pending)
+                    except BaseException:
+                        await asyncio.gather(*pending, return_exceptions=True)
+                        raise
+
+                    await asyncio.to_thread(
+                        uploader.bulk_index_single_batch_upload,
+                        documents=list(current_batch),
+                        upload_id=upload_id,
+                        is_first_page=False,
+                        is_last_page=True,
+                        batch_index=current_index,
+                        force_restart_upload=None,
+                        disable_stale_document_deletion_check=True
+                        if (options and options.disable_stale_deletion_check)
+                        else None,
+                    )
 
             logger.info(
                 f"Async streaming indexing completed successfully. Processed {batch_count} batches."

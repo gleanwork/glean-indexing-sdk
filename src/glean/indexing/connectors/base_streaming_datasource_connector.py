@@ -3,11 +3,19 @@
 import logging
 import uuid
 from abc import ABC
-from typing import Generator, List, Optional, Sequence
+from itertools import islice
+from typing import Generator, Optional, Sequence
+
+from glean.api_client.models import DocumentDefinition
 
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
-from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
+from glean.indexing.models import (
+    DEFAULT_UPLOAD_MAX_WORKERS,
+    ConnectorOptions,
+    IndexingMode,
+    TSourceData,
+)
 from glean.indexing.push import PushUploader
 
 logger = logging.getLogger(__name__)
@@ -17,7 +25,9 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
     """
     Base class for all Glean streaming datasource connectors.
 
-    This class provides the core logic for memory-efficient, incremental indexing of large document/content datasets from external systems into Glean.
+    This class provides the core logic for memory-efficient indexing of large document/content datasets from external systems into Glean.
+    It fetches source data incrementally from a generator and uploads documents in bulk batches, so it can be used for full crawls
+    without loading the entire dataset into memory.
     Subclasses must define a `configuration` attribute of type `CustomDatasourceConfig` describing the datasource.
 
     To implement a custom streaming connector, inherit from this class and implement:
@@ -90,77 +100,42 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
 
         upload_id = self.generate_upload_id()
         self._force_restart = options.force_restart if options else False
-        data_iterator = self.get_data(since=since)
-        is_first_batch = True
-        batch: List[TSourceData] = []
         batch_count = 0
 
         try:
-            for item in data_iterator:
-                batch.append(item)
 
-                if len(batch) == self.batch_size:
-                    try:
-                        next_item = next(data_iterator)
+            def transformed_batches() -> Generator[Sequence[DocumentDefinition], None, None]:
+                nonlocal batch_count
+                data_iterator = iter(self.get_data(since=since))
+                while batch := list(islice(data_iterator, self.batch_size)):
+                    logger.info(f"Processing batch {batch_count} with {len(batch)} items")
+                    transformed_batch = self.transform(batch)
+                    logger.info(
+                        f"Transformed batch {batch_count}: {len(transformed_batch)} documents"
+                    )
+                    batch_count += 1
+                    yield transformed_batch
 
-                        logger.info(f"Processing batch {batch_count} with {len(batch)} items")
-                        transformed_batch = self.transform(batch)
-                        logger.info(
-                            f"Transformed batch {batch_count}: {len(transformed_batch)} documents"
-                        )
+            if self._force_restart:
+                logger.info("Force restarting upload - discarding any previous upload progress")
 
-                        if self._force_restart and is_first_batch:
-                            logger.info(
-                                "Force restarting upload - discarding any previous upload progress"
-                            )
-
-                        PushUploader(
-                            datasource=self.name,
-                            timeout_ms=options.upload_timeout_ms if options else None,
-                        ).bulk_index_single_batch_upload(
-                            documents=list(transformed_batch),
-                            upload_id=upload_id,
-                            is_first_page=is_first_batch,
-                            is_last_page=False,
-                            force_restart_upload=True
-                            if (self._force_restart and is_first_batch)
-                            else None,
-                            disable_stale_document_deletion_check=None,
-                        )
-                        logger.info(f"Batch {batch_count} indexed successfully")
-
-                        batch_count += 1
-                        batch = [next_item]
-                        is_first_batch = False
-
-                    except StopIteration:
-                        break
-
-            if batch:
-                logger.info(f"Processing batch {batch_count} with {len(batch)} items")
-                transformed_batch = self.transform(batch)
-                logger.info(f"Transformed batch {batch_count}: {len(transformed_batch)} documents")
-
-                if self._force_restart and is_first_batch:
-                    logger.info("Force restarting upload - discarding any previous upload progress")
-
-                PushUploader(
-                    datasource=self.name,
-                    timeout_ms=options.upload_timeout_ms if options else None,
-                ).bulk_index_single_batch_upload(
-                    documents=list(transformed_batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_batch,
-                    is_last_page=True,
-                    force_restart_upload=True if (self._force_restart and is_first_batch) else None,
-                    disable_stale_document_deletion_check=True
-                    if (options and options.disable_stale_deletion_check)
-                    else None,
-                )
-                logger.info(f"Batch {batch_count} indexed successfully")
-
+            PushUploader(
+                datasource=self.name,
+                timeout_ms=options.upload_timeout_ms if options else None,
+                observability=self._observability,
+                upload_max_workers=options.upload_max_workers
+                if options
+                else DEFAULT_UPLOAD_MAX_WORKERS,
+            ).bulk_index_document_batches(
+                transformed_batches(),
+                upload_id=upload_id,
+                force_restart_upload=True if self._force_restart else None,
+                disable_stale_document_deletion_check=True
+                if (options and options.disable_stale_deletion_check)
+                else None,
+            )
             logger.info(
-                f"Streaming indexing completed successfully. Processed {batch_count + 1} batches."
+                f"Streaming indexing completed successfully. Processed {batch_count} batches."
             )
 
         except Exception as e:

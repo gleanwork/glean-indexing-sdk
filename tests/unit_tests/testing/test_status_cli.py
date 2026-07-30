@@ -3,13 +3,13 @@
 from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
+
 from glean.api_client.models import (
     DebugDocumentResponse,
     DebugDocumentsResponse,
     DebugDocumentsResponseItem,
     DocumentStatusResponse,
 )
-
 from glean.indexing.testing.indexing_status import (
     IndexingStatusSnapshot,
     IndexingWaitResult,

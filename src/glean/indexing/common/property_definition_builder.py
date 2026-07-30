@@ -7,7 +7,6 @@ from glean.api_client.models.propertydefinition import (
 from glean.api_client.models.propertydefinition import (
     PropertyDefinitionPropertyType as PropertyType,
 )
-
 from glean.indexing.exceptions import InvalidPropertyError
 
 

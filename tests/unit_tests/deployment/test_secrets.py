@@ -7,13 +7,12 @@ import pytest
 from glean.indexing.deployment.config import DeploymentConfig
 from glean.indexing.deployment.secrets import (
     _REDLIST,
-    GCPSecretsBackend,
     AWSSecretsBackend,
+    GCPSecretsBackend,
     filter_secrets,
     get_secrets_backend,
     parse_env_file,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -202,7 +201,9 @@ def test_gcp_upload_creates_new_secrets(gcp_config, env_file):
         },
     ):
         import importlib
+
         from glean.indexing.deployment import secrets as secrets_mod
+
         importlib.reload(secrets_mod)
         backend = secrets_mod.GCPSecretsBackend(gcp_config)
         result = backend.upload(env_file)
@@ -239,7 +240,9 @@ def test_gcp_upload_returns_updated_for_existing_secrets(gcp_config, env_file):
         },
     ):
         import importlib
+
         from glean.indexing.deployment import secrets as secrets_mod
+
         importlib.reload(secrets_mod)
         backend = secrets_mod.GCPSecretsBackend(gcp_config)
         result = backend.upload(env_file)
@@ -279,9 +282,18 @@ def test_aws_upload_creates_new_secret(aws_config, env_file):
     mock_boto3 = MagicMock()
     mock_boto3.client.return_value = mock_client
 
-    with patch.dict("sys.modules", {"boto3": mock_boto3, "botocore": mock_botocore, "botocore.exceptions": mock_botocore.exceptions}):
+    with patch.dict(
+        "sys.modules",
+        {
+            "boto3": mock_boto3,
+            "botocore": mock_botocore,
+            "botocore.exceptions": mock_botocore.exceptions,
+        },
+    ):
         import importlib
+
         from glean.indexing.deployment import secrets as secrets_mod
+
         importlib.reload(secrets_mod)
         backend = secrets_mod.AWSSecretsBackend(aws_config)
         result = backend.upload(env_file)

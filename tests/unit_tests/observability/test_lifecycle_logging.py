@@ -497,7 +497,9 @@ class TestIntegrationWithStructuredFormatter:
             obs.log_data_fetch_completed(item_count=50, duration_ms=1000)
             obs.log_transform_started(item_count=50)
             obs.log_transform_completed(input_count=50, output_count=48, duration_ms=500)
-            obs.log_batch_upload_started(batch_index=0, batch_count=1, batch_size=48, upload_id="up-001")
+            obs.log_batch_upload_started(
+                batch_index=0, batch_count=1, batch_size=48, upload_id="up-001"
+            )
             obs.log_batch_upload_completed(
                 batch_index=0,
                 batch_count=1,
@@ -540,7 +542,9 @@ class TestIntegrationWithStructuredFormatter:
 
             obs.start_execution()
             obs.log_data_fetch_completed(item_count=10, duration_ms=100)
-            obs.log_batch_upload_started(batch_index=0, batch_count=1, batch_size=10, upload_id="up-001")
+            obs.log_batch_upload_started(
+                batch_index=0, batch_count=1, batch_size=10, upload_id="up-001"
+            )
             obs.end_execution()
 
             stream.seek(0)

@@ -5,7 +5,7 @@ import warnings
 __all__ = []
 
 try:
-    from glean.indexing.plugins.aws.cloudwatch_logs import CloudWatchLogsProvider
+    from glean.indexing.plugins.aws.cloudwatch_logs import CloudWatchLogsProvider as CloudWatchLogsProvider
 
     __all__.append("CloudWatchLogsProvider")
 except ImportError as e:
@@ -17,7 +17,7 @@ except ImportError as e:
     )
 
 try:
-    from glean.indexing.plugins.aws.cloudwatch_metrics import CloudWatchMetricsProvider
+    from glean.indexing.plugins.aws.cloudwatch_metrics import CloudWatchMetricsProvider as CloudWatchMetricsProvider
 
     __all__.append("CloudWatchMetricsProvider")
 except ImportError as e:

@@ -144,7 +144,7 @@ class GCPSecretsBackend(SecretsBackend):
         for secret in client.list_secrets(request={"parent": parent, "filter": f"name:{prefix}"}):
             secret_id = secret.name.split("/")[-1]
             if secret_id.startswith(prefix):
-                keys.append(secret_id[len(prefix):])
+                keys.append(secret_id[len(prefix) :])
         return sorted(keys)
 
     def delete(self, key: str) -> None:
@@ -205,7 +205,7 @@ class AWSSecretsBackend(SecretsBackend):
             for secret_meta in page.get("SecretList", []):
                 name = secret_meta["Name"]
                 if name.startswith(prefix):
-                    keys.append(name[len(prefix):])
+                    keys.append(name[len(prefix) :])
         return sorted(keys)
 
     def delete(self, key: str) -> None:

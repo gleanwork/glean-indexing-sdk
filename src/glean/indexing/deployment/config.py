@@ -12,40 +12,63 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class DeploymentConfig(BaseModel):
     """Configuration for a connector deployment (loaded from ``glean_deployment.yaml``)."""
 
-    connector_name: str = Field(description="Unique deployment name, used as CronJob name and secret prefix.")
+    connector_name: str = Field(
+        description="Unique deployment name, used as CronJob name and secret prefix."
+    )
     connector_class: str = Field(description="Python class name of the connector.")
     connector_module: str = Field(description="Python module path containing the connector class.")
 
     cloud: Literal["gcp", "aws"] = Field(description="Target cloud provider.")
-    region: str = Field(description="Cloud region (e.g. 'us-central1' for GCP, 'us-east-1' for AWS).")
+    region: str = Field(
+        description="Cloud region (e.g. 'us-central1' for GCP, 'us-east-1' for AWS)."
+    )
     cluster_name: str = Field(description="Kubernetes cluster name.")
     namespace: str = Field(default="default", description="Kubernetes namespace for the CronJob.")
 
     cpu: str = Field(default="500m", description="Pod CPU request/limit (Kubernetes format).")
-    memory: str = Field(default="512Mi", description="Pod memory request/limit (Kubernetes format).")
+    memory: str = Field(
+        default="512Mi", description="Pod memory request/limit (Kubernetes format)."
+    )
 
-    cron_schedule: str = Field(default="0 2 * * *", description="CronJob schedule (UTC cron expression).")
-    indexing_mode: str = Field(default="FULL", description="Indexing mode ('FULL' or 'INCREMENTAL').")
+    cron_schedule: str = Field(
+        default="0 2 * * *", description="CronJob schedule (UTC cron expression)."
+    )
+    indexing_mode: str = Field(
+        default="FULL", description="Indexing mode ('FULL' or 'INCREMENTAL')."
+    )
 
     # GCP-specific
-    project_id: Optional[str] = Field(default=None, description="GCP project ID. Required when cloud=gcp.")
-    artifact_registry_repo: Optional[str] = Field(default=None, description="Artifact Registry repo URL. Required when cloud=gcp.")
-    service_account_name: Optional[str] = Field(default=None, description="GCP service account for Workload Identity. Defaults to <connector_name>-sa.")
+    project_id: Optional[str] = Field(
+        default=None, description="GCP project ID. Required when cloud=gcp."
+    )
+    artifact_registry_repo: Optional[str] = Field(
+        default=None, description="Artifact Registry repo URL. Required when cloud=gcp."
+    )
+    service_account_name: Optional[str] = Field(
+        default=None,
+        description="GCP service account for Workload Identity. Defaults to <connector_name>-sa.",
+    )
     cluster_endpoint: Optional[str] = Field(
         default=None,
         description=(
             "Override the GKE cluster API endpoint used by Terraform's kubernetes provider. "
             "Required for private-only GKE clusters (enablePublicEndpoint: false) that expose a "
             "GKE DNS endpoint (*.gke.goog). Set this to the bare hostname only, e.g. "
-            "\"abc123.gke.goog\" — Terraform prepends https:// automatically. "
+            '"abc123.gke.goog" — Terraform prepends https:// automatically. '
             "Leave unset for clusters with a public IP endpoint."
         ),
     )
 
     # AWS-specific
-    account_id: Optional[str] = Field(default=None, description="AWS account ID. Required when cloud=aws.")
-    ecr_repo: Optional[str] = Field(default=None, description="ECR repository URI. Required when cloud=aws.")
-    iam_role_name: Optional[str] = Field(default=None, description="AWS IAM role name for IRSA. Defaults to <connector_name>-role.")
+    account_id: Optional[str] = Field(
+        default=None, description="AWS account ID. Required when cloud=aws."
+    )
+    ecr_repo: Optional[str] = Field(
+        default=None, description="ECR repository URI. Required when cloud=aws."
+    )
+    iam_role_name: Optional[str] = Field(
+        default=None, description="AWS IAM role name for IRSA. Defaults to <connector_name>-role."
+    )
 
     @field_validator("connector_name")
     @classmethod

@@ -1,10 +1,14 @@
 """Tests for push-layer observability integration."""
 
-from unittest.mock import MagicMock, patch
 from typing import cast
+from unittest.mock import MagicMock, patch
 
 import pytest
-from glean.api_client.models import DatasourceGroupDefinition, DatasourceUserDefinition, DocumentDefinition
+from glean.api_client.models import (
+    DatasourceGroupDefinition,
+    DatasourceUserDefinition,
+    DocumentDefinition,
+)
 
 from glean.indexing.observability import ConnectorObservability
 from glean.indexing.push import PushUploader
@@ -87,7 +91,9 @@ def test_bulk_document_upload_records_batch_lifecycle_and_api_metrics():
     observability = RecordingObservability()
 
     with patch("glean.indexing.push.uploader.api_client", return_value=ClientContext(client)):
-        PushUploader("test_datasource", observability=_observability_arg(observability)).bulk_index_documents(
+        PushUploader(
+            "test_datasource", observability=_observability_arg(observability)
+        ).bulk_index_documents(
             [_doc("1"), _doc("2"), _doc("3")],
             upload_id="upload-1",
             batch_size=2,
@@ -98,7 +104,10 @@ def test_bulk_document_upload_records_batch_lifecycle_and_api_metrics():
     assert [event["batch_index"] for event in observability.batch_starts] == [0, 1]
     assert [event["batch_count"] for event in observability.batch_starts] == [2, 2]
     assert [event["batch_size"] for event in observability.batch_starts] == [2, 1]
-    assert [event["upload_id"] for event in observability.batch_completions] == ["upload-1", "upload-1"]
+    assert [event["upload_id"] for event in observability.batch_completions] == [
+        "upload-1",
+        "upload-1",
+    ]
     assert observability.batch_sizes == [2, 1]
     assert observability.api_counts == ["documents.bulk_index", "documents.bulk_index"]
     assert observability.api_latencies == ["documents.bulk_index", "documents.bulk_index"]
@@ -134,7 +143,9 @@ def test_index_documents_records_document_upload_lifecycle_and_api_metrics():
     observability = RecordingObservability()
 
     with patch("glean.indexing.push.uploader.api_client", return_value=ClientContext(client)):
-        PushUploader("test_datasource", observability=_observability_arg(observability)).index_documents(
+        PushUploader(
+            "test_datasource", observability=_observability_arg(observability)
+        ).index_documents(
             [_doc("1"), _doc("2")],
             upload_id="upload-1",
         )
@@ -152,7 +163,9 @@ def test_bulk_user_upload_records_batch_lifecycle_and_api_metrics():
     observability = RecordingObservability()
 
     with patch("glean.indexing.push.uploader.api_client", return_value=ClientContext(client)):
-        PushUploader("test_datasource", observability=_observability_arg(observability)).bulk_index_users(
+        PushUploader(
+            "test_datasource", observability=_observability_arg(observability)
+        ).bulk_index_users(
             [_user("a@example.com"), _user("b@example.com"), _user("c@example.com")],
             upload_id="upload-1",
             batch_size=2,
@@ -162,8 +175,14 @@ def test_bulk_user_upload_records_batch_lifecycle_and_api_metrics():
     assert [event["entity_type"] for event in observability.batch_starts] == ["user", "user"]
     assert [event["batch_size"] for event in observability.batch_starts] == [2, 1]
     assert observability.batch_sizes == [2, 1]
-    assert observability.api_counts == ["permissions.bulk_index_users", "permissions.bulk_index_users"]
-    assert observability.api_latencies == ["permissions.bulk_index_users", "permissions.bulk_index_users"]
+    assert observability.api_counts == [
+        "permissions.bulk_index_users",
+        "permissions.bulk_index_users",
+    ]
+    assert observability.api_latencies == [
+        "permissions.bulk_index_users",
+        "permissions.bulk_index_users",
+    ]
 
 
 def test_bulk_group_upload_records_failure_event_and_error_metric():
@@ -174,7 +193,9 @@ def test_bulk_group_upload_records_failure_event_and_error_metric():
 
     with patch("glean.indexing.push.uploader.api_client", return_value=ClientContext(client)):
         with pytest.raises(RuntimeError, match="group upload failed"):
-            PushUploader("test_datasource", observability=_observability_arg(observability)).bulk_index_groups(
+            PushUploader(
+                "test_datasource", observability=_observability_arg(observability)
+            ).bulk_index_groups(
                 [_group("group-1")],
                 upload_id="upload-1",
             )

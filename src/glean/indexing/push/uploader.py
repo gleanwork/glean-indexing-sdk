@@ -193,11 +193,15 @@ class PushUploader:
         if not document_list:
             return
 
-        self.bulk_index_document_batches(
+        batches = list(
             DocumentBatchProcessor(
                 document_list, batch_size=batch_size, max_batch_bytes=max_batch_bytes
-            ),
+            )
+        )
+        self.bulk_index_document_batches(
+            batches,
             upload_id=upload_id,
+            batch_count=len(batches),
             force_restart_upload=force_restart_upload,
             disable_stale_document_deletion_check=disable_stale_document_deletion_check,
         )
@@ -207,6 +211,7 @@ class PushUploader:
         batches: Iterable[Sequence[DocumentDefinition]],
         *,
         upload_id: Optional[str] = None,
+        batch_count: Optional[int] = None,
         force_restart_upload: Optional[bool] = None,
         disable_stale_document_deletion_check: Optional[bool] = None,
     ) -> None:
@@ -217,6 +222,7 @@ class PushUploader:
             return
 
         upload_id = self._upload_id(upload_id)
+        observability_batch_count = batch_count if batch_count is not None else 1
         second_batch = next(batch_iterator, None)
         if second_batch is None:
             self.bulk_index_single_batch_upload(
@@ -224,6 +230,7 @@ class PushUploader:
                 upload_id=upload_id,
                 is_first_page=True,
                 is_last_page=True,
+                batch_count=observability_batch_count,
                 force_restart_upload=self._first_page_value(force_restart_upload, True),
                 disable_stale_document_deletion_check=self._last_page_value(
                     disable_stale_document_deletion_check, True
@@ -237,6 +244,7 @@ class PushUploader:
             is_first_page=True,
             is_last_page=False,
             batch_index=0,
+            batch_count=observability_batch_count,
             force_restart_upload=self._first_page_value(force_restart_upload, True),
             disable_stale_document_deletion_check=None,
         )
@@ -257,6 +265,7 @@ class PushUploader:
                         is_first_page=False,
                         is_last_page=False,
                         batch_index=batch_index,
+                        batch_count=observability_batch_count,
                         force_restart_upload=None,
                         disable_stale_document_deletion_check=None,
                     )
@@ -275,6 +284,7 @@ class PushUploader:
             is_first_page=False,
             is_last_page=True,
             batch_index=batch_index,
+            batch_count=observability_batch_count,
             force_restart_upload=None,
             disable_stale_document_deletion_check=self._last_page_value(
                 disable_stale_document_deletion_check, True

@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 from glean.indexing.deployment.config import DeploymentConfig
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -130,7 +129,9 @@ def test_image_name_gcp():
 
 def test_image_name_aws():
     config = DeploymentConfig(**AWS_KWARGS)
-    assert config.image_name == "123456789012.dkr.ecr.us-east-1.amazonaws.com/connectors/my_salesforce"
+    assert (
+        config.image_name == "123456789012.dkr.ecr.us-east-1.amazonaws.com/connectors/my_salesforce"
+    )
 
 
 def test_secret_prefix_uppercase():

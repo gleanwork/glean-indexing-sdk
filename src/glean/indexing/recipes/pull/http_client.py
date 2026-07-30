@@ -91,7 +91,9 @@ class PullHttpClient:
         timeout_seconds: float | None = None,
     ) -> PullResponse:
         """Issue a GET request and parse the response."""
-        return self.request("GET", path_or_url, params=params, headers=headers, timeout_seconds=timeout_seconds)
+        return self.request(
+            "GET", path_or_url, params=params, headers=headers, timeout_seconds=timeout_seconds
+        )
 
     def post(
         self,
@@ -156,7 +158,9 @@ class PullHttpClient:
         Returns:
             A tuple of response bytes and content type.
         """
-        response = self.__request_raw("GET", path_or_url, headers=headers, timeout_seconds=timeout_seconds)
+        response = self.__request_raw(
+            "GET", path_or_url, headers=headers, timeout_seconds=timeout_seconds
+        )
         content = response.content if max_bytes is None else response.content[:max_bytes]
         if max_bytes is not None and len(response.content) > max_bytes:
             logger.warning("Downloaded source content was truncated to %s bytes", max_bytes)
@@ -184,8 +188,15 @@ class PullHttpClient:
             response: httpx.Response | None = None
             try:
                 if self.rate_limiter is not None:
-                    self.rate_limiter.acquire(timeout_seconds=self.options.rate_limit_timeout_seconds)
-                logger.info("Pull %s %s params=%s", method, url, "***MASKED***" if self.options.mask_params else params)
+                    self.rate_limiter.acquire(
+                        timeout_seconds=self.options.rate_limit_timeout_seconds
+                    )
+                logger.info(
+                    "Pull %s %s params=%s",
+                    method,
+                    url,
+                    "***MASKED***" if self.options.mask_params else params,
+                )
                 request_start = time.time()
                 self.__record_api_request_count(endpoint)
                 response = self._client.request(
@@ -195,14 +206,18 @@ class PullHttpClient:
                     json=json,
                     data=data,
                     headers=request_headers,
-                    timeout=timeout_seconds if timeout_seconds is not None else self.options.timeout_seconds,
+                    timeout=timeout_seconds
+                    if timeout_seconds is not None
+                    else self.options.timeout_seconds,
                 )
                 self.__record_api_request_latency(request_start, endpoint)
                 if response.status_code not in retry_options.retry_status_codes:
                     response.raise_for_status()
                     return response
                 self.__record_api_request_error(endpoint, f"http_{response.status_code}")
-                last_error = PullHttpError(f"Retryable source API status {response.status_code}", response=response)
+                last_error = PullHttpError(
+                    f"Retryable source API status {response.status_code}", response=response
+                )
             except httpx.HTTPStatusError as exc:
                 self.__record_api_request_error(endpoint, f"http_{exc.response.status_code}")
                 raise PullHttpError(
@@ -235,7 +250,8 @@ class PullHttpClient:
 
         sleep_seconds = min(
             retry_options.max_backoff_seconds,
-            retry_options.initial_backoff_seconds * retry_options.backoff_multiplier ** (attempt - 1),
+            retry_options.initial_backoff_seconds
+            * retry_options.backoff_multiplier ** (attempt - 1),
         )
         if retry_options.jitter_seconds > 0:
             sleep_seconds += random.uniform(0, retry_options.jitter_seconds)
@@ -284,7 +300,9 @@ class PullHttpClient:
 
     def __record_api_request_latency(self, start_time: float, endpoint: str) -> None:
         if self.observability:
-            self.observability.record_api_request_latency((time.time() - start_time) * 1000, endpoint)
+            self.observability.record_api_request_latency(
+                (time.time() - start_time) * 1000, endpoint
+            )
 
     def __record_api_request_error(self, endpoint: str, error_type: str) -> None:
         if self.observability:

@@ -9,8 +9,8 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, TypeVar, cast
 
 from .formatters import StructuredFormatter
-from .providers import MetricsProvider, MetricType, NoOpMetricsProvider
 from .logging import LoggerProvider
+from .providers import MetricsProvider, MetricType, NoOpMetricsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +239,9 @@ class ConnectorObservability:
             ),
         )
 
-    def log_transform_completed(self, input_count: int, output_count: int, duration_ms: int, **kwargs: Any) -> None:
+    def log_transform_completed(
+        self, input_count: int, output_count: int, duration_ms: int, **kwargs: Any
+    ) -> None:
         """Log successful completion of transforming crawled data into Glean document format.
 
         Call this after all raw source records have been converted to ``DocumentDefinition``

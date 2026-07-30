@@ -3,7 +3,6 @@ from pathlib import Path
 
 from scripts.connector_builder.connector_builder import main
 
-
 DOC_URL = "https://api.example.com/docs"
 
 
@@ -23,7 +22,9 @@ def test_validate_requires_glean_directory(tmp_path):
 def test_validate_requires_confirmed_plan(tmp_path):
     connector_dir = write_valid_connector_artifacts(tmp_path)
     plan_path = connector_dir / ".glean/connector_plan.md"
-    plan_path.write_text(plan_path.read_text().replace("Status: confirmed", "Status: not confirmed"))
+    plan_path.write_text(
+        plan_path.read_text().replace("Status: confirmed", "Status: not confirmed")
+    )
 
     assert main(["validate", str(connector_dir)]) == 1
 
@@ -79,7 +80,11 @@ The source API uses cursor pagination and has documented rate limits.
 def test_validate_requires_sdk_usage_choice(tmp_path):
     connector_dir = write_valid_connector_artifacts(tmp_path)
     plan_path = connector_dir / ".glean/connector_plan.md"
-    plan_path.write_text(plan_path.read_text().replace("- SDK usage: Full connector flow using pull and push layers.\n", ""))
+    plan_path.write_text(
+        plan_path.read_text().replace(
+            "- SDK usage: Full connector flow using pull and push layers.\n", ""
+        )
+    )
 
     assert main(["validate", str(connector_dir)]) == 1
 

@@ -49,22 +49,36 @@ def cli() -> None:
 
 @cli.command()
 @click.option("--cloud", required=True, type=click.Choice(["gcp", "aws"], case_sensitive=False))
-@click.option("--connector-name", default=None, help="Connector name. Defaults to current directory name.")
+@click.option(
+    "--connector-name", default=None, help="Connector name. Defaults to current directory name."
+)
 @click.option("--connector-class", default="MyConnector", show_default=True)
 @click.option("--connector-module", default="connector", show_default=True)
 @click.option("--output-dir", default=".", show_default=True, type=click.Path(file_okay=False))
-def init(cloud: str, connector_name: str | None, connector_class: str, connector_module: str, output_dir: str) -> None:
+def init(
+    cloud: str,
+    connector_name: str | None,
+    connector_class: str,
+    connector_module: str,
+    output_dir: str,
+) -> None:
     """Generate deployment artifacts (Dockerfile, Terraform, run.py, .env.example)."""
     out = Path(output_dir).resolve()
     effective_name = connector_name or Path.cwd().name.lower().replace("-", "_").replace(" ", "_")
 
     gcp_kwargs = (
-        {"project_id": "<your-gcp-project-id>", "artifact_registry_repo": "<region>-docker.pkg.dev/<project>/connectors"}
+        {
+            "project_id": "<your-gcp-project-id>",
+            "artifact_registry_repo": "<region>-docker.pkg.dev/<project>/connectors",
+        }
         if cloud == "gcp"
         else {}
     )
     aws_kwargs = (
-        {"account_id": "<your-aws-account-id>", "ecr_repo": "<account>.dkr.ecr.<region>.amazonaws.com/connectors"}
+        {
+            "account_id": "<your-aws-account-id>",
+            "ecr_repo": "<account>.dkr.ecr.<region>.amazonaws.com/connectors",
+        }
         if cloud == "aws"
         else {}
     )
@@ -93,11 +107,19 @@ def init(cloud: str, connector_name: str | None, connector_class: str, connector
     click.echo("Next steps:")
     click.echo("  1. Edit glean_deployment.yaml — set cluster_name, region, and registry.")
     if cloud == "gcp":
-        click.echo("     GCP GKE docs:              https://cloud.google.com/kubernetes-engine/docs")
-        click.echo("     GCP Artifact Registry:     https://cloud.google.com/artifact-registry/docs")
+        click.echo(
+            "     GCP GKE docs:              https://cloud.google.com/kubernetes-engine/docs"
+        )
+        click.echo(
+            "     GCP Artifact Registry:     https://cloud.google.com/artifact-registry/docs"
+        )
     else:
-        click.echo("     AWS EKS docs:              https://docs.aws.amazon.com/eks/latest/userguide/what-is-eks.html")
-        click.echo("     AWS ECR docs:              https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html")
+        click.echo(
+            "     AWS EKS docs:              https://docs.aws.amazon.com/eks/latest/userguide/what-is-eks.html"
+        )
+        click.echo(
+            "     AWS ECR docs:              https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html"
+        )
     click.echo("  2. cp .env.example .env  # fill in connector credentials")
     click.echo("  3. glean-deploy build --push")
     click.echo("  4. glean-deploy secrets upload")
@@ -114,7 +136,13 @@ def init(cloud: str, connector_name: str | None, connector_class: str, connector
     help="Target platform for buildx (e.g. linux/amd64, linux/arm64). "
     "GKE/EKS nodes are typically linux/amd64; set this when building on Apple Silicon (arm64).",
 )
-@click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
+@click.option(
+    "--config",
+    "config_path",
+    default="glean_deployment.yaml",
+    show_default=True,
+    type=click.Path(dir_okay=False),
+)
 def build(push: bool, tag: str, platform: str, config_path: str) -> None:
     """Build (and optionally push) the connector container image.
 
@@ -148,7 +176,13 @@ def secrets() -> None:
 
 
 @secrets.command("list")
-@click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
+@click.option(
+    "--config",
+    "config_path",
+    default="glean_deployment.yaml",
+    show_default=True,
+    type=click.Path(dir_okay=False),
+)
 def secrets_list(config_path: str) -> None:
     """List connector secrets stored in GCP Secret Manager or AWS Secrets Manager."""
     from glean.indexing.deployment.secrets import get_secrets_backend
@@ -157,17 +191,27 @@ def secrets_list(config_path: str) -> None:
     keys = get_secrets_backend(config).list()
 
     if not keys:
-        click.echo(f"No secrets found for connector '{config.connector_name}' in {config.cloud.upper()}.")
+        click.echo(
+            f"No secrets found for connector '{config.connector_name}' in {config.cloud.upper()}."
+        )
         return
 
-    click.echo(f"Secrets for connector '{config.connector_name}' in {config.cloud.upper()} ({len(keys)}):\n")
+    click.echo(
+        f"Secrets for connector '{config.connector_name}' in {config.cloud.upper()} ({len(keys)}):\n"
+    )
     for key in keys:
         click.echo(f"  {key}")
 
 
 @secrets.command("delete")
 @click.argument("key")
-@click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
+@click.option(
+    "--config",
+    "config_path",
+    default="glean_deployment.yaml",
+    show_default=True,
+    type=click.Path(dir_okay=False),
+)
 @click.confirmation_option(prompt="This will permanently delete the secret. Are you sure?")
 def secrets_delete(key: str, config_path: str) -> None:
     """Delete a connector secret KEY from GCP Secret Manager or AWS Secrets Manager."""
@@ -186,7 +230,13 @@ def secrets_delete(key: str, config_path: str) -> None:
 
 @secrets.command("upload")
 @click.option("--env-file", default=".env", show_default=True, type=click.Path(dir_okay=False))
-@click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
+@click.option(
+    "--config",
+    "config_path",
+    default="glean_deployment.yaml",
+    show_default=True,
+    type=click.Path(dir_okay=False),
+)
 def secrets_upload(env_file: str, config_path: str) -> None:
     """Upload connector secrets from .env to GCP Secret Manager or AWS Secrets Manager."""
     from glean.indexing.deployment.secrets import get_secrets_backend
@@ -212,14 +262,24 @@ def secrets_upload(env_file: str, config_path: str) -> None:
 
 
 @cli.command()
-@click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
-@click.option("--terraform-dir", default="terraform", show_default=True, type=click.Path(file_okay=False))
+@click.option(
+    "--config",
+    "config_path",
+    default="glean_deployment.yaml",
+    show_default=True,
+    type=click.Path(dir_okay=False),
+)
+@click.option(
+    "--terraform-dir", default="terraform", show_default=True, type=click.Path(file_okay=False)
+)
 def apply(config_path: str, terraform_dir: str) -> None:
     """Apply generated Terraform to deploy the connector CronJob."""
     config = _load_config(Path(config_path))
     tf_dir = Path(terraform_dir)
     if not tf_dir.exists():
-        raise click.ClickException(f"Terraform directory not found: {tf_dir}. Run `glean-deploy init` first.")
+        raise click.ClickException(
+            f"Terraform directory not found: {tf_dir}. Run `glean-deploy init` first."
+        )
 
     if config.cloud == "gcp":
         var_flags = [
@@ -245,26 +305,44 @@ def apply(config_path: str, terraform_dir: str) -> None:
         raise click.ClickException("terraform init failed.")
 
     click.echo("Running terraform apply...")
-    if subprocess.run(["terraform", "apply", "-auto-approve"] + var_flags, cwd=tf_dir, check=False).returncode != 0:
+    if (
+        subprocess.run(
+            ["terraform", "apply", "-auto-approve"] + var_flags, cwd=tf_dir, check=False
+        ).returncode
+        != 0
+    ):
         raise click.ClickException("terraform apply failed.")
 
 
 @cli.command()
 @click.option("--follow", "-f", is_flag=True)
-@click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
+@click.option(
+    "--config",
+    "config_path",
+    default="glean_deployment.yaml",
+    show_default=True,
+    type=click.Path(dir_okay=False),
+)
 def logs(follow: bool, config_path: str) -> None:
     """Show logs from the most recent connector job run."""
     config = _load_config(Path(config_path))
 
     jobs_result = subprocess.run(
         [
-            "kubectl", "get", "jobs",
-            "-n", config.namespace,
-            "-l", f"app={config.k8s_name}",
+            "kubectl",
+            "get",
+            "jobs",
+            "-n",
+            config.namespace,
+            "-l",
+            f"app={config.k8s_name}",
             "--sort-by=.metadata.creationTimestamp",
-            "-o", "jsonpath={.items[-1].metadata.name}",
+            "-o",
+            "jsonpath={.items[-1].metadata.name}",
         ],
-        check=False, capture_output=True, text=True,
+        check=False,
+        capture_output=True,
+        text=True,
     )
     job_name = jobs_result.stdout.strip()
     if not job_name:
@@ -285,24 +363,56 @@ def logs(follow: bool, config_path: str) -> None:
 
 
 @cli.command()
-@click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
+@click.option(
+    "--config",
+    "config_path",
+    default="glean_deployment.yaml",
+    show_default=True,
+    type=click.Path(dir_okay=False),
+)
 def status(config_path: str) -> None:
     """Show CronJob status and recent job history."""
     config = _load_config(Path(config_path))
     click.echo(f"CronJob: {config.k8s_name}  namespace: {config.namespace}\n")
-    subprocess.run(["kubectl", "get", "cronjob", config.k8s_name, "-n", config.namespace], check=False)
+    subprocess.run(
+        ["kubectl", "get", "cronjob", config.k8s_name, "-n", config.namespace], check=False
+    )
     click.echo()
     subprocess.run(
-        ["kubectl", "get", "jobs", "-n", config.namespace, "-l", f"app={config.k8s_name}", "--sort-by=.metadata.creationTimestamp"],
+        [
+            "kubectl",
+            "get",
+            "jobs",
+            "-n",
+            config.namespace,
+            "-l",
+            f"app={config.k8s_name}",
+            "--sort-by=.metadata.creationTimestamp",
+        ],
         check=False,
     )
 
 
 @cli.command()
-@click.option("--config", "config_path", default="glean_deployment.yaml", show_default=True, type=click.Path(dir_okay=False))
-@click.option("--terraform-dir", default="terraform", show_default=True, type=click.Path(file_okay=False))
-@click.option("--yes", is_flag=True, default=False, help="Skip the confirmation prompts (use in CI only).")
-@click.option("--keep-secrets", is_flag=True, default=False, help="Keep secrets in Secret Manager (don't delete them).")
+@click.option(
+    "--config",
+    "config_path",
+    default="glean_deployment.yaml",
+    show_default=True,
+    type=click.Path(dir_okay=False),
+)
+@click.option(
+    "--terraform-dir", default="terraform", show_default=True, type=click.Path(file_okay=False)
+)
+@click.option(
+    "--yes", is_flag=True, default=False, help="Skip the confirmation prompts (use in CI only)."
+)
+@click.option(
+    "--keep-secrets",
+    is_flag=True,
+    default=False,
+    help="Keep secrets in Secret Manager (don't delete them).",
+)
 def destroy(config_path: str, terraform_dir: str, yes: bool, keep_secrets: bool) -> None:
     """Tear down the connector deployment via terraform destroy.
 
@@ -324,7 +434,9 @@ def destroy(config_path: str, terraform_dir: str, yes: bool, keep_secrets: bool)
         )
         typed = click.prompt(f"Type the connector name '{config.connector_name}' to confirm")
         if typed != config.connector_name:
-            raise click.ClickException(f"Confirmation failed: expected '{config.connector_name}', got '{typed}'.")
+            raise click.ClickException(
+                f"Confirmation failed: expected '{config.connector_name}', got '{typed}'."
+            )
     tf_dir = Path(terraform_dir)
     if not tf_dir.exists():
         raise click.ClickException(f"Terraform directory not found: {tf_dir}.")
@@ -349,7 +461,12 @@ def destroy(config_path: str, terraform_dir: str, yes: bool, keep_secrets: bool)
         ]
 
     click.echo("Running terraform destroy...")
-    if subprocess.run(["terraform", "destroy", "-auto-approve"] + var_flags, cwd=tf_dir, check=False).returncode != 0:
+    if (
+        subprocess.run(
+            ["terraform", "destroy", "-auto-approve"] + var_flags, cwd=tf_dir, check=False
+        ).returncode
+        != 0
+    ):
         raise click.ClickException("terraform destroy failed.")
 
     click.echo("Terraform resources destroyed.")
@@ -364,9 +481,13 @@ def destroy(config_path: str, terraform_dir: str, yes: bool, keep_secrets: bool)
         try:
             secrets = backend.list()
         except ImportError as exc:
-            click.echo(f"  Warning: secret cleanup skipped (missing cloud SDK dependency): {exc}", err=True)
+            click.echo(
+                f"  Warning: secret cleanup skipped (missing cloud SDK dependency): {exc}", err=True
+            )
         except Exception as exc:
-            click.echo(f"  Warning: secret cleanup skipped (failed to list secrets): {exc}", err=True)
+            click.echo(
+                f"  Warning: secret cleanup skipped (failed to list secrets): {exc}", err=True
+            )
         else:
             if not secrets:
                 click.echo("  No secrets found (already cleaned up or never uploaded).")

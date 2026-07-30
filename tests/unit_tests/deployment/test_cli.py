@@ -108,7 +108,14 @@ def test_init_with_connector_name(runner, tmp_path):
 def test_secrets_upload_env_file_not_found(runner, tmp_path, gcp_deployment_yaml):
     result = runner.invoke(
         cli,
-        ["secrets", "upload", "--env-file", str(tmp_path / "missing.env"), "--config", str(gcp_deployment_yaml)],
+        [
+            "secrets",
+            "upload",
+            "--env-file",
+            str(tmp_path / "missing.env"),
+            "--config",
+            str(gcp_deployment_yaml),
+        ],
     )
     assert result.exit_code != 0
     assert ".env file not found" in result.output or "Error" in result.output
@@ -119,11 +126,20 @@ def test_secrets_upload_calls_upload_secrets(runner, tmp_path, gcp_deployment_ya
     env_file.write_text("API_KEY=secret\n")
 
     mock_backend = MagicMock()
-    mock_backend.upload.return_value = {"CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_API_KEY": "created"}
+    mock_backend.upload.return_value = {
+        "CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_API_KEY": "created"
+    }
     with patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend):
         result = runner.invoke(
             cli,
-            ["secrets", "upload", "--env-file", str(env_file), "--config", str(gcp_deployment_yaml)],
+            [
+                "secrets",
+                "upload",
+                "--env-file",
+                str(env_file),
+                "--config",
+                str(gcp_deployment_yaml),
+            ],
         )
         assert result.exit_code == 0, result.output
         mock_backend.upload.assert_called_once()
@@ -139,7 +155,14 @@ def test_secrets_upload_no_secrets(runner, tmp_path, gcp_deployment_yaml):
     with patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend):
         result = runner.invoke(
             cli,
-            ["secrets", "upload", "--env-file", str(env_file), "--config", str(gcp_deployment_yaml)],
+            [
+                "secrets",
+                "upload",
+                "--env-file",
+                str(env_file),
+                "--config",
+                str(gcp_deployment_yaml),
+            ],
         )
         assert result.exit_code == 0
         assert "No secrets to upload" in result.output
@@ -188,8 +211,9 @@ def test_destroy_two_step_confirmation_succeeds(runner, tmp_path, gcp_deployment
     # First: "y", second: connector name from fixture ("my_salesforce")
     mock_backend = MagicMock()
     mock_backend.list.return_value = []
-    with patch("subprocess.run") as mock_run, patch(
-        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    with (
+        patch("subprocess.run") as mock_run,
+        patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend),
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
@@ -208,13 +232,21 @@ def test_destroy_yes_flag_skips_prompts(runner, tmp_path, gcp_deployment_yaml):
     # --yes should skip both confirmation prompts entirely
     mock_backend = MagicMock()
     mock_backend.list.return_value = []
-    with patch("subprocess.run") as mock_run, patch(
-        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    with (
+        patch("subprocess.run") as mock_run,
+        patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend),
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
             cli,
-            ["destroy", "--yes", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+            [
+                "destroy",
+                "--yes",
+                "--config",
+                str(gcp_deployment_yaml),
+                "--terraform-dir",
+                str(tf_dir),
+            ],
         )
         assert result.exit_code == 0, result.output
         assert mock_run.called
@@ -226,13 +258,21 @@ def test_destroy_cleans_up_secrets_by_default(runner, tmp_path, gcp_deployment_y
 
     mock_backend = MagicMock()
     mock_backend.list.return_value = ["API_KEY", "API_SECRET"]
-    with patch("subprocess.run") as mock_run, patch(
-        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    with (
+        patch("subprocess.run") as mock_run,
+        patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend),
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
             cli,
-            ["destroy", "--yes", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+            [
+                "destroy",
+                "--yes",
+                "--config",
+                str(gcp_deployment_yaml),
+                "--terraform-dir",
+                str(tf_dir),
+            ],
         )
         assert result.exit_code == 0, result.output
         assert "Cleaning up secrets" in result.output
@@ -247,13 +287,22 @@ def test_destroy_keep_secrets_flag_skips_cleanup(runner, tmp_path, gcp_deploymen
     tf_dir.mkdir()
 
     mock_backend = MagicMock()
-    with patch("subprocess.run") as mock_run, patch(
-        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    with (
+        patch("subprocess.run") as mock_run,
+        patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend),
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
             cli,
-            ["destroy", "--yes", "--keep-secrets", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+            [
+                "destroy",
+                "--yes",
+                "--keep-secrets",
+                "--config",
+                str(gcp_deployment_yaml),
+                "--terraform-dir",
+                str(tf_dir),
+            ],
         )
         assert result.exit_code == 0, result.output
         assert "Skipping secret cleanup" in result.output
@@ -267,13 +316,21 @@ def test_destroy_no_secrets_shows_graceful_message(runner, tmp_path, gcp_deploym
 
     mock_backend = MagicMock()
     mock_backend.list.return_value = []
-    with patch("subprocess.run") as mock_run, patch(
-        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    with (
+        patch("subprocess.run") as mock_run,
+        patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend),
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
             cli,
-            ["destroy", "--yes", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+            [
+                "destroy",
+                "--yes",
+                "--config",
+                str(gcp_deployment_yaml),
+                "--terraform-dir",
+                str(tf_dir),
+            ],
         )
         assert result.exit_code == 0, result.output
         assert "No secrets found" in result.output
@@ -293,13 +350,21 @@ def test_destroy_handles_partial_secret_deletion_failures(runner, tmp_path, gcp_
 
     mock_backend.delete.side_effect = delete_side_effect
 
-    with patch("subprocess.run") as mock_run, patch(
-        "glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend
+    with (
+        patch("subprocess.run") as mock_run,
+        patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend),
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
             cli,
-            ["destroy", "--yes", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+            [
+                "destroy",
+                "--yes",
+                "--config",
+                str(gcp_deployment_yaml),
+                "--terraform-dir",
+                str(tf_dir),
+            ],
         )
         assert result.exit_code == 0, result.output
         assert "deleted  API_KEY" in result.output

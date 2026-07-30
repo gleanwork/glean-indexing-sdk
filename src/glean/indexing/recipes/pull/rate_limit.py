@@ -54,7 +54,9 @@ class TokenBucketRateLimiter:
         self.capacity = capacity
         self._clock = clock
         self._sleep = sleep
-        self._tokens = capacity if initial_tokens is None else min(max(0.0, initial_tokens), capacity)
+        self._tokens = (
+            capacity if initial_tokens is None else min(max(0.0, initial_tokens), capacity)
+        )
         self._last_refill = self._clock()
         self._lock = threading.Lock()
 
@@ -87,7 +89,9 @@ class TokenBucketRateLimiter:
             if timeout_seconds is not None:
                 elapsed = self._clock() - start
                 if elapsed + wait_seconds > timeout_seconds:
-                    raise RateLimitExceededError("Rate limit capacity was not available before timeout")
+                    raise RateLimitExceededError(
+                        "Rate limit capacity was not available before timeout"
+                    )
 
             self._sleep(wait_seconds)
 

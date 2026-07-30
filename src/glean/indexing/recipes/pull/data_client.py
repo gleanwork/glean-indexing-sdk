@@ -103,7 +103,9 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
             elif self.pagination == "cursor":
                 items = self.__cursor_items(params)
             else:
-                response = self.http.get(self.path, params=params, timeout_seconds=self.timeout_seconds)
+                response = self.http.get(
+                    self.path, params=params, timeout_seconds=self.timeout_seconds
+                )
                 fetched_items, _, _ = self.__limited_items(response, items_yielded=0)
                 items = iter(fetched_items)
 
@@ -153,7 +155,9 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
         items_yielded = 0
 
         while current_path:
-            response = self.http.get(current_path, params=current_params, timeout_seconds=self.timeout_seconds)
+            response = self.http.get(
+                current_path, params=current_params, timeout_seconds=self.timeout_seconds
+            )
             items, items_yielded, should_stop = self.__limited_items(response, items_yielded)
             yield from items
             if should_stop:
@@ -181,7 +185,9 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
                 return
             cursor = next_cursor
 
-    def __limited_items(self, response: PullResponse, items_yielded: int) -> tuple[list[TSourceData], int, bool]:
+    def __limited_items(
+        self, response: PullResponse, items_yielded: int
+    ) -> tuple[list[TSourceData], int, bool]:
         items = self.__items(response)
         if not items:
             return [], items_yielded, True
@@ -198,7 +204,11 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
         return limited_items, items_yielded, items_yielded >= self.max_items
 
     def __items(self, response: PullResponse) -> list[TSourceData]:
-        data = response.json_list() if self.items_key is None else response.json_dict().get(self.items_key, [])
+        data = (
+            response.json_list()
+            if self.items_key is None
+            else response.json_dict().get(self.items_key, [])
+        )
         if not isinstance(data, list):
             msg = f"Expected `{self.items_key}` to be a list, got {type(data).__name__}"
             raise TypeError(msg)
@@ -206,7 +216,9 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
 
     @classmethod
     def __next_link_url(cls, response: PullResponse) -> str | None:
-        return cls.__parse_link_header_next(response.headers.get("link") or response.headers.get("Link"))
+        return cls.__parse_link_header_next(
+            response.headers.get("link") or response.headers.get("Link")
+        )
 
     @classmethod
     def __parse_link_header_next(cls, link_header: str | None) -> str | None:

@@ -1,6 +1,6 @@
 import pytest
-from glean.api_client.models import ContentDefinition, DocumentDefinition
 
+from glean.api_client.models import ContentDefinition, DocumentDefinition
 from glean.indexing.common import BatchProcessor, DocumentBatchProcessor
 
 

@@ -1,8 +1,8 @@
 """Tests for deterministic connector output validation."""
 
 import pytest
-from glean.api_client.models import DocumentDefinition, ObjectDefinition
 
+from glean.api_client.models import DocumentDefinition, ObjectDefinition
 from glean.indexing.models import CustomDatasourceConfig
 from glean.indexing.testing import (
     ConnectorOutputValidationError,

@@ -1,8 +1,8 @@
 """Tests for the auto-mock client + facade."""
 
 import pytest
-from glean.api_client.models import DocumentDefinition
 
+from glean.api_client.models import DocumentDefinition
 from glean.indexing.push import PushUploader
 from glean.indexing.testing import (
     MockGleanClient,

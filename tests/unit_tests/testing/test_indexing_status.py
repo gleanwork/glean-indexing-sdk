@@ -10,7 +10,6 @@ from glean.api_client.models import (
     DocumentDefinition,
     DocumentStatusResponse,
 )
-
 from glean.indexing.testing.indexing_status import (
     IndexingWaitResult,
     check_documents_status,

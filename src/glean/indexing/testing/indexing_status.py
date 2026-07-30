@@ -13,7 +13,6 @@ from glean.api_client.models import (
     DebugDocumentsResponse,
     DocumentDefinition,
 )
-
 from glean.indexing.push import StatusClient
 
 POLL_INTERVAL_SECONDS = 30

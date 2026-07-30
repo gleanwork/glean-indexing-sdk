@@ -5,7 +5,9 @@ import warnings
 __all__ = []
 
 try:
-    from glean.indexing.plugins.gcp.cloud_logging import CloudLoggingProvider as CloudLoggingProvider
+    from glean.indexing.observability.plugins.gcp.cloud_logging import (
+        CloudLoggingProvider as CloudLoggingProvider,
+    )
 
     __all__.append("CloudLoggingProvider")
 except ImportError as e:
@@ -17,7 +19,9 @@ except ImportError as e:
     )
 
 try:
-    from glean.indexing.plugins.gcp.cloud_monitoring import CloudMonitoringProvider as CloudMonitoringProvider
+    from glean.indexing.observability.plugins.gcp.cloud_monitoring import (
+        CloudMonitoringProvider as CloudMonitoringProvider,
+    )
 
     __all__.append("CloudMonitoringProvider")
 except ImportError as e:

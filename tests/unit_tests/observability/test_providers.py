@@ -1,5 +1,7 @@
 """Tests for metrics providers."""
 
+from typing import Any, cast
+
 import pytest
 
 from glean.indexing.observability import (
@@ -130,7 +132,7 @@ class TestMetricsProviderInterface:
     def test_cannot_instantiate_abstract_class(self):
         """Test that MetricsProvider cannot be instantiated directly."""
         with pytest.raises(TypeError):
-            MetricsProvider()
+            cast(Any, MetricsProvider)()
 
     def test_custom_provider_implementation(self):
         """Test that custom providers can implement the interface."""

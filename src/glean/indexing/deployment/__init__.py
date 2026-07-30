@@ -10,6 +10,7 @@ from glean.indexing.deployment.generator import generate_artifacts
 from glean.indexing.deployment.secrets import (
     AWSOAuth2TokenStore,
     GCPOAuth2TokenStore,
+    get_oauth2_auth_provider_from_environment,
     get_oauth2_token_store_from_environment,
 )
 
@@ -18,5 +19,6 @@ __all__ = [
     "DeploymentConfig",
     "GCPOAuth2TokenStore",
     "generate_artifacts",
+    "get_oauth2_auth_provider_from_environment",
     "get_oauth2_token_store_from_environment",
 ]

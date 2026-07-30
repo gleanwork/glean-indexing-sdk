@@ -45,5 +45,8 @@ GLEAN_INDEXING_API_TOKEN=your-glean-api-token-here      # https://developers.gle
 # Example: MY_API_KEY=your-api-key-here
 # Example: MY_DATABASE_PASSWORD=your-password-here
 {% if config.oauth_token_persistence %}
+SOURCE_OAUTH_TOKEN_URL=https://source.example.com/oauth/token
+SOURCE_OAUTH_CLIENT_ID=your-oauth-client-id
+SOURCE_OAUTH_CLIENT_SECRET=your-oauth-client-secret
 SOURCE_OAUTH_TOKEN_STATE='{"access_token":"initial-access-token","refresh_token":"initial-refresh-token","expires_at":0}'
 {% endif %}

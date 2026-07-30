@@ -1,7 +1,7 @@
 """Authentication helpers for source-side pull recipes."""
 
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 from typing import Protocol
@@ -22,16 +22,9 @@ class AuthProvider(Protocol):
         """Return headers to merge into a source API request."""
         ...
 
-
-@dataclass(frozen=True)
-class RefreshingBearerTokenAuth:
-    """Bearer auth provider backed by an OAuth2 token provider."""
-
-    token_provider: Callable[[], str]
-
-    def headers(self) -> Mapping[str, str]:
-        """Return a bearer header using the current OAuth2 access token."""
-        return {"Authorization": f"Bearer {self.token_provider()}"}
+    def close(self) -> None:
+        """Release resources owned by the auth provider."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -90,8 +83,8 @@ class OAuth2TokenStore(Protocol):
         ...
 
 
-class OAuth2TokenProvider:
-    """Callable OAuth2 access-token provider with refresh support."""
+class OAuth2RefreshAuthProvider:
+    """OAuth2 auth provider with refresh and persistent token state."""
 
     def __init__(
         self,
@@ -119,8 +112,11 @@ class OAuth2TokenProvider:
         self._owns_client = client is None
         self._token: OAuth2Token | None = None
 
-    def __call__(self) -> str:
-        """Return a valid access token, refreshing or minting as needed."""
+    def headers(self) -> Mapping[str, str]:
+        """Return a bearer header with a valid access token."""
+        return {"Authorization": f"Bearer {self._access_token()}"}
+
+    def _access_token(self) -> str:
         token = self._current_token()
         if token is not None and not token.is_expired():
             return token.access_token

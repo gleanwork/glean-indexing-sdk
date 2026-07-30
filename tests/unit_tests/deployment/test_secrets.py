@@ -13,6 +13,7 @@ from glean.indexing.deployment.secrets import (
     GCPOAuth2TokenStore,
     AWSSecretsBackend,
     filter_secrets,
+    get_oauth2_auth_provider_from_environment,
     get_oauth2_token_store_from_environment,
     get_secrets_backend,
     parse_env_file,
@@ -443,3 +444,21 @@ def test_oauth_token_store_factory_uses_transient_store_for_unknown_cloud(caplog
 
 def test_oauth_token_store_factory_skips_when_token_state_is_absent():
     assert get_oauth2_token_store_from_environment({"CLOUD_PLATFORM": "gcp"}) is None
+
+
+def test_oauth_auth_provider_factory_initializes_from_deployment_secrets():
+    auth = get_oauth2_auth_provider_from_environment(
+        {
+            "CLOUD_PLATFORM": "local",
+            "SOURCE_OAUTH_TOKEN_URL": "https://auth.example.com/oauth/token",
+            "SOURCE_OAUTH_CLIENT_ID": "client-1",
+            "SOURCE_OAUTH_CLIENT_SECRET": "secret-1",
+            "SOURCE_OAUTH_TOKEN_STATE": (
+                '{"access_token":"access-1","refresh_token":"refresh-1",'
+                '"expires_at":9999999999}'
+            ),
+        }
+    )
+
+    assert auth is not None
+    assert auth.headers()["Authorization"] == "Bearer access-1"

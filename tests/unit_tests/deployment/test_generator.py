@@ -205,6 +205,9 @@ def test_env_example_includes_token_state_when_persistence_enabled():
     config = GCP_CONFIG.model_copy(update={"oauth_token_persistence": True})
     env_ex = generate_artifacts(config)[".env.example"]
 
+    assert "SOURCE_OAUTH_TOKEN_URL=" in env_ex
+    assert "SOURCE_OAUTH_CLIENT_ID=" in env_ex
+    assert "SOURCE_OAUTH_CLIENT_SECRET=" in env_ex
     assert "SOURCE_OAUTH_TOKEN_STATE=" in env_ex
 
 

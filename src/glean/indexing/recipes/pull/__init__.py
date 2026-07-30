@@ -2,11 +2,10 @@
 
 from glean.indexing.recipes.pull.auth import (
     AuthProvider,
+    OAuth2RefreshAuthProvider,
     OAuth2Token,
     OAuth2TokenError,
-    OAuth2TokenProvider,
     OAuth2TokenStore,
-    RefreshingBearerTokenAuth,
 )
 from glean.indexing.recipes.pull.data_client import (
     BasePullHttpStreamingDataClient,
@@ -24,9 +23,9 @@ from glean.indexing.recipes.pull.response import PullResponse
 __all__ = [
     "AuthProvider",
     "BasePullHttpStreamingDataClient",
+    "OAuth2RefreshAuthProvider",
     "OAuth2Token",
     "OAuth2TokenError",
-    "OAuth2TokenProvider",
     "OAuth2TokenStore",
     "PullPaginationMode",
     "PullHttpClient",
@@ -36,6 +35,5 @@ __all__ = [
     "PullRetryOptions",
     "RateLimitExceededError",
     "RateLimiter",
-    "RefreshingBearerTokenAuth",
     "TokenBucketRateLimiter",
 ]

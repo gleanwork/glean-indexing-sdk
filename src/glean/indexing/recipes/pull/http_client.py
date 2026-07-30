@@ -74,9 +74,13 @@ class PullHttpClient:
         self._sleep = sleep
 
     def close(self) -> None:
-        """Close the underlying HTTP client if this recipe owns it."""
-        if self._owns_client:
-            self._client.close()
+        """Close auth and HTTP resources owned by this recipe."""
+        try:
+            if self.auth is not None:
+                self.auth.close()
+        finally:
+            if self._owns_client:
+                self._client.close()
 
     def __enter__(self) -> "PullHttpClient":
         """Enter a context manager."""

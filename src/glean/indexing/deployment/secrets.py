@@ -16,7 +16,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from glean.indexing.observability import ConnectorObservability
-from glean.indexing.recipes.pull.auth import OAuth2Token, OAuth2TokenError, OAuth2TokenStore
+from glean.indexing.recipes.pull.auth import (
+    OAuth2RefreshAuthProvider,
+    OAuth2Token,
+    OAuth2TokenError,
+    OAuth2TokenStore,
+)
 
 if TYPE_CHECKING:
     from glean.indexing.deployment.config import DeploymentConfig
@@ -36,7 +41,10 @@ _REDLIST: frozenset[str] = frozenset(
     ]
 )
 
+OAUTH_CLIENT_ID_ENV_VAR = "SOURCE_OAUTH_CLIENT_ID"
+OAUTH_CLIENT_SECRET_ENV_VAR = "SOURCE_OAUTH_CLIENT_SECRET"
 OAUTH_TOKEN_STATE_ENV_VAR = "SOURCE_OAUTH_TOKEN_STATE"
+OAUTH_TOKEN_URL_ENV_VAR = "SOURCE_OAUTH_TOKEN_URL"
 
 logger = logging.getLogger(__name__)
 
@@ -371,6 +379,24 @@ def get_oauth2_token_store_from_environment(
         extra=extra,
     )
     return _TransientOAuth2TokenStore(_deserialize_oauth2_token(serialized_token))
+
+
+def get_oauth2_auth_provider_from_environment(
+    environ: Mapping[str, str] | None = None,
+    observability: ConnectorObservability | None = None,
+) -> OAuth2RefreshAuthProvider | None:
+    """Build source OAuth2 auth from standardized deployment secrets."""
+    values = os.environ if environ is None else environ
+    token_store = get_oauth2_token_store_from_environment(values, observability)
+    if token_store is None:
+        return None
+
+    return OAuth2RefreshAuthProvider(
+        token_url=_required_environment_value(values, OAUTH_TOKEN_URL_ENV_VAR),
+        client_id=_required_environment_value(values, OAUTH_CLIENT_ID_ENV_VAR),
+        client_secret=values.get(OAUTH_CLIENT_SECRET_ENV_VAR),
+        token_store=token_store,
+    )
 
 
 def _required_environment_value(environ: Mapping[str, str], name: str) -> str:

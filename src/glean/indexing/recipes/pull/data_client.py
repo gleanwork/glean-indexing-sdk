@@ -10,6 +10,7 @@ import httpx
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
 from glean.indexing.models import TSourceData
 from glean.indexing.observability import ConnectorObservability
+from glean.indexing.recipes.pull.auth import AuthProvider
 from glean.indexing.recipes.pull.http_client import PullHttpClient
 from glean.indexing.recipes.pull.options import PullOptions
 from glean.indexing.recipes.pull.rate_limit import RateLimiter
@@ -42,6 +43,7 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
         cursor_key: str = "next_cursor",
         initial_cursor: str | None = None,
         headers: Mapping[str, str] | None = None,
+        auth: AuthProvider | None = None,
         options: PullOptions | None = None,
         rate_limiter: RateLimiter | None = None,
         observability: ConnectorObservability | None = None,
@@ -74,6 +76,7 @@ class BasePullHttpStreamingDataClient(BaseStreamingDataClient[TSourceData], Gene
         self.http = PullHttpClient(
             base_url=base_url,
             headers=headers,
+            auth=auth,
             options=options,
             rate_limiter=rate_limiter,
             observability=observability,

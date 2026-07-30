@@ -22,7 +22,6 @@ from glean.api_client.models import (
     EmployeeInfoDefinition,
     ProcessAllDocumentsRequest,
 )
-
 from glean.indexing.common import BatchProcessor, DocumentBatchProcessor, api_client
 from glean.indexing.common.batch_processor import DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
 from glean.indexing.models import DEFAULT_UPLOAD_MAX_WORKERS

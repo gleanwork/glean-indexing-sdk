@@ -7,7 +7,6 @@ from collections.abc import Sequence
 from typing import Any
 
 from glean.api_client.models import DocumentDefinition
-
 from glean.indexing.connectors.base_connector import BaseConnector
 
 

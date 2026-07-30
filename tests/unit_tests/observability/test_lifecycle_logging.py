@@ -132,7 +132,7 @@ class TestLifecycleEvents:
 
     def test_start_execution_emits_event(self, observability_with_logger):
         """Test that start_execution emits crawl_started event."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.start_execution()
 
@@ -150,7 +150,7 @@ class TestLifecycleEvents:
 
     def test_end_execution_emits_event(self, observability_with_logger):
         """Test that end_execution emits crawl_completed event."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.start_execution()
         stream.truncate(0)
@@ -170,7 +170,7 @@ class TestLifecycleEvents:
 
     def test_fail_execution_emits_event(self, observability_with_logger):
         """Test that fail_execution emits crawl_failed event."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         test_error = ValueError("Test error message")
         obs.start_execution()
@@ -192,7 +192,7 @@ class TestLifecycleEvents:
 
     def test_fail_execution_clears_start_time(self, observability_with_logger):
         """Test that fail_execution clears start_time to mark execution as terminal."""
-        obs, stream, logger = observability_with_logger
+        obs, _stream, _logger = observability_with_logger
 
         obs.start_execution()
         assert obs.start_time is not None
@@ -203,7 +203,7 @@ class TestLifecycleEvents:
 
     def test_fail_execution_records_total_execution_time(self, observability_with_logger):
         """Test that fail_execution records total_execution_time metric."""
-        obs, stream, logger = observability_with_logger
+        obs, _stream, _logger = observability_with_logger
 
         obs.start_execution()
         obs.fail_execution(RuntimeError("boom"))
@@ -212,7 +212,7 @@ class TestLifecycleEvents:
 
     def test_end_execution_after_fail_execution_is_noop(self, observability_with_logger):
         """Test that calling end_execution after fail_execution emits no additional events."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.start_execution()
         obs.fail_execution(RuntimeError("already failed"))
@@ -229,7 +229,7 @@ class TestLifecycleEvents:
         self, observability_with_logger
     ):
         """Test that end_execution logs failure when called from a finally block with active exception."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.start_execution()
         stream.truncate(0)
@@ -252,7 +252,7 @@ class TestLifecycleEvents:
 
     def test_log_data_fetch_started(self, observability_with_logger):
         """Test data_fetch_started event logging."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.log_data_fetch_started(since="2024-01-01")
 
@@ -265,7 +265,7 @@ class TestLifecycleEvents:
 
     def test_log_data_fetch_completed(self, observability_with_logger):
         """Test data_fetch_completed event logging."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.log_data_fetch_completed(item_count=150, duration_ms=2500)
 
@@ -280,7 +280,7 @@ class TestLifecycleEvents:
 
     def test_log_transform_started(self, observability_with_logger):
         """Test transform_started event logging."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.log_transform_started(item_count=100)
 
@@ -293,7 +293,7 @@ class TestLifecycleEvents:
 
     def test_log_transform_completed(self, observability_with_logger):
         """Test transform_completed event logging."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.log_transform_completed(input_count=100, output_count=95, duration_ms=1500)
 
@@ -309,7 +309,7 @@ class TestLifecycleEvents:
 
     def test_log_batch_upload_started(self, observability_with_logger):
         """Test batch_upload_started event logging."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.log_batch_upload_started(
             batch_index=2,
@@ -333,7 +333,7 @@ class TestLifecycleEvents:
 
     def test_log_batch_upload_completed(self, observability_with_logger):
         """Test batch_upload_completed event logging."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.log_batch_upload_completed(
             batch_index=0,
@@ -357,7 +357,7 @@ class TestLifecycleEvents:
 
     def test_log_batch_upload_failed(self, observability_with_logger):
         """Test batch_upload_failed event logging."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         test_error = ConnectionError("Network timeout")
         obs.log_batch_upload_failed(
@@ -381,7 +381,7 @@ class TestLifecycleEvents:
 
     def test_log_document_upload_started(self, observability_with_logger):
         """Test document_upload_started event logging."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.log_document_upload_started(
             document_ids=["doc-1", "doc-2", "doc-3"],
@@ -400,7 +400,7 @@ class TestLifecycleEvents:
 
     def test_log_document_upload_completed(self, observability_with_logger):
         """Test document_upload_completed event logging."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.log_document_upload_completed(
             document_ids=["doc-1", "doc-2"],
@@ -420,7 +420,7 @@ class TestLifecycleEvents:
 
     def test_log_document_upload_without_upload_id(self, observability_with_logger):
         """Test document upload methods work without upload_id."""
-        obs, stream, logger = observability_with_logger
+        obs, stream, _logger = observability_with_logger
 
         obs.log_document_upload_started(document_ids=["doc-1"])
 

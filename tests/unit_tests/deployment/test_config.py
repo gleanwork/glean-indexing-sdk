@@ -1,6 +1,7 @@
 """Unit tests for DeploymentConfig."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -12,7 +13,7 @@ from glean.indexing.deployment.config import DeploymentConfig
 # Fixtures
 # ---------------------------------------------------------------------------
 
-GCP_KWARGS = dict(
+GCP_KWARGS: dict[str, Any] = dict(
     connector_name="my_salesforce",
     connector_class="MySalesforceConnector",
     connector_module="connectors.salesforce",
@@ -23,7 +24,7 @@ GCP_KWARGS = dict(
     artifact_registry_repo="us-central1-docker.pkg.dev/my-project/connectors",
 )
 
-AWS_KWARGS = dict(
+AWS_KWARGS: dict[str, Any] = dict(
     connector_name="my_salesforce",
     connector_class="MySalesforceConnector",
     connector_module="connectors.salesforce",

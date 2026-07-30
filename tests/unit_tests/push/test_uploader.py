@@ -5,7 +5,6 @@ import time
 from unittest.mock import patch
 
 import pytest
-
 from glean.api_client.models import (
     ContentDefinition,
     CustomDatasourceConfig,
@@ -18,6 +17,7 @@ from glean.api_client.models import (
     EmployeeInfoDefinition,
     ProcessAllDocumentsRequest,
 )
+
 from glean.indexing import StatusClient as TopLevelStatusClient
 from glean.indexing.push import PushUploader, StatusClient
 from glean.indexing.testing import mock_glean_client

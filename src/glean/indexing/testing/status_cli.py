@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import click
-
 from glean.api_client.models import DebugDocumentRequest
+
 from glean.indexing.testing.indexing_status import (
     IndexingStatusSnapshot,
     IndexingWaitResult,

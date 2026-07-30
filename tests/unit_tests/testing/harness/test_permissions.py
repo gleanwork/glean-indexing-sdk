@@ -1,7 +1,6 @@
 """Tests for extract_permission_refs and assert_negative_identities_absent."""
 
 import pytest
-
 from glean.api_client.models import (
     ContentDefinition,
     DocumentDefinition,
@@ -9,6 +8,7 @@ from glean.api_client.models import (
     PermissionsGroupIntersectionDefinition,
     UserReferenceDefinition,
 )
+
 from glean.indexing.testing.harness.permissions import (
     PermissionRefs,
     assert_negative_identities_absent,

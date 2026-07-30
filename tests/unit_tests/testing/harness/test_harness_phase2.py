@@ -26,6 +26,10 @@ def _fixture_data_path(cache_dir: Path, connector_name: str, client_name: str) -
     return cache_dir / connector_name / "integration" / client_name / "data.ndjson"
 
 
+def _fixture_manifest_path(cache_dir: Path, connector_name: str, client_name: str) -> Path:
+    return cache_dir / connector_name / "integration" / client_name / "manifest.json"
+
+
 # ---------------------------------------------------------------------------
 # Helpers: counting data clients
 # ---------------------------------------------------------------------------
@@ -285,6 +289,7 @@ class TestNegativeIdentityAssertions:
             DocumentPermissionsDefinition,
             UserReferenceDefinition,
         )
+
         from glean.indexing.connectors import BaseDatasourceConnector
         from glean.indexing.connectors.base_data_client import BaseDataClient
         from glean.indexing.models import CustomDatasourceConfig

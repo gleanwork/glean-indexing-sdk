@@ -4,7 +4,6 @@ from unittest.mock import Mock, call, patch
 
 import httpx
 import pytest
-
 from glean.api_client.errors import GleanError as ApiGleanError
 from glean.api_client.models import (
     DebugDocumentResponse,
@@ -13,6 +12,7 @@ from glean.api_client.models import (
     DocumentDefinition,
     DocumentStatusResponse,
 )
+
 from glean.indexing.push import PushUploader
 from glean.indexing.testing import mock_glean_client
 from glean.indexing.testing.harness.indexing_wait import (

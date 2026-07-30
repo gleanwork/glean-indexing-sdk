@@ -1,6 +1,7 @@
 from typing import List, Sequence
 
 from glean.api_client.models.userreferencedefinition import UserReferenceDefinition
+
 from glean.indexing.connectors import BaseStreamingDatasourceConnector
 from glean.indexing.models import ContentDefinition, CustomDatasourceConfig, DocumentDefinition
 

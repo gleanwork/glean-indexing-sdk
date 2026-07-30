@@ -25,7 +25,7 @@ class CloudMonitoringProvider(MetricsProvider):
             resource_labels: Resource labels for the monitored resource
             buffer_size: Number of metrics to buffer before flushing
         """
-        import google.cloud.monitoring_v3 as monitoring_v3
+        from google.cloud import monitoring_v3
 
         self.project_id = project_id
         self.project_name = f"projects/{project_id}"
@@ -44,7 +44,7 @@ class CloudMonitoringProvider(MetricsProvider):
         metric_type: MetricType = MetricType.GAUGE,
         labels: Optional[dict[str, str]] = None,
     ) -> None:
-        import google.cloud.monitoring_v3 as monitoring_v3
+        from google.cloud import monitoring_v3
 
         series = monitoring_v3.TimeSeries()
         series.metric.type = f"custom.googleapis.com/{name}"

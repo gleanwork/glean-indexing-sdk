@@ -2,8 +2,8 @@ import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from glean.api_client.models import DocumentDefinition
+
 from glean.indexing.connectors import BaseStreamingDataClient, BaseStreamingDatasourceConnector
 from glean.indexing.models import ConnectorOptions
 from glean.indexing.push import PushUploader

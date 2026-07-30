@@ -3,8 +3,8 @@
 from typing import Sequence
 
 import pytest
-
 from glean.api_client.models import DocumentDefinition
+
 from glean.indexing.models import ConnectorOptions, IndexingMode
 from glean.indexing.testing import (
     StaticAsyncStreamingDataClient,

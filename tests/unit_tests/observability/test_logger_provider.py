@@ -2,7 +2,6 @@
 
 import logging
 import sys
-from typing import Any, cast
 
 import pytest
 
@@ -56,7 +55,7 @@ class TestLoggerProviderInterface:
     def test_cannot_instantiate_abstract_class(self):
         """Test that LoggerProvider cannot be instantiated directly."""
         with pytest.raises(TypeError):
-            cast(Any, LoggerProvider)()
+            LoggerProvider()
 
     def test_custom_provider_implementation(self):
         """Test that custom providers can implement the interface."""
@@ -92,7 +91,7 @@ class TestLoggerProviderInterface:
                 pass
 
         with pytest.raises(TypeError):
-            cast(Any, IncompleteProvider)()
+            IncompleteProvider()
 
     def test_custom_provider_must_implement_flush(self):
         """Test that custom providers must implement flush."""
@@ -102,4 +101,4 @@ class TestLoggerProviderInterface:
                 return logging.NullHandler()
 
         with pytest.raises(TypeError):
-            cast(Any, IncompleteProvider)()
+            IncompleteProvider()

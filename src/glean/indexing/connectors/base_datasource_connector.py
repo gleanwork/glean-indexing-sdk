@@ -5,6 +5,7 @@ from abc import ABC
 from typing import Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
+
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.exceptions import InconsistentDataError, InvalidDatasourceConfigError

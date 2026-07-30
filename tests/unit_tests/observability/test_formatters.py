@@ -2,7 +2,6 @@
 
 import json
 import logging
-import sys
 from datetime import datetime
 from io import StringIO
 
@@ -156,8 +155,12 @@ class TestStructuredFormatter:
                 lineno=10,
                 msg="Error occurred",
                 args=(),
-                exc_info=sys.exc_info(),
+                exc_info=True,  # This captures exception info
             )
+            # Need to manually set exc_info from sys
+            import sys
+
+            record.exc_info = sys.exc_info()
 
             output = formatter.format(record)
             log_data = json.loads(output)

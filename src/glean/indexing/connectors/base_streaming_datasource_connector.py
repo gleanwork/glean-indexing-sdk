@@ -7,6 +7,7 @@ from itertools import islice
 from typing import Generator, Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
+
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
 from glean.indexing.models import (

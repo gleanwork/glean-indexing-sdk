@@ -4,12 +4,12 @@ from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from glean.api_client.models import (
     DatasourceGroupDefinition,
     DatasourceUserDefinition,
     DocumentDefinition,
 )
+
 from glean.indexing.observability import ConnectorObservability
 from glean.indexing.push import PushUploader
 

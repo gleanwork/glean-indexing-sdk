@@ -7,7 +7,10 @@ node = "22"
 
 [tasks.setup]
 description = "Set up local environment (install dependencies, etc.)"
-run = "uv sync --locked --extra dev --extra test --extra lint --extra typing"
+run = [
+  "uv venv .venv",
+  "uv pip install -e .[dev,test,lint,typing]",
+]
 
 [tasks."test:all"]
 description = "Run all tests and lint fixes"

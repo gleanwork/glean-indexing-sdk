@@ -139,14 +139,9 @@ class TestPublicImport:
     """Verify that harness APIs are importable from the top-level testing package."""
 
     def test_top_level_import(self):
-        from glean.indexing.testing import (
+        from glean.indexing.testing import (  # noqa: F401
             ClientConfig,
             IndexingWaitResult,
             TestConfig,
             TestHarness,
         )
-
-        assert ClientConfig
-        assert IndexingWaitResult
-        assert TestConfig
-        assert TestHarness

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from glean.api_client.errors import GleanError as ApiGleanError
 from glean.api_client.models import DocumentDefinition
+
 from glean.indexing.push import PushUploader
 from glean.indexing.testing.indexing_status import (
     IndexingWaitResult,

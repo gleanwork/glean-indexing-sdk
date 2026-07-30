@@ -76,6 +76,20 @@ def test_gcp_terraform_has_connector_name():
     assert "my_salesforce" in artifacts["terraform/main.tf"]
 
 
+def test_gcp_oauth_token_persistence_adds_narrow_write_permission():
+    config = GCP_CONFIG.model_copy(update={"oauth_token_persistence": True})
+    tf = generate_artifacts(config)["terraform/main.tf"]
+
+    assert "roles/secretmanager.secretVersionAdder" in tf
+    assert "CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_SOURCE_OAUTH_TOKEN_STATE" in tf
+
+
+def test_gcp_without_oauth_token_persistence_has_no_write_permission():
+    tf = generate_artifacts(GCP_CONFIG)["terraform/main.tf"]
+
+    assert "roles/secretmanager.secretVersionAdder" not in tf
+
+
 def test_gcp_run_py_has_gcp_secret_manager():
     artifacts = generate_artifacts(GCP_CONFIG)
     assert "google.cloud" in artifacts["run.py"]
@@ -113,15 +127,37 @@ def test_aws_dockerfile_has_boto3():
 
 def test_aws_dockerfile_has_reference_link():
     artifacts = generate_artifacts(AWS_CONFIG)
-    assert "https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html" in artifacts["Dockerfile"]
-    assert "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html" in artifacts["Dockerfile"]
+    assert (
+        "https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html"
+        in artifacts["Dockerfile"]
+    )
+    assert (
+        "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html"
+        in artifacts["Dockerfile"]
+    )
 
 
 def test_aws_terraform_has_reference_links():
     artifacts = generate_artifacts(AWS_CONFIG)
     tf = artifacts["terraform/main.tf"]
-    assert "https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html" in tf
+    assert (
+        "https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html" in tf
+    )
     assert "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html" in tf
+
+
+def test_aws_oauth_token_persistence_adds_narrow_write_permission():
+    config = AWS_CONFIG.model_copy(update={"oauth_token_persistence": True})
+    tf = generate_artifacts(config)["terraform/main.tf"]
+
+    assert "secretsmanager:PutSecretValue" in tf
+    assert "CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_SOURCE_OAUTH_TOKEN_STATE-*" in tf
+
+
+def test_aws_without_oauth_token_persistence_has_no_write_permission():
+    tf = generate_artifacts(AWS_CONFIG)["terraform/main.tf"]
+
+    assert "secretsmanager:PutSecretValue" not in tf
 
 
 def test_aws_run_py_has_boto3():
@@ -132,7 +168,10 @@ def test_aws_run_py_has_boto3():
 
 def test_aws_run_py_has_reference_link():
     artifacts = generate_artifacts(AWS_CONFIG)
-    assert "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html" in artifacts["run.py"]
+    assert (
+        "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html"
+        in artifacts["run.py"]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +199,22 @@ def test_env_example_has_glean_creds():
     env_ex = artifacts[".env.example"]
     assert "GLEAN_SERVER_URL" in env_ex
     assert "GLEAN_INDEXING_API_TOKEN" in env_ex
+
+
+def test_env_example_includes_token_state_when_persistence_enabled():
+    config = GCP_CONFIG.model_copy(update={"oauth_token_persistence": True})
+    env_ex = generate_artifacts(config)[".env.example"]
+
+    assert "SOURCE_OAUTH_TOKEN_URL=" in env_ex
+    assert "SOURCE_OAUTH_CLIENT_ID=" in env_ex
+    assert "SOURCE_OAUTH_CLIENT_SECRET=" in env_ex
+    assert "SOURCE_OAUTH_TOKEN_STATE=" in env_ex
+
+
+def test_env_example_omits_token_state_when_persistence_disabled():
+    env_ex = generate_artifacts(GCP_CONFIG)[".env.example"]
+
+    assert "SOURCE_OAUTH_TOKEN_STATE=" not in env_ex
 
 
 def test_env_example_has_secret_manager_reference_link():

@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -58,12 +59,12 @@ def init(cloud: str, connector_name: str | None, connector_class: str, connector
     out = Path(output_dir).resolve()
     effective_name = connector_name or Path.cwd().name.lower().replace("-", "_").replace(" ", "_")
 
-    gcp_kwargs = (
+    gcp_kwargs: dict[str, Any] = (
         {"project_id": "<your-gcp-project-id>", "artifact_registry_repo": "<region>-docker.pkg.dev/<project>/connectors"}
         if cloud == "gcp"
         else {}
     )
-    aws_kwargs = (
+    aws_kwargs: dict[str, Any] = (
         {"account_id": "<your-aws-account-id>", "ecr_repo": "<account>.dkr.ecr.<region>.amazonaws.com/connectors"}
         if cloud == "aws"
         else {}

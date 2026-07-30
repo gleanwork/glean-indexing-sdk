@@ -31,6 +31,7 @@ cpu: {{ config.cpu }}
 memory: {{ config.memory }}
 cron_schedule: "{{ config.cron_schedule }}"
 indexing_mode: {{ config.indexing_mode }}
+oauth_token_persistence: {{ config.oauth_token_persistence | lower }}
 
 {% if config.cloud == 'gcp' %}
 project_id: {{ config.project_id }}

@@ -95,6 +95,16 @@ resource "google_project_iam_member" "secret_accessor" {
   member  = "serviceAccount:${google_service_account.connector.email}"
 }
 
+{% if config.oauth_token_persistence %}
+# Allow adding versions only to the pre-created OAuth2 token-state secret.
+resource "google_secret_manager_secret_iam_member" "oauth_token_writer" {
+  project   = var.project_id
+  secret_id = "CUSTOM_DATASOURCE_PLATFORM_{{ config.connector_name | upper }}_SOURCE_OAUTH_TOKEN_STATE"
+  role      = "roles/secretmanager.secretVersionAdder"
+  member    = "serviceAccount:${google_service_account.connector.email}"
+}
+{% endif %}
+
 resource "kubernetes_service_account_v1" "connector" {
   metadata {
     name      = "{{ config.k8s_name }}-ksa"

@@ -176,6 +176,7 @@ Ensure `glean_deployment.yaml` has the correct fields before running build/apply
 - `memory`
 - `cron_schedule`
 - `indexing_mode`
+- `oauth_token_persistence` — enable only for connectors that refresh source OAuth tokens.
 
 For GCP, also confirm:
 
@@ -215,6 +216,8 @@ Connector secrets should include values such as:
 - `GLEAN_SERVER_URL`
 - `GLEAN_INDEXING_API_TOKEN`
 - source API tokens, API keys, OAuth client secrets, or other connector-specific credentials
+
+When `oauth_token_persistence` is enabled, initialize `SOURCE_OAUTH_TOKEN_STATE` in `.env` before running `glean-deploy secrets upload`. The deployed connector may add versions only to this pre-created secret after a successful refresh.
 
 To rotate a secret:
 

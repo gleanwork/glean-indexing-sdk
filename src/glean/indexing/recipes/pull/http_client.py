@@ -12,6 +12,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from glean.indexing.observability import ConnectorObservability
+from glean.indexing.recipes.pull.auth import AuthProvider
 from glean.indexing.recipes.pull.options import PullOptions
 from glean.indexing.recipes.pull.rate_limit import RateLimiter
 from glean.indexing.recipes.pull.response import PullResponse
@@ -43,6 +44,7 @@ class PullHttpClient:
         *,
         base_url: str,
         headers: Mapping[str, str] | None = None,
+        auth: AuthProvider | None = None,
         options: PullOptions | None = None,
         rate_limiter: RateLimiter | None = None,
         observability: ConnectorObservability | None = None,
@@ -54,6 +56,7 @@ class PullHttpClient:
         Args:
             base_url: Base URL for relative request paths.
             headers: Default headers sent with each request.
+            auth: Optional auth provider for source API request headers.
             options: Request timeout, retry, redirect, and logging behavior.
             rate_limiter: Optional source API rate limiter.
             observability: Optional observability instance for request metrics.
@@ -62,6 +65,7 @@ class PullHttpClient:
         """
         self.base_url = base_url.rstrip("/") + "/"
         self.default_headers = dict(headers or {})
+        self.auth = auth
         self.options = options or PullOptions()
         self.rate_limiter = rate_limiter
         self.observability = observability
@@ -70,9 +74,13 @@ class PullHttpClient:
         self._sleep = sleep
 
     def close(self) -> None:
-        """Close the underlying HTTP client if this recipe owns it."""
-        if self._owns_client:
-            self._client.close()
+        """Close auth and HTTP resources owned by this recipe."""
+        try:
+            if self.auth is not None:
+                self.auth.close()
+        finally:
+            if self._owns_client:
+                self._client.close()
 
     def __enter__(self) -> "PullHttpClient":
         """Enter a context manager."""
@@ -264,6 +272,8 @@ class PullHttpClient:
 
     def __headers(self, headers: Mapping[str, str] | None) -> dict[str, str]:
         out = dict(self.default_headers)
+        if self.auth is not None:
+            out.update(self.auth.headers())
         if headers:
             out.update(headers)
         return out

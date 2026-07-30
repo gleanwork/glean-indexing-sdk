@@ -32,7 +32,14 @@ Document one of these in `<connector-folder>/.glean/connector_plan.md` and `<con
 - API key via header or query parameter.
 - Basic auth via environment variables.
 - OAuth bearer token supplied by the deployment environment.
-- OAuth refresh flow, if the source API and SDK support are both clear.
+- OAuth refresh flow backed by deployed cloud token storage.
+
+For a deployed OAuth refresh flow:
+
+- Set `oauth_token_persistence: true` in `glean_deployment.yaml`.
+- Set `SOURCE_OAUTH_TOKEN_URL`, `SOURCE_OAUTH_CLIENT_ID`, optional `SOURCE_OAUTH_CLIENT_SECRET`, and `SOURCE_OAUTH_TOKEN_STATE` in `.env` before running `glean-deploy secrets upload`.
+- Call `get_oauth2_auth_provider_from_environment()` and pass its result through the pull data client's `auth` parameter. The factory initializes `OAuth2RefreshAuthProvider` from the standardized `SOURCE_OAUTH_*` deployment secrets and returns `None` when no token state is configured.
+- Do not persist refreshed tokens in connector files or process-local storage.
 
 ## Required Plan Fields
 

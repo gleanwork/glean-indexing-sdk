@@ -26,6 +26,10 @@ class DeploymentConfig(BaseModel):
 
     cron_schedule: str = Field(default="0 2 * * *", description="CronJob schedule (UTC cron expression).")
     indexing_mode: str = Field(default="FULL", description="Indexing mode ('FULL' or 'INCREMENTAL').")
+    oauth_token_persistence: bool = Field(
+        default=False,
+        description="Allow the connector to persist refreshed source OAuth2 token state.",
+    )
 
     # GCP-specific
     project_id: Optional[str] = Field(default=None, description="GCP project ID. Required when cloud=gcp.")

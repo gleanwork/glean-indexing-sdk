@@ -1,5 +1,6 @@
 """Unit tests for glean-deploy secrets module."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,12 +8,18 @@ import pytest
 from glean.indexing.deployment.config import DeploymentConfig
 from glean.indexing.deployment.secrets import (
     _REDLIST,
+    AWSOAuth2TokenStore,
     GCPSecretsBackend,
+    GCPOAuth2TokenStore,
     AWSSecretsBackend,
     filter_secrets,
+    get_oauth2_auth_provider_from_environment,
+    get_oauth2_token_store_from_environment,
     get_secrets_backend,
     parse_env_file,
 )
+from glean.indexing.observability import ConnectorObservability
+from glean.indexing.recipes.pull import OAuth2Token
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +210,7 @@ def test_gcp_upload_creates_new_secrets(gcp_config, env_file):
     ):
         import importlib
         from glean.indexing.deployment import secrets as secrets_mod
+
         importlib.reload(secrets_mod)
         backend = secrets_mod.GCPSecretsBackend(gcp_config)
         result = backend.upload(env_file)
@@ -240,6 +248,7 @@ def test_gcp_upload_returns_updated_for_existing_secrets(gcp_config, env_file):
     ):
         import importlib
         from glean.indexing.deployment import secrets as secrets_mod
+
         importlib.reload(secrets_mod)
         backend = secrets_mod.GCPSecretsBackend(gcp_config)
         result = backend.upload(env_file)
@@ -279,9 +288,17 @@ def test_aws_upload_creates_new_secret(aws_config, env_file):
     mock_boto3 = MagicMock()
     mock_boto3.client.return_value = mock_client
 
-    with patch.dict("sys.modules", {"boto3": mock_boto3, "botocore": mock_botocore, "botocore.exceptions": mock_botocore.exceptions}):
+    with patch.dict(
+        "sys.modules",
+        {
+            "boto3": mock_boto3,
+            "botocore": mock_botocore,
+            "botocore.exceptions": mock_botocore.exceptions,
+        },
+    ):
         import importlib
         from glean.indexing.deployment import secrets as secrets_mod
+
         importlib.reload(secrets_mod)
         backend = secrets_mod.AWSSecretsBackend(aws_config)
         result = backend.upload(env_file)
@@ -298,3 +315,150 @@ def test_aws_upload_empty_env_returns_early(aws_config, tmp_path):
     backend = AWSSecretsBackend(aws_config)
     result = backend.upload(empty_env)
     assert result == {}
+
+
+def test_gcp_oauth_token_store_loads_latest_token_state():
+    client = MagicMock()
+    response = MagicMock()
+    response.payload.data = (
+        b'{"access_token":"access-1","refresh_token":"refresh-1","expires_at":123.0}'
+    )
+    client.access_secret_version.return_value = response
+    store = GCPOAuth2TokenStore(
+        project_id="my-project",
+        connector_name="my_connector",
+        client=client,
+    )
+
+    token = store.load()
+
+    assert token == OAuth2Token(
+        access_token="access-1",
+        refresh_token="refresh-1",
+        expires_at=123.0,
+    )
+    client.access_secret_version.assert_called_once_with(
+        request={
+            "name": (
+                "projects/my-project/secrets/"
+                "CUSTOM_DATASOURCE_PLATFORM_MY_CONNECTOR_SOURCE_OAUTH_TOKEN_STATE/"
+                "versions/latest"
+            )
+        }
+    )
+
+
+def test_gcp_oauth_token_store_saves_new_secret_version():
+    client = MagicMock()
+    store = GCPOAuth2TokenStore(
+        project_id="my-project",
+        connector_name="my_connector",
+        client=client,
+    )
+
+    store.save(
+        OAuth2Token(
+            access_token="access-2",
+            refresh_token="refresh-2",
+            expires_at=456.0,
+        )
+    )
+
+    request = client.add_secret_version.call_args.kwargs["request"]
+    assert request["parent"].endswith(
+        "/CUSTOM_DATASOURCE_PLATFORM_MY_CONNECTOR_SOURCE_OAUTH_TOKEN_STATE"
+    )
+    assert b'"refresh_token":"refresh-2"' in request["payload"]["data"]
+
+
+def test_aws_oauth_token_store_loads_and_saves_token_state():
+    client = MagicMock()
+    client.get_secret_value.return_value = {
+        "SecretString": (
+            '{"access_token":"access-1","refresh_token":"refresh-1","expires_at":123.0}'
+        )
+    }
+    store = AWSOAuth2TokenStore(
+        region="us-east-1",
+        connector_name="my_connector",
+        client=client,
+    )
+
+    token = store.load()
+    store.save(
+        OAuth2Token(
+            access_token="access-2",
+            refresh_token="refresh-2",
+            expires_at=456.0,
+        )
+    )
+
+    assert token.refresh_token == "refresh-1"
+    client.put_secret_value.assert_called_once()
+    request = client.put_secret_value.call_args.kwargs
+    assert request["SecretId"] == "CUSTOM_DATASOURCE_PLATFORM_MY_CONNECTOR_SOURCE_OAUTH_TOKEN_STATE"
+    assert '"refresh_token":"refresh-2"' in request["SecretString"]
+
+
+def test_oauth_token_store_factory_uses_deployed_cloud():
+    gcp_store = get_oauth2_token_store_from_environment(
+        {
+            "CLOUD_PLATFORM": "gcp",
+            "DATASOURCE_NAME": "my_connector",
+            "GOOGLE_CLOUD_PROJECT": "my-project",
+            "SOURCE_OAUTH_TOKEN_STATE": '{"access_token":"access-1"}',
+        }
+    )
+    aws_store = get_oauth2_token_store_from_environment(
+        {
+            "CLOUD_PLATFORM": "aws",
+            "DATASOURCE_NAME": "my_connector",
+            "AWS_REGION": "us-east-1",
+            "SOURCE_OAUTH_TOKEN_STATE": '{"access_token":"access-1"}',
+        }
+    )
+
+    assert type(gcp_store).__name__ == "GCPOAuth2TokenStore"
+    assert type(aws_store).__name__ == "AWSOAuth2TokenStore"
+
+
+def test_oauth_token_store_factory_uses_transient_store_for_unknown_cloud(caplog):
+    observability = ConnectorObservability("test_connector")
+
+    with caplog.at_level(logging.WARNING):
+        store = get_oauth2_token_store_from_environment(
+            {
+                "CLOUD_PLATFORM": "azure",
+                "SOURCE_OAUTH_TOKEN_STATE": '{"access_token":"access-1"}',
+            },
+            observability=observability,
+        )
+
+    assert store is not None
+    token = store.load()
+    assert token is not None
+    assert token.access_token == "access-1"
+    assert "refreshed tokens will remain in memory" in caplog.text
+    assert getattr(caplog.records[0], "connector") == "test_connector"
+
+
+def test_oauth_token_store_factory_skips_when_token_state_is_absent():
+    assert get_oauth2_token_store_from_environment({"CLOUD_PLATFORM": "gcp"}) is None
+
+
+def test_oauth_auth_provider_factory_initializes_from_deployment_secrets():
+    auth = get_oauth2_auth_provider_from_environment(
+        {
+            "CLOUD_PLATFORM": "local",
+            "SOURCE_OAUTH_TOKEN_URL": "https://auth.example.com/oauth/token",
+            "SOURCE_OAUTH_CLIENT_ID": "client-1",
+            "SOURCE_OAUTH_CLIENT_SECRET": "secret-1",
+            "SOURCE_OAUTH_TOKEN_STATE": (
+                '{"access_token":"access-1","refresh_token":"refresh-1",'
+                '"expires_at":9999999999}'
+            ),
+        }
+    )
+
+    assert auth is not None
+    assert auth.headers()["Authorization"] == "Bearer access-1"

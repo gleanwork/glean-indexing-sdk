@@ -7,9 +7,21 @@ get_secrets_backend(config) to obtain the right one at runtime.
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from glean.indexing.observability import ConnectorObservability
+from glean.indexing.recipes.pull.auth import (
+    OAuth2RefreshAuthProvider,
+    OAuth2Token,
+    OAuth2TokenError,
+    OAuth2TokenStore,
+)
 
 if TYPE_CHECKING:
     from glean.indexing.deployment.config import DeploymentConfig
@@ -28,6 +40,13 @@ _REDLIST: frozenset[str] = frozenset(
         "CONNECTOR_MODULE",
     ]
 )
+
+OAUTH_CLIENT_ID_ENV_VAR = "SOURCE_OAUTH_CLIENT_ID"
+OAUTH_CLIENT_SECRET_ENV_VAR = "SOURCE_OAUTH_CLIENT_SECRET"
+OAUTH_TOKEN_STATE_ENV_VAR = "SOURCE_OAUTH_TOKEN_STATE"
+OAUTH_TOKEN_URL_ENV_VAR = "SOURCE_OAUTH_TOKEN_URL"
+
+logger = logging.getLogger(__name__)
 
 
 def parse_env_file(env_file: Path) -> dict[str, str]:
@@ -144,7 +163,7 @@ class GCPSecretsBackend(SecretsBackend):
         for secret in client.list_secrets(request={"parent": parent, "filter": f"name:{prefix}"}):
             secret_id = secret.name.split("/")[-1]
             if secret_id.startswith(prefix):
-                keys.append(secret_id[len(prefix):])
+                keys.append(secret_id[len(prefix) :])
         return sorted(keys)
 
     def delete(self, key: str) -> None:
@@ -205,7 +224,7 @@ class AWSSecretsBackend(SecretsBackend):
             for secret_meta in page.get("SecretList", []):
                 name = secret_meta["Name"]
                 if name.startswith(prefix):
-                    keys.append(name[len(prefix):])
+                    keys.append(name[len(prefix) :])
         return sorted(keys)
 
     def delete(self, key: str) -> None:
@@ -219,6 +238,186 @@ class AWSSecretsBackend(SecretsBackend):
             if exc.response["Error"]["Code"] == "ResourceNotFoundException":
                 raise KeyError(key)
             raise
+
+
+class GCPOAuth2TokenStore:
+    """Persist OAuth2 token state in a pre-created GCP secret."""
+
+    def __init__(self, *, project_id: str, connector_name: str, client: Any | None = None) -> None:
+        self._secret_path = (
+            f"projects/{project_id}/secrets/"
+            f"CUSTOM_DATASOURCE_PLATFORM_{connector_name.upper()}_{OAUTH_TOKEN_STATE_ENV_VAR}"
+        )
+        self._client = client
+
+    def load(self) -> OAuth2Token:
+        """Load the latest OAuth2 token state."""
+        client = self._get_client()
+        try:
+            response = client.access_secret_version(
+                request={"name": f"{self._secret_path}/versions/latest"}
+            )
+            return _deserialize_oauth2_token(response.payload.data.decode("utf-8"))
+        except OAuth2TokenError:
+            raise
+        except Exception as exc:
+            raise OAuth2TokenError(
+                "Could not load OAuth2 token state from GCP Secret Manager"
+            ) from exc
+
+    def save(self, token: OAuth2Token) -> None:
+        """Add a GCP secret version containing the refreshed token state."""
+        try:
+            self._get_client().add_secret_version(
+                request={
+                    "parent": self._secret_path,
+                    "payload": {"data": _serialize_oauth2_token(token).encode("utf-8")},
+                }
+            )
+        except Exception as exc:
+            raise OAuth2TokenError(
+                "Could not save OAuth2 token state to GCP Secret Manager"
+            ) from exc
+
+    def _get_client(self) -> Any:
+        if self._client is None:
+            from google.cloud import secretmanager  # type: ignore[import-untyped]
+
+            self._client = secretmanager.SecretManagerServiceClient()
+        return self._client
+
+
+class AWSOAuth2TokenStore:
+    """Persist OAuth2 token state in a pre-created AWS secret."""
+
+    def __init__(
+        self,
+        *,
+        region: str,
+        connector_name: str,
+        client: Any | None = None,
+    ) -> None:
+        self._region = region
+        self._secret_name = (
+            f"CUSTOM_DATASOURCE_PLATFORM_{connector_name.upper()}_{OAUTH_TOKEN_STATE_ENV_VAR}"
+        )
+        self._client = client
+
+    def load(self) -> OAuth2Token:
+        """Load the latest OAuth2 token state."""
+        try:
+            response = self._get_client().get_secret_value(SecretId=self._secret_name)
+            return _deserialize_oauth2_token(response["SecretString"])
+        except OAuth2TokenError:
+            raise
+        except Exception as exc:
+            raise OAuth2TokenError(
+                "Could not load OAuth2 token state from AWS Secrets Manager"
+            ) from exc
+
+    def save(self, token: OAuth2Token) -> None:
+        """Replace the AWS secret value with the refreshed token state."""
+        try:
+            self._get_client().put_secret_value(
+                SecretId=self._secret_name,
+                SecretString=_serialize_oauth2_token(token),
+            )
+        except Exception as exc:
+            raise OAuth2TokenError(
+                "Could not save OAuth2 token state to AWS Secrets Manager"
+            ) from exc
+
+    def _get_client(self) -> Any:
+        if self._client is None:
+            import boto3  # type: ignore[import-untyped]
+
+            self._client = boto3.client("secretsmanager", region_name=self._region)
+        return self._client
+
+
+class _TransientOAuth2TokenStore:
+    """Keep OAuth2 token state in memory when cloud persistence is unavailable."""
+
+    def __init__(self, token: OAuth2Token) -> None:
+        self._token = token
+
+    def load(self) -> OAuth2Token:
+        return self._token
+
+    def save(self, token: OAuth2Token) -> None:
+        self._token = token
+
+
+def get_oauth2_token_store_from_environment(
+    environ: Mapping[str, str] | None = None,
+    observability: ConnectorObservability | None = None,
+) -> OAuth2TokenStore | None:
+    """Create the cloud token store configured by deployment environment variables."""
+    values = os.environ if environ is None else environ
+    serialized_token = values.get(OAUTH_TOKEN_STATE_ENV_VAR)
+    if not serialized_token:
+        return None
+
+    cloud = values.get("CLOUD_PLATFORM", "").lower()
+
+    if cloud == "gcp":
+        return GCPOAuth2TokenStore(
+            project_id=_required_environment_value(values, "GOOGLE_CLOUD_PROJECT"),
+            connector_name=_required_environment_value(values, "DATASOURCE_NAME"),
+        )
+    if cloud == "aws":
+        return AWSOAuth2TokenStore(
+            region=_required_environment_value(values, "AWS_REGION"),
+            connector_name=_required_environment_value(values, "DATASOURCE_NAME"),
+        )
+
+    extra = {"operation": "oauth_token_persistence_skipped", "cloud_platform": cloud or "unset"}
+    if observability is not None:
+        extra = observability.get_common_fields(**extra)
+    logger.warning(
+        "OAuth2 token persistence is unavailable for this cloud platform; refreshed tokens will remain in memory",
+        extra=extra,
+    )
+    return _TransientOAuth2TokenStore(_deserialize_oauth2_token(serialized_token))
+
+
+def get_oauth2_auth_provider_from_environment(
+    environ: Mapping[str, str] | None = None,
+    observability: ConnectorObservability | None = None,
+) -> OAuth2RefreshAuthProvider | None:
+    """Build source OAuth2 auth from standardized deployment secrets."""
+    values = os.environ if environ is None else environ
+    token_store = get_oauth2_token_store_from_environment(values, observability)
+    if token_store is None:
+        return None
+
+    return OAuth2RefreshAuthProvider(
+        token_url=_required_environment_value(values, OAUTH_TOKEN_URL_ENV_VAR),
+        client_id=_required_environment_value(values, OAUTH_CLIENT_ID_ENV_VAR),
+        client_secret=values.get(OAUTH_CLIENT_SECRET_ENV_VAR),
+        token_store=token_store,
+    )
+
+
+def _required_environment_value(environ: Mapping[str, str], name: str) -> str:
+    value = environ.get(name)
+    if not value:
+        raise OAuth2TokenError(f"Missing required OAuth2 token store environment variable: {name}")
+    return value
+
+
+def _serialize_oauth2_token(token: OAuth2Token) -> str:
+    return json.dumps(token.to_dict(), separators=(",", ":"), sort_keys=True)
+
+
+def _deserialize_oauth2_token(value: str) -> OAuth2Token:
+    try:
+        data = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise OAuth2TokenError("Stored OAuth2 token state is not valid JSON") from exc
+    if not isinstance(data, Mapping):
+        raise OAuth2TokenError("Stored OAuth2 token state must be a JSON object")
+    return OAuth2Token.from_dict(data)
 
 
 def get_secrets_backend(config: "DeploymentConfig") -> SecretsBackend:

@@ -1,0 +1,94 @@
+{
+  "datasource": "webex",
+  "coverage_model": "org-wide via compliance Events API, rolling 90-day window (hard limit)",
+  "endpoints": [
+    {
+      "name": "List Events (compliance)",
+      "method": "GET",
+      "path": "/events",
+      "purpose": "PRIMARY org-wide message source. resource=messages returns message create/update/delete events across ALL org spaces regardless of membership; event.data carries the message content (id, roomId, roomType, text, personId, personEmail, created).",
+      "source": "https://developer.webex.com/docs/api/v1/events/list-events",
+      "required_scopes": "spark-compliance:events_read (Compliance Officer role)",
+      "pagination": "cursor via Link header rel=next; from/to time window; max query param",
+      "incremental_filter": "from / to (ISO). HARD LIMIT: search window max 90 days in the past (403 otherwise). resource=messages|memberships|rooms; type=created|updated|deleted",
+      "response_fields": ["id", "resource", "type", "actorId", "created", "data.id", "data.roomId", "data.roomType", "data.text", "data.personId", "data.personEmail", "data.created"],
+      "deletion_behavior": "type=deleted events carry data.id + data.roomId of the removed message (no text). Use to exclude/delete docs.",
+      "verified_live": true,
+      "notes": "Verified: 1yr/3yr lookback -> 403 'only authorized to search within past 90 days'. deleted + rooms resources exist; updated returned none in test org."
+    },
+    {
+      "name": "Get My Own Details",
+      "method": "GET",
+      "path": "/people/me",
+      "purpose": "Auth smoke test; returns caller identity and orgId",
+      "source": "https://developer.webex.com/docs/api/v1/people/get-my-own-details",
+      "required_scopes": "spark:people_read",
+      "response_fields": ["id", "emails", "displayName", "firstName", "lastName", "orgId", "status", "type"],
+      "verified_live": true
+    },
+    {
+      "name": "List Rooms",
+      "method": "GET",
+      "path": "/rooms",
+      "purpose": "List spaces (containers) the authenticated user belongs to",
+      "source": "https://developer.webex.com/docs/api/v1/rooms/list-rooms",
+      "required_scopes": "spark:rooms_read",
+      "pagination": "cursor via Link header rel=next; max query param (page size)",
+      "incremental_filter": "sortBy=lastactivity (ordering only; no updated-since filter)",
+      "response_fields": ["id", "title", "type", "lastActivity", "teamId", "creatorId", "created", "ownerId", "isPublic", "isReadOnly", "isLocked"],
+      "permission_fields": ["type"],
+      "deletion_behavior": "No deletion feed; stale rooms detected by absence in a full crawl",
+      "verified_live": true
+    },
+    {
+      "name": "Get Room Details",
+      "method": "GET",
+      "path": "/rooms/{roomId}",
+      "purpose": "Fetch single room detail (enrichment if needed)",
+      "source": "https://developer.webex.com/docs/api/v1/rooms/get-room-details",
+      "required_scopes": "spark:rooms_read",
+      "verified_live": false
+    },
+    {
+      "name": "List Messages",
+      "method": "GET",
+      "path": "/messages",
+      "purpose": "List messages within a room (the primary document content)",
+      "source": "https://developer.webex.com/docs/api/v1/messages/list-messages",
+      "required_scopes": "spark:messages_read",
+      "pagination": "cursor via Link header rel=next; max query param",
+      "incremental_filter": "before / beforeMessage (time-bound paging; no reliable updated-since or delete feed)",
+      "response_fields": ["id", "roomId", "roomType", "text", "markdown", "html", "files", "personId", "personEmail", "created", "updated", "parentId", "mentionedPeople"],
+      "permission_fields": ["roomId"],
+      "deletion_behavior": "Deleted messages disappear from listing; no per-message tombstone in list response",
+      "verified_live": true,
+      "notes": "MEMBERSHIP-SCOPED: returns 404 for rooms the caller is not a member of, even with a compliance token. NOT usable for org-wide content. Org-wide content comes from /events. (Retained for the account-visible fallback only.)"
+    },
+    {
+      "name": "List Memberships",
+      "method": "GET",
+      "path": "/memberships",
+      "purpose": "List members of a room; source of per-document permissions (ACL)",
+      "source": "https://developer.webex.com/docs/api/v1/memberships/list-memberships",
+      "required_scopes": "spark:memberships_read",
+      "pagination": "cursor via Link header rel=next; max query param",
+      "response_fields": ["id", "roomId", "roomType", "personId", "personEmail", "personDisplayName", "personOrgId", "isModerator", "isMonitor", "created"],
+      "permission_fields": ["personId", "personEmail", "roomId"],
+      "verified_live": true,
+      "notes": "Filter by roomId to get one room's ACL. VERIFIED cross-room: returns HTTP 200 with members even for rooms the caller is NOT in (compliance). This is the org-wide ACL source."
+    },
+    {
+      "name": "List People",
+      "method": "GET",
+      "path": "/people",
+      "purpose": "List/lookup users for identity indexing and permission subject resolution",
+      "source": "https://developer.webex.com/docs/api/v1/people/list-people",
+      "required_scopes": "spark:people_read",
+      "pagination": "cursor via Link header rel=next; max query param",
+      "response_fields": ["id", "emails", "displayName", "firstName", "lastName", "orgId", "status", "type"],
+      "permission_fields": ["id", "emails"],
+      "verified_live": true,
+      "notes": "Can filter by id (batch, ?id=a,b,c), email, or displayName."
+    }
+  ]
+}

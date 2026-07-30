@@ -30,7 +30,9 @@ class TestCloudMonitoringProvider:
     @patch("google.cloud.monitoring_v3.MonitoredResource")
     @patch("google.cloud.monitoring_v3.TimeSeries")
     @patch("google.cloud.monitoring_v3.Point")
-    def test_emit_metric(self, mock_point_class, mock_series_class, mock_resource_class, mock_client_class):
+    def test_emit_metric(
+        self, mock_point_class, mock_series_class, mock_resource_class, mock_client_class
+    ):
         """Test emitting a metric."""
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client

@@ -61,11 +61,12 @@ def test_capture_document_uploads_records_incremental_and_bulk_documents():
 @patch("glean.indexing.testing.indexing_status.time.sleep")
 @patch("glean.indexing.testing.harness.indexing_wait.PushUploader.process_all_documents")
 @patch("glean.indexing.testing.indexing_status.StatusClient.get_documents_status")
+@patch("glean.indexing.testing.harness.indexing_wait.logger")
 def test_already_indexed_skips_process_all(
+    logger: Mock,
     get_status: Mock,
     process_all: Mock,
     sleep: Mock,
-    caplog: pytest.LogCaptureFixture,
 ):
     get_status.return_value = _status("INDEXED")
 
@@ -75,7 +76,7 @@ def test_already_indexed_skips_process_all(
     )
 
     assert result is IndexingWaitResult.INDEXED
-    assert "Skipping status checks" not in caplog.text
+    logger.warning.assert_not_called()
     sleep.assert_called_once_with(45)
     process_all.assert_not_called()
 
@@ -144,11 +145,12 @@ def test_process_all_non_rate_limit_error_is_raised(
 @patch("glean.indexing.testing.indexing_status.time.sleep")
 @patch("glean.indexing.testing.harness.indexing_wait.PushUploader.process_all_documents")
 @patch("glean.indexing.testing.indexing_status.StatusClient.get_documents_status")
+@patch("glean.indexing.testing.harness.indexing_wait.logger")
 def test_polling_returns_pending_with_actionable_message(
+    logger: Mock,
     get_status: Mock,
     process_all: Mock,
     sleep: Mock,
-    caplog: pytest.LogCaptureFixture,
 ):
     get_status.return_value = _status("NOT_INDEXED")
 
@@ -158,7 +160,10 @@ def test_polling_returns_pending_with_actionable_message(
     )
 
     assert result is IndexingWaitResult.PENDING
-    assert "queued for asynchronous indexing, which may take longer" in caplog.text
+    assert (
+        "queued for asynchronous indexing, which may take longer"
+        in logger.warning.call_args.args[0]
+    )
     process_all.assert_called_once_with()
     assert sleep.call_args_list == [call(45), call(30), call(30)]
     assert get_status.call_count == 3

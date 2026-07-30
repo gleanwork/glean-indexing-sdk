@@ -5,7 +5,6 @@ import pytest
 from glean.indexing.deployment.config import DeploymentConfig
 from glean.indexing.deployment.generator import generate_artifacts, list_generated_files
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -113,14 +112,22 @@ def test_aws_dockerfile_has_boto3():
 
 def test_aws_dockerfile_has_reference_link():
     artifacts = generate_artifacts(AWS_CONFIG)
-    assert "https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html" in artifacts["Dockerfile"]
-    assert "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html" in artifacts["Dockerfile"]
+    assert (
+        "https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html"
+        in artifacts["Dockerfile"]
+    )
+    assert (
+        "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html"
+        in artifacts["Dockerfile"]
+    )
 
 
 def test_aws_terraform_has_reference_links():
     artifacts = generate_artifacts(AWS_CONFIG)
     tf = artifacts["terraform/main.tf"]
-    assert "https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html" in tf
+    assert (
+        "https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html" in tf
+    )
     assert "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html" in tf
 
 
@@ -132,7 +139,10 @@ def test_aws_run_py_has_boto3():
 
 def test_aws_run_py_has_reference_link():
     artifacts = generate_artifacts(AWS_CONFIG)
-    assert "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html" in artifacts["run.py"]
+    assert (
+        "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html"
+        in artifacts["run.py"]
+    )
 
 
 # ---------------------------------------------------------------------------

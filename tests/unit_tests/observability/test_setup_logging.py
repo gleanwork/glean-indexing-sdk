@@ -143,7 +143,9 @@ class TestSetupConnectorLogging:
         extra_stream = StringIO()
         extra_handler = logging.StreamHandler(extra_stream)
 
-        setup_connector_logging("test_connector", use_structured_logging=True, extra_handlers=[extra_handler])
+        setup_connector_logging(
+            "test_connector", use_structured_logging=True, extra_handlers=[extra_handler]
+        )
 
         assert isinstance(extra_handler.formatter, StructuredFormatter)
 
@@ -154,7 +156,9 @@ class TestSetupConnectorLogging:
         custom_fmt = logging.Formatter("%(levelname)s %(message)s")
         extra_handler.setFormatter(custom_fmt)
 
-        setup_connector_logging("test_connector", use_structured_logging=True, extra_handlers=[extra_handler])
+        setup_connector_logging(
+            "test_connector", use_structured_logging=True, extra_handlers=[extra_handler]
+        )
 
         assert extra_handler.formatter is custom_fmt
 

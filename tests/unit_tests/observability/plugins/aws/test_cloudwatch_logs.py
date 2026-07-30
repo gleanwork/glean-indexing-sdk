@@ -30,9 +30,7 @@ class TestCloudWatchLogsProvider:
 
     @patch("boto3.client")
     @patch("watchtower.CloudWatchLogHandler")
-    def test_setup_handler_creates_cloudwatch_handler(
-        self, mock_handler_class, mock_boto_client
-    ):
+    def test_setup_handler_creates_cloudwatch_handler(self, mock_handler_class, mock_boto_client):
         """Test that setup_handler creates a CloudWatch handler."""
         mock_handler = MagicMock()
         mock_handler_class.return_value = mock_handler
@@ -67,7 +65,7 @@ class TestCloudWatchLogsProvider:
             log_group="/test/logs",
             log_stream="test-stream",
         )
-        handler = provider.setup_handler("test_connector", logging.DEBUG)
+        provider.setup_handler("test_connector", logging.DEBUG)
 
         mock_handler.setLevel.assert_called_once_with(logging.DEBUG)
 
@@ -81,7 +79,7 @@ class TestCloudWatchLogsProvider:
             log_group="/test/logs",
             log_stream="test-stream",
         )
-        handler = provider.setup_handler("test_connector")
+        provider.setup_handler("test_connector")
 
         mock_handler.setLevel.assert_called_once_with(logging.INFO)
 

@@ -8,10 +8,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 REQUIRED_MARKDOWN_ARTIFACTS = ("connector_plan.md", "source_investigation.md", "api_inventory.md")
 REQUIRED_JSON_ARTIFACTS = ("source_docs.json", "api_endpoints.json")
-TEST_AUTH_LABELS = ("test auth", "testing auth", "api exploration auth", "test auth used during api exploration")
+TEST_AUTH_LABELS = (
+    "test auth",
+    "testing auth",
+    "api exploration auth",
+    "test auth used during api exploration",
+)
 PROD_AUTH_LABELS = ("production auth", "prod auth", "production source auth")
 SDK_USAGE_LABELS = ("sdk usage", "sdk feature usage", "sdk mode", "sdk features")
 
@@ -21,8 +25,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate AI-built connector planning artifacts.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    validate_parser = subparsers.add_parser("validate", help="Validate a connector folder's .glean artifacts")
-    validate_parser.add_argument("connector_dir", nargs="?", default=".", help="Connector folder containing a .glean directory")
+    validate_parser = subparsers.add_parser(
+        "validate", help="Validate a connector folder's .glean artifacts"
+    )
+    validate_parser.add_argument(
+        "connector_dir",
+        nargs="?",
+        default=".",
+        help="Connector folder containing a .glean directory",
+    )
     validate_parser.set_defaults(func=validate_workspace)
 
     args = parser.parse_args(argv)
@@ -55,16 +66,24 @@ def validate_workspace(args: argparse.Namespace) -> None:
         require_string(source_docs, "datasource", artifact_dir / "source_docs.json", errors)
         docs = source_docs.get("confirmed_docs")
         if not isinstance(docs, list) or not docs:
-            errors.append(f"{artifact_dir / 'source_docs.json'} must contain at least one confirmed_docs entry")
-        elif not all(isinstance(doc, dict) and isinstance(doc.get("url"), str) and doc["url"] for doc in docs):
-            errors.append(f"{artifact_dir / 'source_docs.json'} confirmed_docs entries must include non-empty url strings")
+            errors.append(
+                f"{artifact_dir / 'source_docs.json'} must contain at least one confirmed_docs entry"
+            )
+        elif not all(
+            isinstance(doc, dict) and isinstance(doc.get("url"), str) and doc["url"] for doc in docs
+        ):
+            errors.append(
+                f"{artifact_dir / 'source_docs.json'} confirmed_docs entries must include non-empty url strings"
+            )
 
     endpoints = read_json_artifact(artifact_dir / "api_endpoints.json", errors)
     if endpoints is not None:
         require_string(endpoints, "datasource", artifact_dir / "api_endpoints.json", errors)
         endpoint_list = endpoints.get("endpoints")
         if not isinstance(endpoint_list, list) or not endpoint_list:
-            errors.append(f"{artifact_dir / 'api_endpoints.json'} endpoints must be a non-empty list")
+            errors.append(
+                f"{artifact_dir / 'api_endpoints.json'} endpoints must be a non-empty list"
+            )
         else:
             for index, endpoint in enumerate(endpoint_list):
                 validate_endpoint(endpoint, index, artifact_dir / "api_endpoints.json", errors)
@@ -79,7 +98,9 @@ def validate_workspace(args: argparse.Namespace) -> None:
     combined_text = f"{plan_text}\n{investigation_text}"
 
     if plan_text and "status: confirmed" not in plan_text.lower():
-        errors.append(f"{artifact_dir / 'connector_plan.md'} must include user confirmation with `Status: confirmed`")
+        errors.append(
+            f"{artifact_dir / 'connector_plan.md'} must include user confirmation with `Status: confirmed`"
+        )
 
     if not has_filled_label(combined_text, TEST_AUTH_LABELS):
         errors.append("auth information must specify the test/API-exploration auth flow")
@@ -149,7 +170,14 @@ def has_filled_label(text: str, labels: tuple[str, ...]) -> bool:
 def is_substantive_value(value: str) -> bool:
     """Return whether an artifact field value looks filled in."""
     normalized = value.strip().lower()
-    return bool(normalized) and normalized not in {"tbd", "todo", "unknown", "n/a", "none", "<redacted>"}
+    return bool(normalized) and normalized not in {
+        "tbd",
+        "todo",
+        "unknown",
+        "n/a",
+        "none",
+        "<redacted>",
+    }
 
 
 class ConnectorBuilderError(Exception):

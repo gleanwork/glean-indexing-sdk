@@ -289,8 +289,9 @@ class TestNegativeIdentityAssertions:
             DocumentPermissionsDefinition,
             UserReferenceDefinition,
         )
-        from glean.indexing.connectors.base_data_client import BaseDataClient
+
         from glean.indexing.connectors import BaseDatasourceConnector
+        from glean.indexing.connectors.base_data_client import BaseDataClient
         from glean.indexing.models import CustomDatasourceConfig
 
         _DENIED = "denied_user@corp.com"

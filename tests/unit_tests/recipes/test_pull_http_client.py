@@ -65,7 +65,9 @@ class RecordingObservability:
         self.data_fetch_starts.append(kwargs)
 
     def log_data_fetch_completed(self, item_count: int, duration_ms: int, **kwargs) -> None:
-        self.data_fetch_completions.append({"item_count": item_count, "duration_ms": duration_ms, **kwargs})
+        self.data_fetch_completions.append(
+            {"item_count": item_count, "duration_ms": duration_ms, **kwargs}
+        )
 
 
 def _observability_arg(observability: RecordingObservability) -> ConnectorObservability:
@@ -279,7 +281,9 @@ def test_http_client_retries_retryable_status_and_uses_retry_after(httpx_mock):
         headers={"Content-Type": "application/json"},
     )
 
-    client = PullHttpClient(base_url="https://example.com/v1", options=_fast_options(), sleep=sleeps.append)
+    client = PullHttpClient(
+        base_url="https://example.com/v1", options=_fast_options(), sleep=sleeps.append
+    )
     response = client.get("/items")
 
     assert response.json_dict()["items"][0]["id"] == "item-1"
@@ -301,7 +305,9 @@ def test_http_client_parses_http_date_retry_after(httpx_mock):
         headers={"Content-Type": "application/json"},
     )
 
-    client = PullHttpClient(base_url="https://example.com/v1", options=_fast_options(), sleep=sleeps.append)
+    client = PullHttpClient(
+        base_url="https://example.com/v1", options=_fast_options(), sleep=sleeps.append
+    )
     client.get("/items")
 
     assert len(sleeps) == 1
@@ -328,7 +334,9 @@ def test_http_client_retries_transport_errors(httpx_mock):
         headers={"Content-Type": "application/json"},
     )
 
-    client = PullHttpClient(base_url="https://example.com/v1", options=_fast_options(), sleep=lambda _: None)
+    client = PullHttpClient(
+        base_url="https://example.com/v1", options=_fast_options(), sleep=lambda _: None
+    )
     response = client.get("/items")
 
     assert response.json_dict()["items"][0]["id"] == "item-1"
@@ -617,7 +625,9 @@ def test_get_bytes_applies_size_cap(httpx_mock):
 
 
 def test_http_client_context_manager_does_not_close_injected_client():
-    inner_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True})))
+    inner_client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True}))
+    )
     pull_client = PullHttpClient(base_url="https://example.com", client=inner_client)
 
     with pull_client:

@@ -25,9 +25,7 @@ class TestCacheManifestCreate:
         assert m.recorded_at  # non-empty ISO timestamp
 
     def test_recorded_at_is_utc(self):
-        m = CacheManifest.create(
-            connector="c", client="cl", sdk_version="1.0", item_count=0
-        )
+        m = CacheManifest.create(connector="c", client="cl", sdk_version="1.0", item_count=0)
         # ISO format includes '+00:00' for UTC-aware datetime
         assert "+00:00" in m.recorded_at or "Z" in m.recorded_at or m.recorded_at.endswith("00:00")
 
@@ -51,9 +49,7 @@ class TestCacheManifestSaveLoad:
         assert loaded.version == 1
 
     def test_save_creates_parent_dirs(self, tmp_path: Path):
-        m = CacheManifest.create(
-            connector="c", client="cl", sdk_version="1.0", item_count=0
-        )
+        m = CacheManifest.create(connector="c", client="cl", sdk_version="1.0", item_count=0)
         deep = tmp_path / "a" / "b" / "c" / "manifest.json"
         m.save(deep)
         assert deep.exists()

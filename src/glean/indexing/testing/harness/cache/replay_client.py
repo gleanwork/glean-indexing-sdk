@@ -56,8 +56,7 @@ def _load_ndjson(path: Path) -> List[Any]:
     content = path.read_text().strip()
     if not content:
         raise ValueError(
-            f"Cache fixture is empty: {path}\n"
-            "Delete the fixture directory and re-run to re-record."
+            f"Cache fixture is empty: {path}\nDelete the fixture directory and re-run to re-record."
         )
     return [json.loads(line) for line in content.splitlines()]
 
@@ -86,7 +85,11 @@ class ReplayDataClientWrapper(BaseDataClient[TSourceData], Generic[TSourceData])
 
     def _data_path(self) -> Path:
         return (
-            self._cache_dir / self._connector_name / "integration" / self._client_name / _DATA_FILENAME
+            self._cache_dir
+            / self._connector_name
+            / "integration"
+            / self._client_name
+            / _DATA_FILENAME
         )
 
     def get_source_data(self, **kwargs: Any) -> Sequence[TSourceData]:
@@ -94,9 +97,7 @@ class ReplayDataClientWrapper(BaseDataClient[TSourceData], Generic[TSourceData])
         items = _load_ndjson(path)
         if self._max_items is not None:
             items = items[: self._max_items]
-        logger.debug(
-            "Replayed %d items for client '%s' ← %s", len(items), self._client_name, path
-        )
+        logger.debug("Replayed %d items for client '%s' ← %s", len(items), self._client_name, path)
         return items  # type: ignore[return-value]
 
 
@@ -124,7 +125,11 @@ class ReplayStreamingClientWrapper(BaseStreamingDataClient[TSourceData], Generic
 
     def _data_path(self) -> Path:
         return (
-            self._cache_dir / self._connector_name / "integration" / self._client_name / _DATA_FILENAME
+            self._cache_dir
+            / self._connector_name
+            / "integration"
+            / self._client_name
+            / _DATA_FILENAME
         )
 
     def get_source_data(self, **kwargs: Any) -> Generator[TSourceData, None, None]:
@@ -132,9 +137,7 @@ class ReplayStreamingClientWrapper(BaseStreamingDataClient[TSourceData], Generic
         items = _load_ndjson(path)
         if self._max_items is not None:
             items = items[: self._max_items]
-        logger.debug(
-            "Replayed %d items for client '%s' ← %s", len(items), self._client_name, path
-        )
+        logger.debug("Replayed %d items for client '%s' ← %s", len(items), self._client_name, path)
         for item in items:
             yield item  # type: ignore[misc]
 
@@ -165,7 +168,11 @@ class ReplayAsyncStreamingClientWrapper(
 
     def _data_path(self) -> Path:
         return (
-            self._cache_dir / self._connector_name / "integration" / self._client_name / _DATA_FILENAME
+            self._cache_dir
+            / self._connector_name
+            / "integration"
+            / self._client_name
+            / _DATA_FILENAME
         )
 
     async def get_source_data(self, **kwargs: Any) -> AsyncGenerator[TSourceData, None]:
@@ -173,8 +180,6 @@ class ReplayAsyncStreamingClientWrapper(
         items = _load_ndjson(path)
         if self._max_items is not None:
             items = items[: self._max_items]
-        logger.debug(
-            "Replayed %d items for client '%s' ← %s", len(items), self._client_name, path
-        )
+        logger.debug("Replayed %d items for client '%s' ← %s", len(items), self._client_name, path)
         for item in items:
             yield item  # type: ignore[misc]

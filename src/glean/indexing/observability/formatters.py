@@ -78,9 +78,9 @@ class StructuredFormatter(logging.Formatter):
         log_data.update(self.extra_fields)
 
         if self.include_timestamp:
-            log_data[self.timestamp_field] = datetime.utcfromtimestamp(
-                record.created
-            ).isoformat() + "Z"
+            log_data[self.timestamp_field] = (
+                datetime.utcfromtimestamp(record.created).isoformat() + "Z"
+            )
 
         log_data[self.level_field] = record.levelname
         log_data.setdefault("severity", record.levelname)
@@ -156,11 +156,7 @@ class CompactStructuredFormatter(StructuredFormatter):
         """Format a log record as a JSON string, omitting empty/null fields."""
         log_data = self._build_log_data(record)
 
-        filtered_data = {
-            k: v
-            for k, v in log_data.items()
-            if v not in (None, "", [], {})
-        }
+        filtered_data = {k: v for k, v in log_data.items() if v not in (None, "", [], {})}
 
         try:
             return json.dumps(filtered_data, default=str)

@@ -124,9 +124,7 @@ class TestStructuredFormatter:
 
     def test_extra_fields_at_formatter_level(self):
         """Test extra fields configured at formatter level are always included."""
-        formatter = StructuredFormatter(
-            extra_fields={"environment": "test", "version": "1.0.0"}
-        )
+        formatter = StructuredFormatter(extra_fields={"environment": "test", "version": "1.0.0"})
         record = logging.LogRecord(
             name="test",
             level=logging.INFO,
@@ -161,6 +159,7 @@ class TestStructuredFormatter:
             )
             # Need to manually set exc_info from sys
             import sys
+
             record.exc_info = sys.exc_info()
 
             output = formatter.format(record)

@@ -15,7 +15,6 @@ from glean.indexing.testing.harness.permissions import (
     extract_permission_refs,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -29,7 +28,11 @@ def _doc(
     allowed_group_intersections: list | None = None,
 ) -> DocumentDefinition:
     perms = None
-    if allowed_users is not None or allowed_groups is not None or allowed_group_intersections is not None:
+    if (
+        allowed_users is not None
+        or allowed_groups is not None
+        or allowed_group_intersections is not None
+    ):
         perms = DocumentPermissionsDefinition(
             allowed_users=allowed_users,
             allowed_groups=allowed_groups,
@@ -45,7 +48,9 @@ def _doc(
     )
 
 
-def _user(email: str | None = None, datasource_user_id: str | None = None) -> UserReferenceDefinition:
+def _user(
+    email: str | None = None, datasource_user_id: str | None = None
+) -> UserReferenceDefinition:
     return UserReferenceDefinition(email=email, datasource_user_id=datasource_user_id)
 
 

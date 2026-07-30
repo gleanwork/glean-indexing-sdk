@@ -1,6 +1,5 @@
 """Tests for metrics integration with ConnectorObservability."""
 
-
 from glean.indexing.observability import (
     ConnectorObservability,
     InMemoryMetricsProvider,
@@ -39,7 +38,9 @@ class TestConnectorObservabilityWithMetrics:
     def test_record_upload_batch_size(self):
         """Test recording upload batch size."""
         provider = InMemoryMetricsProvider()
-        obs = ConnectorObservability("test_connector", datasource="test_ds", metrics_provider=provider)
+        obs = ConnectorObservability(
+            "test_connector", datasource="test_ds", metrics_provider=provider
+        )
         obs.record_upload_batch_size(100)
         history = provider.get_metric_history()
 
@@ -124,7 +125,9 @@ class TestConnectorObservabilityWithMetrics:
     def test_record_crawl_failure(self):
         """Test recording crawl failure."""
         provider = InMemoryMetricsProvider()
-        obs = ConnectorObservability("test_connector", crawl_mode="incremental", metrics_provider=provider)
+        obs = ConnectorObservability(
+            "test_connector", crawl_mode="incremental", metrics_provider=provider
+        )
         obs.record_crawl_failure("NetworkError")
         history = provider.get_metric_history()
 
@@ -158,7 +161,9 @@ class TestConnectorObservabilityWithMetrics:
     def test_multiple_metrics_in_lifecycle(self):
         """Test emitting multiple metrics during connector lifecycle."""
         provider = InMemoryMetricsProvider()
-        obs = ConnectorObservability("test_connector", datasource="test_ds", crawl_mode="full", metrics_provider=provider)
+        obs = ConnectorObservability(
+            "test_connector", datasource="test_ds", crawl_mode="full", metrics_provider=provider
+        )
 
         obs.start_execution()
         obs.record_api_request_count("/api/fetch")

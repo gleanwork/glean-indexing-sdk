@@ -76,7 +76,7 @@ class TestCloudLoggingProvider:
         mock_handler_class.return_value = mock_handler
 
         provider = CloudLoggingProvider(project_id="test-project")
-        handler = provider.setup_handler("test_connector", logging.DEBUG)
+        provider.setup_handler("test_connector", logging.DEBUG)
 
         mock_handler.setLevel.assert_called_once_with(logging.DEBUG)
 
@@ -90,7 +90,7 @@ class TestCloudLoggingProvider:
         mock_handler_class.return_value = mock_handler
 
         provider = CloudLoggingProvider(project_id="test-project")
-        handler = provider.setup_handler("test_connector")
+        provider.setup_handler("test_connector")
 
         mock_handler.setLevel.assert_called_once_with(logging.INFO)
 

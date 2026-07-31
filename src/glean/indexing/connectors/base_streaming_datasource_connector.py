@@ -3,12 +3,19 @@
 import logging
 import uuid
 from abc import ABC
-from typing import Generator, List, Optional, Sequence
+from itertools import islice
+from typing import Generator, Optional, Sequence
 
-from glean.indexing.common import api_client
+from glean.api_client.models import DocumentDefinition
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
-from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
+from glean.indexing.models import (
+    DEFAULT_UPLOAD_MAX_WORKERS,
+    ConnectorOptions,
+    IndexingMode,
+    TSourceData,
+)
+from glean.indexing.push import PushUploader
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +24,9 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
     """
     Base class for all Glean streaming datasource connectors.
 
-    This class provides the core logic for memory-efficient, incremental indexing of large document/content datasets from external systems into Glean.
+    This class provides the core logic for memory-efficient indexing of large document/content datasets from external systems into Glean.
+    It fetches source data incrementally from a generator and uploads documents in bulk batches, so it can be used for full crawls
+    without loading the entire dataset into memory.
     Subclasses must define a `configuration` attribute of type `CustomDatasourceConfig` describing the datasource.
 
     To implement a custom streaming connector, inherit from this class and implement:
@@ -90,99 +99,46 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
 
         upload_id = self.generate_upload_id()
         self._force_restart = options.force_restart if options else False
-        self._options = options
-        data_iterator = self.get_data(since=since)
-        is_first_batch = True
-        batch: List[TSourceData] = []
         batch_count = 0
 
         try:
-            for item in data_iterator:
-                batch.append(item)
 
-                if len(batch) == self.batch_size:
-                    try:
-                        next_item = next(data_iterator)
+            def transformed_batches() -> Generator[Sequence[DocumentDefinition], None, None]:
+                nonlocal batch_count
+                data_iterator = iter(self.get_data(since=since))
+                while batch := list(islice(data_iterator, self.batch_size)):
+                    logger.info(f"Processing batch {batch_count} with {len(batch)} items")
+                    transformed_batch = self.transform(batch)
+                    logger.info(
+                        f"Transformed batch {batch_count}: {len(transformed_batch)} documents"
+                    )
+                    batch_count += 1
+                    yield transformed_batch
 
-                        self._process_batch(
-                            batch=batch,
-                            upload_id=upload_id,
-                            is_first_batch=is_first_batch,
-                            is_last_batch=False,
-                            batch_number=batch_count,
-                        )
+            if self._force_restart:
+                logger.info("Force restarting upload - discarding any previous upload progress")
 
-                        batch_count += 1
-                        batch = [next_item]
-                        is_first_batch = False
-
-                    except StopIteration:
-                        break
-
-            if batch:
-                self._process_batch(
-                    batch=batch,
-                    upload_id=upload_id,
-                    is_first_batch=is_first_batch,
-                    is_last_batch=True,
-                    batch_number=batch_count,
-                )
-
+            PushUploader(
+                datasource=self.name,
+                timeout_ms=options.upload_timeout_ms if options else None,
+                observability=self._observability,
+                upload_max_workers=options.upload_max_workers
+                if options
+                else DEFAULT_UPLOAD_MAX_WORKERS,
+            ).bulk_index_document_batches(
+                transformed_batches(),
+                upload_id=upload_id,
+                force_restart_upload=True if self._force_restart else None,
+                disable_stale_document_deletion_check=True
+                if (options and options.disable_stale_deletion_check)
+                else None,
+            )
             logger.info(
-                f"Streaming indexing completed successfully. Processed {batch_count + 1} batches."
+                f"Streaming indexing completed successfully. Processed {batch_count} batches."
             )
 
         except Exception as e:
             logger.exception(f"Error during streaming indexing: {e}")
-            raise
-
-    def _process_batch(
-        self,
-        batch: List[TSourceData],
-        upload_id: str,
-        is_first_batch: bool,
-        is_last_batch: bool,
-        batch_number: int,
-    ) -> None:
-        """
-        Process a single batch of data.
-
-        Args:
-            batch: The batch of raw data to process
-            upload_id: The upload ID for this indexing session
-            is_first_batch: Whether this is the first batch
-            is_last_batch: Whether this is the last batch
-            batch_number: The sequence number of this batch
-        """
-        logger.info(f"Processing batch {batch_number} with {len(batch)} items")
-
-        try:
-            transformed_batch = self.transform(batch)
-            logger.info(f"Transformed batch {batch_number}: {len(transformed_batch)} documents")
-
-            if self._force_restart and is_first_batch:
-                logger.info("Force restarting upload - discarding any previous upload progress")
-
-            options = self._options
-
-            with api_client() as client:
-                client.indexing.documents.bulk_index(
-                    datasource=self.name,
-                    documents=list(transformed_batch),
-                    upload_id=upload_id,
-                    is_first_page=is_first_batch,
-                    is_last_page=is_last_batch,
-                    force_restart_upload=True if (self._force_restart and is_first_batch) else None,
-                    disable_stale_document_deletion_check=True
-                    if (options and is_last_batch and options.disable_stale_deletion_check)
-                    else None,
-                    timeout_ms=options.upload_timeout_ms if options else None,
-                )
-
-            logger.info(f"Batch {batch_number} indexed successfully")
-
-        except Exception as e:
-            logger.error(f"Failed to process batch {batch_number}: {e}")
             raise
 
     def get_data_non_streaming(self, since: Optional[str] = None) -> Sequence[TSourceData]:

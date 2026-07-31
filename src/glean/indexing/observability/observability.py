@@ -2,13 +2,18 @@
 
 import functools
 import logging
+import sys
 import time
+import uuid
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar, cast
+
+from .formatters import StructuredFormatter
+from .logging import LoggerProvider
+from .providers import MetricsProvider, MetricType, NoOpMetricsProvider
 
 logger = logging.getLogger(__name__)
 
-# Type variable for decorated classes
 T = TypeVar("T")
 
 
@@ -19,23 +24,155 @@ class ConnectorObservability:
     Tracks metrics, performance, and provides structured logging.
     """
 
-    def __init__(self, connector_name: str):
+    def __init__(
+        self,
+        connector_name: str,
+        datasource: Optional[str] = None,
+        crawl_mode: Optional[str] = None,
+        run_id: Optional[str] = None,
+        metrics_provider: Optional[MetricsProvider] = None,
+    ):
         self.connector_name = connector_name
+        self.datasource = datasource or connector_name
+        self.crawl_mode = crawl_mode
+        self.run_id = run_id or str(uuid.uuid4())
+        self.metrics_provider = metrics_provider or NoOpMetricsProvider()
         self.metrics: Dict[str, Any] = defaultdict(int)
         self.timers: Dict[str, float] = {}
         self.start_time: Optional[float] = None
+        self._execution_failed: bool = False
 
-    def start_execution(self):
+    def get_common_fields(self, operation: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
+        """Get common fields for structured logging.
+
+        Args:
+            operation: Optional operation name
+            **kwargs: Additional fields to include
+
+        Raises:
+            ValueError: If kwargs contains reserved LogRecord attribute names
+        """
+        reserved_attrs = set(logging.makeLogRecord({}).__dict__)
+
+        conflicting_keys = set(kwargs.keys()) & reserved_attrs
+        if conflicting_keys:
+            raise ValueError(
+                f"Cannot use reserved LogRecord attribute names in extra fields: {conflicting_keys}. "
+                f"Please rename these fields to avoid conflicts with Python logging."
+            )
+
+        fields = {
+            "connector": self.connector_name,
+            "datasource": self.datasource,
+            "run_id": self.run_id,
+        }
+        if self.crawl_mode:
+            fields["crawl_mode"] = self.crawl_mode
+        if operation:
+            fields["operation"] = operation
+        fields.update(kwargs)
+        return fields
+
+    def _get_metric_labels(self, **kwargs: str) -> Dict[str, str]:
+        """Get base metric labels with optional additional labels."""
+        labels = {
+            "connector": self.connector_name,
+            "datasource": self.datasource,
+        }
+        if self.crawl_mode:
+            labels["crawl_mode"] = self.crawl_mode
+        labels.update(kwargs)
+        return labels
+
+    def start_execution(self) -> None:
         """Mark the start of connector execution."""
         self.start_time = time.time()
-        logger.info(f"[{self.connector_name}] Execution started")
+        self._execution_failed = False
+        logger.info(
+            "Crawl started",
+            extra=self.get_common_fields(
+                operation="crawl_started",
+                start_time=self.start_time,
+            ),
+        )
 
-    def end_execution(self):
-        """Mark the end of connector execution."""
+    def end_execution(self) -> None:
+        """Mark the end of connector execution.
+
+        Safe to call from a ``finally`` block. If an exception is currently
+        propagating and ``fail_execution()`` has not already been called, this
+        method delegates to ``fail_execution()`` so the failure is always logged.
+        If ``fail_execution()`` was already called explicitly, this is a no-op.
+        """
+        import sys
+
+        if not self.start_time or self._execution_failed:
+            return
+
+        exc_info = sys.exc_info()
+        if exc_info[0] is not None:
+            self.fail_execution(cast(Exception, exc_info[1]))
+            return
+
+        duration = time.time() - self.start_time
+        duration_ms = int(duration * 1000)
+        self.metrics["total_execution_time"] = duration
+        self.start_time = None
+        self.metrics_provider.emit_metric(
+            "connector_execution_duration_ms",
+            float(duration_ms),
+            MetricType.HISTOGRAM,
+            self._get_metric_labels(),
+        )
+        logger.info(
+            "Crawl completed successfully",
+            extra=self.get_common_fields(
+                operation="crawl_completed",
+                duration_ms=duration_ms,
+                status="success",
+            ),
+        )
+        self.metrics_provider.flush()
+
+    def fail_execution(self, error: Exception) -> None:
+        """Mark the execution as failed.
+
+        Records execution duration, sets terminal state to prevent
+        end_execution() from logging a success event, and clears start_time
+        so the execution cannot be double-counted.
+        """
+        import sys
+
+        self._execution_failed = True
+        duration_ms = None
         if self.start_time:
             duration = time.time() - self.start_time
+            duration_ms = int(duration * 1000)
             self.metrics["total_execution_time"] = duration
-            logger.info(f"[{self.connector_name}] Execution completed in {duration:.2f}s")
+            self.start_time = None
+            self.metrics_provider.emit_metric(
+                "connector_execution_duration_ms",
+                float(duration_ms),
+                MetricType.HISTOGRAM,
+                self._get_metric_labels(),
+            )
+
+        exc_info = sys.exc_info()
+        if exc_info[1] is not error:
+            exc_info = (type(error), error, None)
+
+        logger.error(
+            f"Crawl failed: {error}",
+            extra=self.get_common_fields(
+                operation="crawl_failed",
+                status="failed",
+                error_type=type(error).__name__,
+                error_message=str(error),
+                duration_ms=duration_ms,
+            ),
+            exc_info=exc_info,
+        )
+        self.metrics_provider.flush()
 
     def record_metric(self, key: str, value: Any):
         """Record a custom metric."""
@@ -62,6 +199,320 @@ class ConnectorObservability:
     def get_metrics_summary(self) -> Dict[str, Any]:
         """Get a summary of all collected metrics."""
         return dict(self.metrics)
+
+    def log_data_fetch_started(self, **kwargs: Any) -> None:
+        """Log the start of data fetching phase."""
+        logger.info(
+            "Data fetch started",
+            extra=self.get_common_fields(operation="data_fetch_started", **kwargs),
+        )
+
+    def log_data_fetch_completed(self, item_count: int, duration_ms: int, **kwargs: Any) -> None:
+        """Log successful completion of data fetching."""
+        logger.info(
+            f"Data fetch completed: {item_count} items",
+            extra=self.get_common_fields(
+                operation="data_fetch_completed",
+                item_count=item_count,
+                duration_ms=duration_ms,
+                status="success",
+                **kwargs,
+            ),
+        )
+
+    def log_transform_started(self, item_count: int, **kwargs: Any) -> None:
+        """Log the start of transforming crawled data into Glean document format.
+
+        Call this before iterating over raw source records and converting them to
+        ``DocumentDefinition`` objects.
+
+        Args:
+            item_count: Number of raw items about to be transformed
+            **kwargs: Additional fields to include in the log event
+        """
+        logger.info(
+            f"Transform started: {item_count} items",
+            extra=self.get_common_fields(
+                operation="transform_started",
+                item_count=item_count,
+                **kwargs,
+            ),
+        )
+
+    def log_transform_completed(
+        self, input_count: int, output_count: int, duration_ms: int, **kwargs: Any
+    ) -> None:
+        """Log successful completion of transforming crawled data into Glean document format.
+
+        Call this after all raw source records have been converted to ``DocumentDefinition``
+        objects. ``output_count`` may differ from ``input_count`` when items are filtered out
+        or expanded during transformation.
+
+        Args:
+            input_count: Number of raw items that were processed
+            output_count: Number of ``DocumentDefinition`` objects produced
+            duration_ms: Elapsed time for the transformation phase in milliseconds
+            **kwargs: Additional fields to include in the log event
+        """
+        logger.info(
+            f"Transform completed: {input_count} → {output_count} items",
+            extra=self.get_common_fields(
+                operation="transform_completed",
+                input_count=input_count,
+                output_count=output_count,
+                duration_ms=duration_ms,
+                status="success",
+                **kwargs,
+            ),
+        )
+
+    def log_batch_upload_started(
+        self,
+        batch_index: int,
+        batch_count: int,
+        batch_size: int,
+        upload_id: str,
+        entity_type: str = "document",
+        **kwargs: Any,
+    ) -> None:
+        """
+        Log the start of a batch upload.
+
+        Args:
+            batch_index: Current batch number (0-indexed)
+            batch_count: Total number of batches
+            batch_size: Number of items in this batch
+            upload_id: Identifier for correlating upload start/complete/failed events
+            entity_type: Type of entity being uploaded (document, user, group, etc.)
+            **kwargs: Additional fields to include
+        """
+        logger.info(
+            f"Batch upload started: {batch_index + 1}/{batch_count} ({batch_size} {entity_type}s)",
+            extra=self.get_common_fields(
+                operation="batch_upload_started",
+                batch_index=batch_index,
+                batch_count=batch_count,
+                batch_size=batch_size,
+                upload_id=upload_id,
+                entity_type=entity_type,
+                **kwargs,
+            ),
+        )
+
+    def log_batch_upload_completed(
+        self,
+        batch_index: int,
+        batch_count: int,
+        batch_size: int,
+        duration_ms: int,
+        upload_id: str,
+        entity_type: str = "document",
+        **kwargs: Any,
+    ) -> None:
+        """
+        Log successful completion of a batch upload.
+
+        Args:
+            batch_index: Current batch number (0-indexed)
+            batch_count: Total number of batches
+            batch_size: Number of items uploaded
+            duration_ms: Duration in milliseconds
+            upload_id: Identifier for correlating upload start/complete/failed events
+            entity_type: Type of entity uploaded
+            **kwargs: Additional fields to include
+        """
+        logger.info(
+            f"Batch upload completed: {batch_index + 1}/{batch_count} ({batch_size} {entity_type}s)",
+            extra=self.get_common_fields(
+                operation="batch_upload_completed",
+                batch_index=batch_index,
+                batch_count=batch_count,
+                batch_size=batch_size,
+                duration_ms=duration_ms,
+                upload_id=upload_id,
+                entity_type=entity_type,
+                status="success",
+                **kwargs,
+            ),
+        )
+
+    def log_batch_upload_failed(
+        self,
+        batch_index: int,
+        batch_count: int,
+        error: Exception,
+        upload_id: str,
+        entity_type: str = "document",
+        **kwargs: Any,
+    ) -> None:
+        """
+        Log a failed batch upload.
+
+        Args:
+            batch_index: Current batch number (0-indexed)
+            batch_count: Total number of batches
+            error: The exception that caused the failure
+            upload_id: Identifier for correlating upload start/complete/failed events
+            entity_type: Type of entity being uploaded
+            **kwargs: Additional fields to include
+        """
+        import sys
+
+        exc_info = sys.exc_info()
+        if exc_info[1] is not error:
+            exc_info = (type(error), error, None)
+
+        logger.error(
+            f"Batch upload failed: {batch_index + 1}/{batch_count} - {error}",
+            extra=self.get_common_fields(
+                operation="batch_upload_failed",
+                batch_index=batch_index,
+                batch_count=batch_count,
+                upload_id=upload_id,
+                entity_type=entity_type,
+                status="failed",
+                error_type=type(error).__name__,
+                error_message=str(error),
+                **kwargs,
+            ),
+            exc_info=exc_info,
+        )
+
+    def log_document_upload_started(
+        self,
+        document_ids: List[str],
+        entity_type: str = "document",
+        upload_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
+        """Log the start of a non-batched document upload (e.g. /indexdocuments).
+
+        Use for connectors that call the indexing API with a list of documents
+        rather than going through the batch upload flow.
+
+        Args:
+            document_ids: Identifiers of the documents being uploaded
+            entity_type: Type of entity being uploaded (document, user, group, etc.)
+            upload_id: Optional identifier for correlating start/complete events
+            **kwargs: Additional fields to include in the log event
+        """
+        extra: Dict[str, Any] = dict(
+            document_count=len(document_ids),
+            entity_type=entity_type,
+            **kwargs,
+        )
+        if upload_id is not None:
+            extra["upload_id"] = upload_id
+        logger.info(
+            f"Document upload started: {len(document_ids)} {entity_type}s",
+            extra=self.get_common_fields(operation="document_upload_started", **extra),
+        )
+
+    def log_document_upload_completed(
+        self,
+        document_ids: List[str],
+        duration_ms: int,
+        entity_type: str = "document",
+        upload_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
+        """Log successful completion of a non-batched document upload (e.g. /indexdocuments).
+
+        Use for connectors that call the indexing API with a list of documents
+        rather than going through the batch upload flow.
+
+        Args:
+            document_ids: Identifiers of the documents that were uploaded
+            duration_ms: Duration of the upload call in milliseconds
+            entity_type: Type of entity uploaded (document, user, group, etc.)
+            upload_id: Optional identifier for correlating start/complete events
+            **kwargs: Additional fields to include in the log event
+        """
+        extra: Dict[str, Any] = dict(
+            document_count=len(document_ids),
+            duration_ms=duration_ms,
+            entity_type=entity_type,
+            status="success",
+            **kwargs,
+        )
+        if upload_id is not None:
+            extra["upload_id"] = upload_id
+        logger.info(
+            f"Document upload completed: {len(document_ids)} {entity_type}s",
+            extra=self.get_common_fields(operation="document_upload_completed", **extra),
+        )
+
+    def record_upload_batch_size(self, batch_size: int) -> None:
+        """Record the size of an upload batch."""
+        self.metrics_provider.emit_metric(
+            "upload_batch_size",
+            float(batch_size),
+            MetricType.HISTOGRAM,
+            self._get_metric_labels(),
+        )
+
+    def record_upload_throughput(self, docs_per_sec: float) -> None:
+        """Record upload throughput in documents per second."""
+        self.metrics_provider.emit_metric(
+            "upload_throughput",
+            docs_per_sec,
+            MetricType.GAUGE,
+            self._get_metric_labels(),
+        )
+
+    def record_api_request_latency(self, latency_ms: float, endpoint: str) -> None:
+        """Record API request latency in milliseconds."""
+        self.metrics_provider.emit_metric(
+            "api_request_latency_ms",
+            latency_ms,
+            MetricType.HISTOGRAM,
+            self._get_metric_labels(endpoint=endpoint),
+        )
+
+    def record_api_request_count(self, endpoint: str) -> None:
+        """Record an API request count."""
+        self.metrics_provider.emit_metric(
+            "api_request_count",
+            1.0,
+            MetricType.COUNTER,
+            self._get_metric_labels(endpoint=endpoint),
+        )
+
+    def record_api_request_error(self, endpoint: str, error_type: str) -> None:
+        """Record an API request error."""
+        self.metrics_provider.emit_metric(
+            "api_request_errors",
+            1.0,
+            MetricType.COUNTER,
+            self._get_metric_labels(endpoint=endpoint, error_type=error_type),
+        )
+
+    def record_retry(self, operation: str) -> None:
+        """Record a retry attempt."""
+        self.metrics_provider.emit_metric(
+            "retry_count",
+            1.0,
+            MetricType.COUNTER,
+            self._get_metric_labels(operation=operation),
+        )
+
+    def record_crawl_success(self) -> None:
+        """Record a successful crawl completion."""
+        self.metrics_provider.emit_metric(
+            "crawl_success",
+            1.0,
+            MetricType.COUNTER,
+            self._get_metric_labels(),
+        )
+
+    def record_crawl_failure(self, error_type: str) -> None:
+        """Record a failed crawl."""
+        self.metrics_provider.emit_metric(
+            "crawl_failure",
+            1.0,
+            MetricType.COUNTER,
+            self._get_metric_labels(error_type=error_type),
+        )
 
 
 def with_observability(
@@ -93,7 +544,6 @@ def with_observability(
                 method_name = method.__name__
                 class_name = self.__class__.__name__
 
-                # Log method start
                 if include_args:
                     logger.info(
                         f"[{class_name}] {method_name} started with args={args}, kwargs={kwargs}"
@@ -107,7 +557,6 @@ def with_observability(
                     result = method(self, *args, **kwargs)
                     duration = time.time() - start_time
 
-                    # Log successful completion
                     if include_return:
                         logger.info(
                             f"[{class_name}] {method_name} completed in {duration:.3f}s with result={result}"
@@ -115,7 +564,6 @@ def with_observability(
                     else:
                         logger.info(f"[{class_name}] {method_name} completed in {duration:.3f}s")
 
-                    # Record timing metric if observability is available
                     if hasattr(self, "_observability"):
                         self._observability.record_metric(f"{method_name}_duration", duration)
 
@@ -125,7 +573,6 @@ def with_observability(
                     duration = time.time() - start_time
                     logger.error(f"[{class_name}] {method_name} failed after {duration:.3f}s: {e}")
 
-                    # Record error metric if observability is available
                     if hasattr(self, "_observability"):
                         self._observability.increment_counter(f"{method_name}_errors")
 
@@ -133,7 +580,6 @@ def with_observability(
 
             return wrapped_method
 
-        # Apply the wrapper to all public methods
         for attr_name, attr_value in cls.__dict__.items():
             if callable(attr_value) and not attr_name.startswith("_"):
                 setattr(cls, attr_name, wrap_method(attr_value))
@@ -154,7 +600,6 @@ def track_crawl_progress(method: Callable[..., Any]) -> Callable[..., Any]:
     def wrapper(self, *args: Any, **kwargs: Any) -> Any:
         result = method(self, *args, **kwargs)
 
-        # Track item count if result is a sequence
         if hasattr(result, "__len__"):
             item_count = len(result)
             if hasattr(self, "_observability"):
@@ -236,27 +681,63 @@ class ProgressCallback:
 
 
 def setup_connector_logging(
-    connector_name: str, log_level: str = "INFO", log_format: Optional[str] = None
-):
+    connector_name: str,
+    log_level: str = "INFO",
+    log_format: Optional[str] = None,
+    *,
+    use_structured_logging: bool = True,
+    formatter: Optional[logging.Formatter] = None,
+    extra_handlers: Optional[List[logging.Handler]] = None,
+    logger_provider: Optional[LoggerProvider] = None,
+) -> None:
     """
     Set up standardized logging for a connector.
 
     Args:
         connector_name: Name of the connector for log identification
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
-        log_format: Custom log format string
+        log_format: Custom log format string; takes precedence over use_structured_logging
+        use_structured_logging: Enable structured JSON logging (default: True)
+        formatter: Custom formatter instance (overrides use_structured_logging and log_format)
+        extra_handlers: Additional handlers to add beyond the default StreamHandler
+        logger_provider: Optional cloud logging provider (e.g., CloudWatchLogsProvider)
     """
-    if log_format is None:
-        log_format = f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
+    level = getattr(logging, log_level.upper())
 
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format=log_format,
-        handlers=[
-            logging.StreamHandler(),
-            # Add file handler if needed
-            # logging.FileHandler(f"{connector_name}.log")
-        ],
-    )
+    glean_logger = logging.getLogger("glean")
+    for h in glean_logger.handlers[:]:
+        h.close()
+        glean_logger.removeHandler(h)
+    glean_logger.setLevel(level)
 
-    logger.info(f"Logging configured for connector: {connector_name}")
+    if formatter is None:
+        if log_format is not None:
+            formatter = logging.Formatter(log_format)
+        elif use_structured_logging:
+            formatter = StructuredFormatter()
+        else:
+            formatter = logging.Formatter(
+                f"%(asctime)s - {connector_name} - %(name)s - %(levelname)s - %(message)s"
+            )
+
+    handlers: List[logging.Handler]
+    if logger_provider is not None:
+        handlers = [logger_provider.setup_handler(connector_name, level)]
+    else:
+        handlers = [logging.StreamHandler(sys.stdout)]
+
+    if extra_handlers:
+        handlers.extend(extra_handlers)
+
+    for handler in handlers:
+        if handler.formatter is None:
+            handler.setFormatter(formatter)
+        glean_logger.addHandler(handler)
+
+    if isinstance(formatter, StructuredFormatter):
+        logger.info(
+            "Structured logging configured",
+            extra={"connector": connector_name, "log_level": log_level},
+        )
+    else:
+        logger.info(f"Logging configured for connector: {connector_name}")

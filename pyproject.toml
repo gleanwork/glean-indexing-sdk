@@ -11,8 +11,12 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10,<4.0"
 dependencies = [
-    "glean-api-client>=0.6.3",
+    "click>=8.0",
+    "glean-api-client>=0.13.0",
     "jinja2>=3.1.2",
+    "pydantic>=2.0",
+    "python-dotenv>=1.1.0",
+    "pyyaml>=6.0.2",
 ]
 
 [project.optional-dependencies]
@@ -30,12 +34,25 @@ test = [
     "pytest-socket>=0.7.0",
     "pytest-watcher>=0.3.4",
 ]
+aws = [
+    "boto3>=1.34.0,<2",
+    "watchtower>=3.3.0,<4",
+]
 lint = [
     "ruff>=0.5",
 ]
 typing = [
     "pyright>=1.1.370",
 ]
+gcp = [
+    "google-cloud-logging>=3.11.0,<4",
+    "google-cloud-monitoring>=2.22.0,<3",
+]
+
+[project.scripts]
+glean-deploy = "glean.indexing.deployment.cli:cli"
+glean-index-status = "glean.indexing.testing.status_cli:cli"
+
 [project.urls]
 "Source Code" = "https://github.com/glean-io/glean-indexing-sdk"
 

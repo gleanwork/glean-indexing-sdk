@@ -1,3 +1,4 @@
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from glean.api_client.models import DocumentDefinition
 from glean.indexing.connectors import BaseStreamingDataClient, BaseStreamingDatasourceConnector
 from glean.indexing.models import ConnectorOptions
+from glean.indexing.push import PushUploader
 
 
 class DummyStreamingDataClient(BaseStreamingDataClient[dict]):
@@ -67,9 +69,7 @@ def test_index_data_batches_and_uploads():
     client = DummyStreamingDataClient()
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 2
-    with patch(
-        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
-    ) as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
         assert bulk_index.call_count == 3
@@ -86,20 +86,48 @@ def test_index_data_empty():
             yield from []
 
     connector = DummyStreamingConnector("test_stream", EmptyClient())
-    with patch(
-        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
-    ) as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
         assert bulk_index.call_count == 0
 
 
+def test_streaming_fetch_overlaps_middle_page_uploads():
+    later_page_fetched = threading.Event()
+
+    class OverlapClient(BaseStreamingDataClient[dict]):
+        def get_source_data(self, **kwargs):
+            for i in range(10):
+                if i == 6:
+                    later_page_fetched.set()
+                yield {
+                    "id": f"doc-{i}",
+                    "title": f"Document {i}",
+                    "content": f"Content {i}",
+                    "url": f"https://example.com/{i}",
+                    "created_at": 1672531200,
+                    "updated_at": 1672617600,
+                    "author": {"id": "user@example.com"},
+                    "type": "document",
+                    "tags": ["example"],
+                    "datasource": "test_datasource",
+                }
+
+    connector = DummyStreamingConnector("test_stream", OverlapClient())
+    connector.batch_size = 2
+
+    def upload_batch(*, batch_index=0, **kwargs):
+        if batch_index == 1:
+            assert later_page_fetched.wait(timeout=1)
+
+    with patch.object(PushUploader, "bulk_index_single_batch_upload", side_effect=upload_batch):
+        connector.index_data(options=ConnectorOptions(upload_max_workers=2))
+
+
 def test_index_data_error_handling():
     client = DummyStreamingDataClient()
     connector = DummyStreamingConnector("test_stream", client)
-    with patch(
-        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
-    ) as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         bulk_index.side_effect = Exception("upload failed")
         with pytest.raises(Exception):
@@ -112,9 +140,7 @@ def test_force_restart_upload():
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 2
 
-    with patch(
-        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
-    ) as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data(options=ConnectorOptions(force_restart=True))
 
@@ -144,9 +170,7 @@ def test_normal_upload_no_force_restart():
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 5
 
-    with patch(
-        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
-    ) as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
 
@@ -164,9 +188,7 @@ def test_disable_stale_deletion_check_on_last_page_only():
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 2
 
-    with patch(
-        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
-    ) as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data(options=ConnectorOptions(disable_stale_deletion_check=True))
 
@@ -188,9 +210,7 @@ def test_upload_timeout_ms_passed_to_bulk_index():
     connector = DummyStreamingConnector("test_stream", client)
     connector.batch_size = 2
 
-    with patch(
-        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
-    ) as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data(options=ConnectorOptions(upload_timeout_ms=120_000))
 
@@ -204,10 +224,8 @@ def test_upload_timeout_ms_defaults_to_none():
     client = DummyStreamingDataClient()
     connector = DummyStreamingConnector("test_stream", client)
 
-    with patch(
-        "glean.indexing.connectors.base_streaming_datasource_connector.api_client"
-    ) as api_client:
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
 
-        assert bulk_index.call_args[1]["timeout_ms"] is None
+        assert bulk_index.call_args[1].get("timeout_ms") is None

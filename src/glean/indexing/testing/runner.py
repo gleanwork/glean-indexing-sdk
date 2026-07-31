@@ -20,6 +20,7 @@ from glean.indexing.connectors.base_async_streaming_datasource_connector import 
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.models import ConnectorOptions, IndexingMode
 from glean.indexing.testing.mock_client import MockGleanClient, mock_glean_client
+from glean.indexing.testing.validation import validate_connector_output
 
 
 def _running_loop() -> bool:
@@ -66,6 +67,7 @@ def run_connector(
 
     with mock_glean_client() as client:
         connector.index_data(mode=mode, options=options)
+    validate_connector_output(connector, client.documents_posted)
     return client
 
 
@@ -104,4 +106,5 @@ async def run_connector_async(
             await connector.index_data_async(mode=mode, options=options)
         else:
             connector.index_data(mode=mode, options=options)
+    validate_connector_output(connector, client.documents_posted)
     return client

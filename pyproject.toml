@@ -50,6 +50,7 @@ gcp = [
 ]
 
 [project.scripts]
+glean-idx = "glean.indexing.cli.main:cli"
 glean-deploy = "glean.indexing.deployment.cli:cli"
 glean-index-status = "glean.indexing.testing.status_cli:cli"
 

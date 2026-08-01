@@ -23,21 +23,28 @@ CONTEXT_SETTINGS = {
 
 #: Subcommand name -> "module:attribute", imported on first use.
 COMMANDS: dict[str, str] = {
+    "datasource": "glean.indexing.cli.commands.datasource:datasource",
     "deploy": "glean.indexing.cli.commands.deploy:deploy",
     "doctor": "glean.indexing.cli.commands.doctor:doctor",
     "document": "glean.indexing.cli.commands.document:document",
 }
 
+# Click rewraps help text paragraph by paragraph, which folds the example
+# commands onto adjacent lines and breaks them mid-token. A `\b` line marks the
+# paragraph after it as preformatted, so these stay copy-pasteable.
 EPILOG = """\
 Where to run these:
 
+\b
   Most commands need only credentials, and run anywhere:
     uvx --from glean-indexing-sdk glean-idx doctor
 
+\b
   Commands that load your connector (run, test, datasource configure) must run
   inside your connector project, with the SDK installed alongside your code:
     uv run glean-idx run
 
+\b
 Docs: https://developers.glean.com/libraries/indexing-sdk
 """
 

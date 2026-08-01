@@ -20,6 +20,9 @@ build/*
 !build/codex/
 !build/cursor/
 node_modules/
+
+# Browser-automation artifacts (screenshots, snapshots)
+.playwright-mcp/
 develop-eggs/
 dist/
 downloads/

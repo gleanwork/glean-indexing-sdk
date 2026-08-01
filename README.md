@@ -3,103 +3,73 @@
 [![Prerelease](https://img.shields.io/badge/-Prerelease-F6F3EB?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMzIgMzIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0yNC4zMDA2IDIuOTU0MjdMMjAuNzY1NiAwLjE5OTk1MUwxNy45MDI4IDMuOTk1MjdDMTMuNTY1MyAxLjkzNDk1IDguMjMwMTkgMy4wODQzOSA1LjE5Mzk0IDcuMDA5ODNDMS42NTg4OCAxMS41NjQyIDIuNDgzIDE4LjExMzggNy4wMzczOCAyMS42NDg5QzguNzcyMzggMjIuOTkzNSAxMC43ODkzIDIzLjcwOTIgMTIuODI3OSAyMy44MTc3QzE2LjE0NjEgMjQuMDEyOCAxOS41MDc3IDIyLjYyNDggMjEuNjc2NSAxOS44MDU1QzI0LjczNDQgMTUuODggMjQuNTE3NSAxMC40MTQ4IDIxLjQ1OTYgNi43Mjc4OUwyNC4zMDA2IDIuOTU0MjdaTTE4LjExOTcgMTcuMDUxMkMxNi4xMDI4IDE5LjYzMiAxMi4zNzI1IDIwLjEwOTEgOS43NzAwMSAxOC4wOTIyQzcuMTg5MTkgMTYuMDc1MiA2LjcxMjA3IDEyLjMyMzMgOC43MjkwMSA5Ljc0MjQ2QzkuNzA0OTQgOC40ODQ1OCAxMS4xMTQ2IDcuNjgyMTQgMTIuNjc2MSA3LjQ4Njk2QzEzLjA0NDggNy40NDM1OCAxMy40MTM1IDcuNDIxOSAxMy43ODIyIDcuNDQzNThDMTQuOTc1IDcuNTA4NjUgMTYuMTI0NCA3Ljk0MjM5IDE3LjA3ODcgOC42Nzk3N0MxOS42NTk1IDEwLjcxODQgMjAuMTM2NiAxNC40NzAzIDE4LjExOTcgMTcuMDUxMloiIGZpbGw9IndoaXRlIi8+CjxwYXRoIGQ9Ik0yNC41MTc2IDIxLjY5MjJDMjMuOTMyIDIyLjQ1MTMgMjMuMjgxNCAyMy4xMjM2IDIyLjU2NTcgMjMuNzUyNUMyMS44NzE3IDI0LjMzODEgMjEuMTEyNyAyNC44ODAzIDIwLjMxMDIgMjUuMzM1N0MxOS41Mjk1IDI1Ljc2OTUgMTguNjgzNyAyNi4xMzgyIDE3LjgzNzggMjYuNDIwMUMxNi45OTIgMjYuNzAyIDE2LjEwMjggMjYuODk3MiAxNS4yMTM3IDI3LjAwNTdDMTQuMzI0NSAyNy4xMTQxIDEzLjQzNTMgMjcuMTU3NSAxMi41MjQ0IDI3LjA5MjRDMTEuNjEzNSAyNy4wMjczIDEwLjcyNDMgMjYuODc1NSA5Ljg1Njg0IDI2LjY1ODdMOS42NjE2NSAyNy4zNzQzTDguNzcyNDYgMzAuOTk2MkM5LjkwMDIxIDMxLjI5OTggMTEuMDQ5NyAzMS40NzMzIDEyLjIyMDggMzEuNTZDMTIuMjY0MiAzMS41NiAxMi4zMjkyIDMxLjU2IDEyLjM3MjYgMzEuNTZDMTMuNTAwMyAzMS42MjUxIDE0LjY0OTggMzEuNTgxNyAxNS43NTU4IDMxLjQ1MTZDMTYuOTI3IDMxLjI5OTggMTguMDk4MSAzMS4wMzk1IDE5LjIyNTggMzAuNjcwOEMyMC4zNTM2IDMwLjMwMjIgMjEuNDU5NyAyOS44MjUgMjIuNTAwNyAyOS4yMzk1QzIzLjU2MzQgMjguNjUzOSAyNC41NjEgMjcuOTM4MiAyNS40OTM1IDI3LjE1NzVDMjYuNDQ3OCAyNi4zNTUgMjcuMzE1MyAyNS40NDQyIDI4LjA3NDQgMjQuNDQ2NUMyOC4xODI4IDI0LjMxNjQgMjguMjY5NSAyNC4xNjQ2IDI4LjM3OCAyNC4wMTI4TDI0Ljc3NzkgMjEuMzQ1MkMyNC42Njk0IDIxLjQ1MzcgMjQuNjA0NCAyMS41ODM4IDI0LjUxNzYgMjEuNjkyMloiIGZpbGw9IndoaXRlIi8+Cjwvc3ZnPg==&labelColor=343CED)](https://github.com/gleanwork/.github/blob/main/docs/repository-stability.md#prerelease)
 [![PyPI version](https://badge.fury.io/py/glean-indexing-sdk.svg)](https://badge.fury.io/py/glean-indexing-sdk)
 
-A Python SDK for building custom Glean indexing connectors. Provides base classes and utilities to create connectors that fetch data from external systems and upload to Glean's indexing APIs.
+Build custom Glean connectors in Python. The SDK handles fetching, transforming, batching, and uploading your data to Glean's indexing APIs, so you write only the parts that are specific to your source.
 
-## Requirements
+📖 **[Full documentation](https://developers.glean.com/libraries/indexing-sdk)** on the Glean Developer site.
 
-- Python >= 3.10
-- A Glean instance and an [indexing API token](https://developers.glean.com/indexing/tag/Authentication/)
+## Build one with an agent
 
-## Installation
+The fastest path is to let a coding agent build the connector. Your agent installs it straight from this repository, which doubles as the plugin marketplace.
 
-```bash
-pip install glean-indexing-sdk
-```
-
-## AI Connector Builder Plugin
-
-The Connector Builder plugin is an agent workflow that assists you in building connectors and pushing data to Glean.
-
-Build the agent plugin artifacts:
+**Claude Code**
 
 ```bash
-npm install
-npm run build:plugins
+claude plugin marketplace add gleanwork/glean-indexing-sdk
+claude plugin install glean-connector-builder@glean-indexing-sdk
 ```
 
-This installs the plugin packaging dependencies, then generates and validates native plugin artifacts under `dist/`.
-
-After building, install the generated plugin using the process for your AI tool. For Claude Code, use:
+**Codex**
 
 ```bash
-claude plugin marketplace add "$(pwd)/dist/claude"
-claude plugin install glean-connector-builder@glean-indexing-sdk-agent-plugin --scope user
+codex plugin marketplace add gleanwork/glean-indexing-sdk
+codex plugin add glean-connector-builder@glean-indexing-sdk
 ```
 
-Verify installation:
+**Cursor** has no plugin CLI — open Dashboard → Plugins → Add Marketplace → Import from Repo, point it at `gleanwork/glean-indexing-sdk`, then install from Customize.
 
-```bash
-claude plugin list
-```
-
-Restart Claude Code, or run `/reload-plugins` in the active session.
-
-### Updating the plugin
-
-To pick up the latest connector builder skills, pull the newest sources, rebuild the artifacts, and update the installed plugin:
-
-```bash
-git pull
-npm run build:plugins
-claude plugin marketplace update glean-indexing-sdk-agent-plugin
-claude plugin update glean-connector-builder@glean-indexing-sdk-agent-plugin
-```
-
-The commands above are for Claude Code. For other AI tools (e.g. Cursor), run the equivalent plugin/marketplace update commands for that tool after rebuilding.
-
-To inspect the generated Claude marketplace and plugin names:
-
-```bash
-cat dist/claude/.claude-plugin/marketplace.json
-```
-
-After installation, ask your coding agent for the connector you want to build. For example:
+Then describe your source:
 
 ```text
 I want to push my Webex data to Glean. Build a connector for me.
 ```
 
-## Key Concepts
+The agent explores the source's API, confirms a plan with you, generates the connector against this SDK, and tests it. See [Connector Builder](https://developers.glean.com/libraries/indexing-sdk/connector-builder) for what it does and what to review in the output.
 
-Every connector has two parts:
+## Or write it yourself
 
-1. **DataClient** — fetches raw data from your external system (API, database, files)
-2. **Connector** — transforms that data into Glean's format and uploads it
+### Requirements
 
-The workflow is: **fetch → transform → upload**. You implement `get_source_data()` on your data client and `transform()` on your connector; the SDK handles batching and upload.
+- Python >= 3.10
+- A Glean instance and an [indexing API token](https://developers.glean.com/indexing/tag/Authentication/)
 
-See [Architecture overview](docs/architecture.md) for a data flow diagram and the full class hierarchy.
+### Installation
+
+```bash
+pip install glean-indexing-sdk
+
+# Optional cloud observability plugins
+pip install "glean-indexing-sdk[aws]"   # CloudWatch logs + metrics
+pip install "glean-indexing-sdk[gcp]"   # Cloud Logging + Cloud Monitoring
+```
 
 ## Quickstart
 
-### 1. Set up credentials
+Every connector has two parts: a **data client** that fetches from your source, and a **connector** that transforms the result into Glean documents. The flow is **fetch → transform → upload**; you implement `get_source_data()` and `transform()`, and the SDK does the rest.
+
+Set your credentials:
 
 ```bash
 export GLEAN_SERVER_URL="https://your-company-be.glean.com"
 export GLEAN_INDEXING_API_TOKEN="your-indexing-api-token"
-
-# Deprecated alternative: use GLEAN_INSTANCE as legacy fallback
-# export GLEAN_INSTANCE="acme"
 ```
 
-### 2. Build a connector
-
-This complete example defines a data type, a data client, and a connector, then indexes everything into Glean:
+Then define and run a connector:
 
 ```python snippet=non_streaming/complete.py
-from typing import List, Sequence, TypedDict
+from datetime import datetime
+from typing import Any, List, Optional, Sequence, TypedDict
 
-from glean.indexing.connectors import BaseConnectorDataClient, BaseDatasourceConnector
+from glean.indexing.connectors import BaseDataClient, BaseDatasourceConnector
 from glean.indexing.models import (
     ContentDefinition,
     CustomDatasourceConfig,
@@ -109,181 +79,119 @@ from glean.indexing.models import (
 )
 
 
-class WikiPageData(TypedDict):
+class WikiPage(TypedDict):
     id: str
     title: str
     content: str
     author: str
-    created_at: str
     updated_at: str
     url: str
-    tags: List[str]
 
 
-class WikiDataClient(BaseConnectorDataClient[WikiPageData]):
-    def __init__(self, wiki_base_url: str, api_token: str):
-        self.wiki_base_url = wiki_base_url
+class WikiDataClient(BaseDataClient[WikiPage]):
+    """Fetches pages from the source system. Replace the body with a real API call."""
+
+    def __init__(self, base_url: str, api_token: str):
+        self.base_url = base_url
         self.api_token = api_token
 
-    def get_source_data(self, since=None) -> Sequence[WikiPageData]:
-        # Example static data
+    def get_source_data(self, since: Optional[str] = None, **kwargs: Any) -> Sequence[WikiPage]:
         return [
             {
                 "id": "page_123",
                 "title": "Engineering Onboarding Guide",
                 "content": "Welcome to the engineering team...",
                 "author": "jane.smith@company.com",
-                "created_at": "2024-01-15T10:00:00Z",
-                "updated_at": "2024-02-01T14:30:00Z",
-                "url": f"{self.wiki_base_url}/pages/123",
-                "tags": ["onboarding", "engineering"],
-            },
-            {
-                "id": "page_124",
-                "title": "API Documentation Standards",
-                "content": "Our standards for API documentation...",
-                "author": "john.doe@company.com",
-                "created_at": "2024-01-20T09:15:00Z",
-                "updated_at": "2024-01-25T16:45:00Z",
-                "url": f"{self.wiki_base_url}/pages/124",
-                "tags": ["api", "documentation", "standards"],
-            },
+                "updated_at": "2026-02-01T14:30:00Z",
+                "url": f"{self.base_url}/pages/123",
+            }
         ]
 
 
-class CompanyWikiConnector(BaseDatasourceConnector[WikiPageData]):
-    configuration: CustomDatasourceConfig = CustomDatasourceConfig(
+class CompanyWikiConnector(BaseDatasourceConnector[WikiPage]):
+    """Transforms wiki pages into Glean documents."""
+
+    configuration = CustomDatasourceConfig(
         name="company_wiki",
         display_name="Company Wiki",
         url_regex=r"https://wiki\.company\.com/.*",
-        trust_url_regex_for_view_activity=True,
         is_user_referenced_by_email=True,
     )
 
-    def transform(self, data: Sequence[WikiPageData]) -> List[DocumentDefinition]:
-        documents = []
-        for page in data:
-            documents.append(
-                DocumentDefinition(
-                    id=page["id"],
-                    title=page["title"],
-                    datasource=self.name,
-                    view_url=page["url"],
-                    body=ContentDefinition(mime_type="text/plain", text_content=page["content"]),
-                    author=UserReferenceDefinition(email=page["author"]),
-                    created_at=self._parse_timestamp(page["created_at"]),
-                    updated_at=self._parse_timestamp(page["updated_at"]),
-                    tags=page["tags"],
-                )
+    def transform(self, data: Sequence[WikiPage]) -> List[DocumentDefinition]:
+        return [
+            DocumentDefinition(
+                id=page["id"],
+                title=page["title"],
+                datasource=self.name,
+                view_url=page["url"],
+                body=ContentDefinition(mime_type="text/plain", text_content=page["content"]),
+                author=UserReferenceDefinition(email=page["author"]),
+                # created_at / updated_at are epoch seconds, not ISO strings.
+                updated_at=int(
+                    datetime.fromisoformat(page["updated_at"].replace("Z", "+00:00")).timestamp()
+                ),
             )
-        return documents
-
-    def _parse_timestamp(self, timestamp_str: str) -> int:
-        from datetime import datetime
-
-        dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-        return int(dt.timestamp())
+            for page in data
+        ]
 
 
-data_client = WikiDataClient(wiki_base_url="https://wiki.company.com", api_token="your-wiki-token")
-connector = CompanyWikiConnector(name="company_wiki", data_client=data_client)
-connector.configure_datasource()
-connector.index_data(mode=IndexingMode.FULL)
+if __name__ == "__main__":
+    connector = CompanyWikiConnector(
+        name="company_wiki",
+        data_client=WikiDataClient(
+            base_url="https://wiki.company.com", api_token="your-wiki-token"
+        ),
+    )
+    connector.configure_datasource()
+    connector.index_data(mode=IndexingMode.FULL)
 ```
 
-## Connector Types
-
-| Connector | Data Client | Best For |
-|---|---|---|
-| [`BaseDatasourceConnector`](docs/advanced.md#basedatasourceconnector) | `BaseDataClient` | Small-to-medium datasets that fit in memory. Wikis, knowledge bases, file systems. |
-| [`BaseStreamingDatasourceConnector`](docs/streaming-connectors.md#basestreamingdatasourceconnector) | `BaseStreamingDataClient` | Large or paginated datasets where you need to limit memory usage. Uses sync generators. |
-| [`BaseAsyncStreamingDatasourceConnector`](docs/streaming-connectors.md#baseasyncstreamingdatasourceconnector) | `BaseAsyncStreamingDataClient` | Large datasets with async APIs (aiohttp, httpx async). Non-blocking I/O. |
-| `BasePeopleConnector` | — | Employee and identity data indexing. |
-
-For detailed guidance on choosing between these, see the [decision matrix](docs/advanced.md#choosing-a-connector-type).
-
-## Indexing Modes
-
-- **`IndexingMode.FULL`** — Re-indexes all documents. Use for initial loads or when you need a complete refresh.
-- **`IndexingMode.INCREMENTAL`** — Only indexes documents modified since the last crawl. Use for scheduled updates to minimize API calls.
-
-```python
-connector.index_data(mode=IndexingMode.FULL)         # full re-index
-connector.index_data(mode=IndexingMode.INCREMENTAL)   # only changes since last run
-```
-
-## Testing
-
-The SDK ships two ways to test connectors without making real API calls. Both record everything the connector posts so you can assert on the result.
-
-### Quick path: `run_connector`
-
-For most tests, pair `run_connector` with one of the static data clients:
+Test it without touching the network:
 
 ```python
 from glean.indexing.testing import StaticDataClient, run_connector
 
-result = run_connector(MyConnector("my_ds", StaticDataClient([
-    {"id": "1", "title": "Doc 1", "url": "https://example.com/1"},
-    {"id": "2", "title": "Doc 2", "url": "https://example.com/2"},
-])))
-
-result.assert_documents_posted(count=2, datasource="my_ds")
-for doc in result.documents_posted:
-    print(doc.title)
+result = run_connector(CompanyWikiConnector("company_wiki", StaticDataClient([...])))
+result.assert_documents_posted(count=1, datasource="company_wiki")
 ```
 
-For people connectors, use `assert_employees_posted`. For async streaming connectors, use the async runner:
+## What's in the box
+
+| Capability | What it gives you |
+|---|---|
+| [Connector types](https://developers.glean.com/libraries/indexing-sdk/concepts/connector-types) | Four base classes: in-memory, sync streaming, async streaming, and people/identity. |
+| [Pull integrations](https://developers.glean.com/libraries/indexing-sdk/pull/http-client) | `PullHttpClient` with retries and backoff, link/offset/cursor pagination, and token-bucket rate limiting. |
+| [Push & indexing](https://developers.glean.com/libraries/indexing-sdk/push/uploader) | `PushUploader` for documents, users, groups, memberships, and employees, with parallel batch uploads. |
+| [Permissions](https://developers.glean.com/libraries/indexing-sdk/permissions) | Per-document ACLs and datasource identities so results respect who can see what. |
+| [Testing](https://developers.glean.com/libraries/indexing-sdk/testing/overview) | Three phases: fully mocked, real-source-with-record/replay, and live end-to-end. |
+| [Observability](https://developers.glean.com/libraries/indexing-sdk/observability) | Structured logging and metrics, with optional CloudWatch and Google Cloud plugins. |
+| [Status & debugging](https://developers.glean.com/libraries/indexing-sdk/status-and-debugging) | `StatusClient` and the `glean-index-status` CLI to answer "why isn't my document in search?" |
+| [Deployment](https://developers.glean.com/libraries/indexing-sdk/deployment/overview) | `glean-deploy` generates Docker and Terraform for AWS or GCP. |
+| [Connector Builder](https://developers.glean.com/libraries/indexing-sdk/connector-builder) | An agent plugin that builds a connector from a description of your source. |
+
+## Indexing modes
 
 ```python
-import pytest
-from glean.indexing.testing import StaticAsyncStreamingDataClient, run_connector_async
-
-@pytest.mark.asyncio
-async def test_async_connector():
-    result = await run_connector_async(MyAsyncConnector(
-        "my_ds", StaticAsyncStreamingDataClient([...])
-    ))
-    result.assert_documents_posted(count=10)
+connector.index_data(mode=IndexingMode.FULL)         # re-index everything
+connector.index_data(mode=IndexingMode.INCREMENTAL)  # only changes since the last crawl
 ```
 
-### Advanced: `mock_glean_client`
-
-When you need to drive `connector.index_data()` yourself — to pass custom modes, options, or interleave multiple calls — use the context manager directly:
-
-```python
-from glean.indexing.models import IndexingMode
-from glean.indexing.testing import mock_glean_client
-
-with mock_glean_client() as client:
-    connector.configure_datasource()
-    connector.index_data(mode=IndexingMode.INCREMENTAL)
-    client.assert_datasource_configured(name="my_ds")
-    client.assert_documents_posted(count=2)
-```
-
-The yielded `client` is also a thin facade over a `MagicMock(spec=Glean)`, so any access through `client.indexing.*` works exactly like the real Speakeasy client — typos at any level fail loudly:
-
-```python
-client.indexing.documents.bulk_index.assert_called_once()       # real method
-client.indexing.documents.bluk_index                            # AttributeError
-```
-
-If you'd rather use a decorator, `@with_mock_glean_client` injects the client as the first positional argument.
+A **full** crawl replaces the indexed state: documents absent from the run are deleted as stale. **Incremental** passes a `since` timestamp to your data client, but the SDK does not persist checkpoints — override `_get_last_crawl_timestamp()` on your connector to supply one. See [Indexing modes](https://developers.glean.com/libraries/indexing-sdk/concepts/indexing-modes).
 
 ## Contributing
 
-This project uses [mise](https://mise.jdx.dev/) for toolchain management and `uv` for Python dependencies.
+This project uses [mise](https://mise.jdx.dev/) for toolchain management and `uv` for Python dependencies. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
-mise run setup              # create venv and install dependencies
-mise run test               # run all tests
-mise run lint               # run all linters (ruff, pyright, markdown-code)
-mise run lint:fix           # auto-fix lint issues and format code
+mise run setup    # create venv and install dependencies
+mise run test     # run all tests
+mise run lint     # ruff, pyright, markdown-code
+mise run lint:fix # auto-fix and format
 ```
 
-## Next Steps
+Architecture notes for contributors live in [`docs/`](docs/).
 
-- [Architecture overview](docs/architecture.md) — data flow diagram and component hierarchy
-- [Streaming connectors](docs/streaming-connectors.md) — sync and async streaming walkthroughs
-- [Advanced usage](docs/advanced.md) — connector selection guide, forced restart uploads
+## License
+
+[MIT](LICENSE)

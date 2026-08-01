@@ -60,4 +60,40 @@ jobs:
         run: |
           mise run build
           uv run pip install dist/*.whl
-          uv run python -c "import glean.indexing; print('Package installed successfully')" 
+          uv run python -c "import glean.indexing; print('Package installed successfully')"
+
+  plugins:
+    name: Agent plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+        with:
+          cache: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install plugin build dependencies
+        run: npm ci
+
+      - name: Build plugin artifacts
+        run: npm run build:plugins
+
+      - name: Validate all three targets
+        run: npm run validate:plugins
+
+      # The emitted plugin content and the root marketplace manifests are
+      # committed: each manifest's `source` points at build/, so it has to exist
+      # in a fresh clone — that clone is what installing from GitHub gets. Fail
+      # if someone edited a skill under skills/ without rebuilding.
+      - name: Check committed plugin output is not stale
+        run: npm run diff:plugins
+
+      # Schema check only — `plugin validate` passes even when a plugin's
+      # `source` points at a path that does not exist (verified with a negative
+      # control), so this catches manifest shape, not resolution. The diff step
+      # above is what guarantees the source paths are real and current.
+      - name: Validate root marketplace manifest with Claude Code itself
+        run: npx --yes @anthropic-ai/claude-code plugin validate . 

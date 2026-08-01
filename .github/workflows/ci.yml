@@ -3,8 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # No base-branch filter: a stacked pull request targets its parent branch
+  # rather than main, and filtering on `branches` would skip every one of them
+  # until it reached the bottom of the stack.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:

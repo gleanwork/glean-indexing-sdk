@@ -8,6 +8,7 @@ agent notices the difference.
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 from typing import Any, Optional
 
 import click
@@ -88,6 +89,7 @@ def context(
     *,
     output: Optional[str] = None,
     assume_yes: bool = False,
+    project_dir: Optional[Path] = None,
 ) -> CliContext:
     """The resolved `CliContext`, applying any command-level overrides.
 
@@ -102,6 +104,8 @@ def context(
         existing.output = OutputMode(output)
     if assume_yes:
         existing.assume_yes = True
+    if project_dir is not None:
+        existing.project_override = project_dir
     set_output_mode(existing.output)
     return existing
 

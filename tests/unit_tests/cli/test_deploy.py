@@ -3,10 +3,12 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from dataclasses import dataclass
+
 import pytest
 from click.testing import CliRunner
 
-from glean.indexing.deployment.cli import cli
+from glean.indexing.cli.commands.deploy import deploy
 
 
 @pytest.fixture()
@@ -39,9 +41,9 @@ indexing_mode: FULL
 
 
 def test_cli_help(runner):
-    result = runner.invoke(cli, ["--help"])
+    result = runner.invoke(deploy, ["--help"])
     assert result.exit_code == 0
-    assert "glean-deploy" in result.output
+    assert "glean-idx deploy" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +53,7 @@ def test_cli_help(runner):
 
 def test_init_gcp_generates_files(runner, tmp_path):
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(cli, ["init", "--cloud", "gcp"])
+        result = runner.invoke(deploy, ["init", "--cloud", "gcp"])
         assert result.exit_code == 0, result.output
         assert "Dockerfile" in result.output
         assert Path("Dockerfile").exists()
@@ -63,7 +65,7 @@ def test_init_gcp_generates_files(runner, tmp_path):
 
 def test_init_aws_generates_files(runner, tmp_path):
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(cli, ["init", "--cloud", "aws"])
+        result = runner.invoke(deploy, ["init", "--cloud", "aws"])
         assert result.exit_code == 0, result.output
         assert Path("Dockerfile").exists()
         assert Path("terraform/main.tf").exists()
@@ -71,7 +73,7 @@ def test_init_aws_generates_files(runner, tmp_path):
 
 def test_init_gcp_shows_next_steps(runner, tmp_path):
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(cli, ["init", "--cloud", "gcp"])
+        result = runner.invoke(deploy, ["init", "--cloud", "gcp"])
         assert result.exit_code == 0
         assert "Next steps" in result.output
         assert "glean_deployment.yaml" in result.output
@@ -79,7 +81,7 @@ def test_init_gcp_shows_next_steps(runner, tmp_path):
 
 def test_init_aws_shows_next_steps(runner, tmp_path):
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(cli, ["init", "--cloud", "aws"])
+        result = runner.invoke(deploy, ["init", "--cloud", "aws"])
         assert result.exit_code == 0
         assert "Next steps" in result.output
         assert "EKS" in result.output or "eks" in result.output.lower()
@@ -87,14 +89,14 @@ def test_init_aws_shows_next_steps(runner, tmp_path):
 
 def test_init_with_custom_output_dir(runner, tmp_path):
     out = tmp_path / "output"
-    result = runner.invoke(cli, ["init", "--cloud", "gcp", "--output-dir", str(out)])
+    result = runner.invoke(deploy, ["init", "--cloud", "gcp", "--output-dir", str(out)])
     assert result.exit_code == 0
     assert (out / "Dockerfile").exists()
 
 
 def test_init_with_connector_name(runner, tmp_path):
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(cli, ["init", "--cloud", "gcp", "--connector-name", "my_jira"])
+        result = runner.invoke(deploy, ["init", "--cloud", "gcp", "--connector-name", "my_jira"])
         assert result.exit_code == 0
         yaml_content = Path("glean_deployment.yaml").read_text()
         assert "my_jira" in yaml_content
@@ -107,7 +109,7 @@ def test_init_with_connector_name(runner, tmp_path):
 
 def test_secrets_upload_env_file_not_found(runner, tmp_path, gcp_deployment_yaml):
     result = runner.invoke(
-        cli,
+        deploy,
         [
             "secrets",
             "upload",
@@ -131,7 +133,7 @@ def test_secrets_upload_calls_upload_secrets(runner, tmp_path, gcp_deployment_ya
     }
     with patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend):
         result = runner.invoke(
-            cli,
+            deploy,
             [
                 "secrets",
                 "upload",
@@ -154,7 +156,7 @@ def test_secrets_upload_no_secrets(runner, tmp_path, gcp_deployment_yaml):
     mock_backend.upload.return_value = {}
     with patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend):
         result = runner.invoke(
-            cli,
+            deploy,
             [
                 "secrets",
                 "upload",
@@ -180,7 +182,7 @@ def test_destroy_first_prompt_abort(runner, tmp_path, gcp_deployment_yaml):
     # Answer "n" to the first prompt — terraform must not run
     with patch("subprocess.run") as mock_run:
         result = runner.invoke(
-            cli,
+            deploy,
             ["destroy", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
             input="n\n",
         )
@@ -195,7 +197,7 @@ def test_destroy_wrong_connector_name_aborts(runner, tmp_path, gcp_deployment_ya
     # Say "y" to the first prompt but type the wrong connector name
     with patch("subprocess.run") as mock_run:
         result = runner.invoke(
-            cli,
+            deploy,
             ["destroy", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
             input="y\nwrong_name\n",
         )
@@ -217,7 +219,7 @@ def test_destroy_two_step_confirmation_succeeds(runner, tmp_path, gcp_deployment
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
-            cli,
+            deploy,
             ["destroy", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
             input="y\nmy_salesforce\n",
         )
@@ -238,7 +240,7 @@ def test_destroy_yes_flag_skips_prompts(runner, tmp_path, gcp_deployment_yaml):
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
-            cli,
+            deploy,
             [
                 "destroy",
                 "--yes",
@@ -264,7 +266,7 @@ def test_destroy_cleans_up_secrets_by_default(runner, tmp_path, gcp_deployment_y
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
-            cli,
+            deploy,
             [
                 "destroy",
                 "--yes",
@@ -293,7 +295,7 @@ def test_destroy_keep_secrets_flag_skips_cleanup(runner, tmp_path, gcp_deploymen
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
-            cli,
+            deploy,
             [
                 "destroy",
                 "--yes",
@@ -322,7 +324,7 @@ def test_destroy_no_secrets_shows_graceful_message(runner, tmp_path, gcp_deploym
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
-            cli,
+            deploy,
             [
                 "destroy",
                 "--yes",
@@ -356,7 +358,7 @@ def test_destroy_handles_partial_secret_deletion_failures(runner, tmp_path, gcp_
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
-            cli,
+            deploy,
             [
                 "destroy",
                 "--yes",
@@ -377,7 +379,7 @@ def test_destroy_handles_partial_secret_deletion_failures(runner, tmp_path, gcp_
 
 
 def test_apply_missing_config_shows_error(runner, tmp_path):
-    result = runner.invoke(cli, ["apply", "--config", str(tmp_path / "missing.yaml")])
+    result = runner.invoke(deploy, ["apply", "--config", str(tmp_path / "missing.yaml")])
     assert result.exit_code != 0
     assert "not found" in result.output or "Error" in result.output
 
@@ -391,7 +393,7 @@ def test_build_invokes_docker_build(runner, tmp_path, gcp_deployment_yaml):
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
-            cli,
+            deploy,
             ["build", "--config", str(gcp_deployment_yaml)],
         )
         assert result.exit_code == 0, result.output
@@ -408,7 +410,7 @@ def test_build_invokes_docker_build(runner, tmp_path, gcp_deployment_yaml):
 def test_build_uses_config_parent_as_cwd(runner, tmp_path, gcp_deployment_yaml):
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
-        runner.invoke(cli, ["build", "--config", str(gcp_deployment_yaml)])
+        runner.invoke(deploy, ["build", "--config", str(gcp_deployment_yaml)])
         build_call = mock_run.call_args_list[0]
         assert build_call.kwargs.get("cwd") == gcp_deployment_yaml.parent
 
@@ -417,7 +419,7 @@ def test_build_push_calls_docker_push(runner, tmp_path, gcp_deployment_yaml):
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
-            cli,
+            deploy,
             ["build", "--push", "--config", str(gcp_deployment_yaml)],
         )
         assert result.exit_code == 0, result.output
@@ -429,7 +431,7 @@ def test_build_push_calls_docker_push(runner, tmp_path, gcp_deployment_yaml):
 
 
 def test_build_missing_config_shows_error(runner, tmp_path):
-    result = runner.invoke(cli, ["build", "--config", str(tmp_path / "missing.yaml")])
+    result = runner.invoke(deploy, ["build", "--config", str(tmp_path / "missing.yaml")])
     assert result.exit_code != 0
     assert "not found" in result.output or "Error" in result.output
 
@@ -447,7 +449,7 @@ def test_logs_fetches_latest_job_then_logs(runner, tmp_path, gcp_deployment_yaml
         return MagicMock(returncode=0)
 
     with patch("subprocess.run", side_effect=_side_effect):
-        result = runner.invoke(cli, ["logs", "--config", str(gcp_deployment_yaml)])
+        result = runner.invoke(deploy, ["logs", "--config", str(gcp_deployment_yaml)])
         assert result.exit_code == 0, result.output
         assert "my-salesforce-28123456" in result.output
 
@@ -459,7 +461,7 @@ def test_logs_no_jobs_shows_error(runner, tmp_path, gcp_deployment_yaml):
         return MagicMock(returncode=0)
 
     with patch("subprocess.run", side_effect=_side_effect):
-        result = runner.invoke(cli, ["logs", "--config", str(gcp_deployment_yaml)])
+        result = runner.invoke(deploy, ["logs", "--config", str(gcp_deployment_yaml)])
         assert result.exit_code != 0
         assert "No jobs found" in result.output or "Error" in result.output
 
@@ -472,7 +474,7 @@ def test_logs_no_jobs_shows_error(runner, tmp_path, gcp_deployment_yaml):
 def test_status_shows_cronjob_and_jobs(runner, tmp_path, gcp_deployment_yaml):
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
-        result = runner.invoke(cli, ["status", "--config", str(gcp_deployment_yaml)])
+        result = runner.invoke(deploy, ["status", "--config", str(gcp_deployment_yaml)])
         assert result.exit_code == 0, result.output
         assert mock_run.call_count == 2
         # First call: kubectl get cronjob
@@ -481,3 +483,106 @@ def test_status_shows_cronjob_and_jobs(runner, tmp_path, gcp_deployment_yaml):
         jobs_cmd = mock_run.call_args_list[1].args[0]
         assert "jobs" in jobs_cmd
         assert any("app=" in arg for arg in jobs_cmd)
+
+
+# --- destructive-command confirmation -------------------------------------
+#
+# `apply` runs terraform with -auto-approve, and previously had no prompt at all
+# while `destroy` asked twice — the inverse of the risk. `secrets delete` used
+# click.confirmation_option, which offers no escape hatch and so hangs an
+# unattended caller. Both now share one prompt-plus---yes contract.
+
+
+def test_apply_prompts_before_mutating_infrastructure(runner, gcp_deployment_yaml, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: calls.append(a) or _completed(0),
+    )
+    tf_dir = gcp_deployment_yaml.parent / "terraform"
+    tf_dir.mkdir(exist_ok=True)
+    result = runner.invoke(
+        deploy,
+        ["apply", "--config", str(gcp_deployment_yaml), "--terraform-dir", str(tf_dir)],
+        input="n\n",
+    )
+    assert result.exit_code != 0
+    # terraform init runs before the prompt; apply must not.
+    assert not any("apply" in " ".join(map(str, call[0])) for call in calls)
+
+
+def test_apply_yes_flag_skips_the_prompt(runner, gcp_deployment_yaml, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: calls.append(a) or _completed(0),
+    )
+    tf_dir = gcp_deployment_yaml.parent / "terraform"
+    tf_dir.mkdir(exist_ok=True)
+    result = runner.invoke(
+        deploy,
+        [
+            "apply",
+            "--config",
+            str(gcp_deployment_yaml),
+            "--terraform-dir",
+            str(tf_dir),
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0
+    assert any("apply" in " ".join(map(str, call[0])) for call in calls)
+
+
+def test_secrets_delete_prompts_by_default(runner, gcp_deployment_yaml, monkeypatch):
+    deleted = []
+    monkeypatch.setattr(
+        "glean.indexing.deployment.secrets.get_secrets_backend",
+        lambda _config: _FakeBackend(deleted),
+    )
+    result = runner.invoke(
+        deploy,
+        ["secrets", "delete", "MY_KEY", "--config", str(gcp_deployment_yaml)],
+        input="n\n",
+    )
+    assert result.exit_code != 0
+    assert deleted == []
+
+
+def test_secrets_delete_yes_flag_makes_it_unattended(runner, gcp_deployment_yaml, monkeypatch):
+    deleted = []
+    monkeypatch.setattr(
+        "glean.indexing.deployment.secrets.get_secrets_backend",
+        lambda _config: _FakeBackend(deleted),
+    )
+    result = runner.invoke(
+        deploy,
+        ["secrets", "delete", "MY_KEY", "--config", str(gcp_deployment_yaml), "--yes"],
+    )
+    assert result.exit_code == 0
+    assert deleted == ["MY_KEY"]
+
+
+class _FakeBackend:
+    """Matches the real backend surface in deployment/secrets.py."""
+
+    def __init__(self, deleted):
+        self._deleted = deleted
+
+    def delete(self, key):
+        self._deleted.append(key)
+
+    def list(self):
+        return ["MY_KEY"]
+
+
+@dataclass
+class _Completed:
+    """Stands in for subprocess.CompletedProcess, which the CLI only reads
+    `returncode` off."""
+
+    returncode: int
+
+
+def _completed(returncode: int) -> _Completed:
+    return _Completed(returncode=returncode)

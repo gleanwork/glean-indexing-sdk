@@ -9,6 +9,15 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Pushing a stack force-pushes several branches at once, and a pull request is
+# synchronized both when its own head moves and when its base branch does. Each
+# PR above the bottom of a stack therefore receives two identical events. Keep
+# the newest run per pull request and cancel the rest; pushes to main are
+# grouped by ref and never cancelled, so every commit there is still tested.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint:
     name: Lint and Type Check

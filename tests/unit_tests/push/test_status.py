@@ -10,7 +10,7 @@ from glean.api_client.models import (
     DocumentDefinition,
     DocumentStatusResponse,
 )
-from glean.indexing.testing.indexing_status import (
+from glean.indexing.push.status import (
     IndexingWaitResult,
     check_documents_status,
     document_status_requests,
@@ -59,7 +59,7 @@ def test_document_status_requests_deduplicates_and_skips_incomplete_documents():
     assert requests == [DebugDocumentRequest(object_type="Article", doc_id="doc-1")]
 
 
-@patch("glean.indexing.testing.indexing_status.StatusClient.get_documents_status")
+@patch("glean.indexing.push.status.StatusClient.get_documents_status")
 def test_current_upload_is_indexed(get_status: Mock):
     get_status.return_value = _response(
         uploaded_at="2026-07-24T10:00:00Z",
@@ -74,7 +74,7 @@ def test_current_upload_is_indexed(get_status: Mock):
     assert snapshot.result is IndexingWaitResult.INDEXED
 
 
-@patch("glean.indexing.testing.indexing_status.StatusClient.get_documents_status")
+@patch("glean.indexing.push.status.StatusClient.get_documents_status")
 def test_previous_index_does_not_satisfy_latest_upload(get_status: Mock):
     get_status.return_value = _response(
         uploaded_at="2026-07-24T10:01:00Z",

@@ -1,4 +1,4 @@
-"""Shared document indexing status checks for the test harness and CLI."""
+"""Document indexing status checks, shared by the CLI and the test harness."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from glean.api_client.models import (
     DebugDocumentsResponse,
     DocumentDefinition,
 )
-from glean.indexing.push import StatusClient
+from glean.indexing.push.uploader import StatusClient
 
 POLL_INTERVAL_SECONDS = 30
 POLL_TIMEOUT_SECONDS = 300

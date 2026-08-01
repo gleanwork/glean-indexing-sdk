@@ -15,7 +15,7 @@ from glean.indexing.testing.harness.permissions import (
     assert_negative_identities_absent,
     extract_permission_refs,
 )
-from glean.indexing.testing.indexing_status import IndexingWaitResult
+from glean.indexing.push.status import IndexingWaitResult
 
 __all__ = [
     "ClientConfig",

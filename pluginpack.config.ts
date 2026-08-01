@@ -25,7 +25,7 @@ import pkg from "./package.json" with { type: "json" };
 const ENTRY_METADATA = {
   version: pkg.version,
   author: { name: "Glean" },
-  homepage: "https://developers.glean.com/libraries/indexing-sdk/connector-builder",
+  homepage: "https://developers.glean.com/libraries/indexing-sdk",
   repository: "https://github.com/gleanwork/glean-indexing-sdk",
   license: "MIT",
 };
@@ -63,7 +63,7 @@ export default defineConfig({
       url: "https://glean.com",
     },
     owner: { name: "Glean", email: "support@glean.com" },
-    homepage: "https://developers.glean.com/libraries/indexing-sdk/connector-builder",
+    homepage: "https://developers.glean.com/libraries/indexing-sdk",
     repository: "https://github.com/gleanwork/glean-indexing-sdk",
     license: "MIT",
   },

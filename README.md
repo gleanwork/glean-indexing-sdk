@@ -33,7 +33,7 @@ Then describe your source:
 I want to push my Webex data to Glean. Build a connector for me.
 ```
 
-The agent explores the source's API, confirms a plan with you, generates the connector against this SDK, and tests it. See [Connector Builder](https://developers.glean.com/libraries/indexing-sdk/connector-builder) for what it does and what to review in the output.
+The agent explores the source's API, confirms a plan with you, generates the connector against this SDK, and tests it. See the [Indexing SDK overview](https://developers.glean.com/libraries/indexing-sdk) for what it does and what to review in the output.
 
 ## Or write it yourself
 
@@ -168,7 +168,7 @@ result.assert_documents_posted(count=1, datasource="company_wiki")
 | [Observability](https://developers.glean.com/libraries/indexing-sdk/observability) | Structured logging and metrics, with optional CloudWatch and Google Cloud plugins. |
 | [Status & debugging](https://developers.glean.com/libraries/indexing-sdk/status-and-debugging) | `StatusClient` and the `glean-index-status` CLI to answer "why isn't my document in search?" |
 | [Deployment](https://developers.glean.com/libraries/indexing-sdk/deployment/overview) | `glean-deploy` generates Docker and Terraform for AWS or GCP. |
-| [Connector Builder](https://developers.glean.com/libraries/indexing-sdk/connector-builder) | An agent plugin that builds a connector from a description of your source. |
+| [Connector Builder](https://developers.glean.com/libraries/indexing-sdk) | An agent plugin that builds a connector from a description of your source. |
 
 ## Indexing modes
 

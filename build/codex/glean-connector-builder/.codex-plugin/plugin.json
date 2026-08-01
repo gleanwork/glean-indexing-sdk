@@ -1,0 +1,14 @@
+{
+  "name": "glean-connector-builder",
+  "version": "0.0.1",
+  "description": "Build a Glean connector from a description of your source: explore its API, plan, generate against the Indexing SDK, and test.",
+  "author": {
+    "name": "Glean",
+    "email": "support@glean.com",
+    "url": "https://glean.com"
+  },
+  "homepage": "https://developers.glean.com/libraries/indexing-sdk/connector-builder",
+  "repository": "https://github.com/gleanwork/glean-indexing-sdk",
+  "license": "MIT",
+  "skills": "./skills/"
+}

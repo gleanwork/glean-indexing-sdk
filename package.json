@@ -16,10 +16,11 @@
   "scripts": {
     "build:plugins": "pluginpack build",
     "clean:plugins": "pluginpack clean",
-    "validate:plugins": "pluginpack validate --target claude --dir dist/claude && pluginpack validate --target cursor --dir dist/cursor",
+    "validate:plugins": "pluginpack validate --target claude --dir . && pluginpack validate --target cursor --dir . && pluginpack validate --target codex --dir .",
+    "diff:plugins": "pluginpack diff --target claude --against . && pluginpack diff --target cursor --against . && pluginpack diff --target codex --against .",
     "test:plugins": "npm run build:plugins && npm run validate:plugins"
   },
   "devDependencies": {
-    "@gleanwork/pluginpack": "^0.6.0"
+    "@gleanwork/pluginpack": "^0.10.0"
   }
 }

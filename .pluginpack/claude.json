@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "target": "claude",
+  "files": [
+    ".claude-plugin/marketplace.json",
+    "build/claude/glean-connector-builder/.claude-plugin/plugin.json",
+    "build/claude/glean-connector-builder/skills/connector-api-exploration/SKILL.md",
+    "build/claude/glean-connector-builder/skills/connector-auth/SKILL.md",
+    "build/claude/glean-connector-builder/skills/connector-builder/SKILL.md",
+    "build/claude/glean-connector-builder/skills/connector-deployment/SKILL.md",
+    "build/claude/glean-connector-builder/skills/connector-observability/SKILL.md",
+    "build/claude/glean-connector-builder/skills/connector-pull/SKILL.md",
+    "build/claude/glean-connector-builder/skills/connector-push/SKILL.md",
+    "build/claude/glean-connector-builder/skills/connector-testing/SKILL.md"
+  ]
+}

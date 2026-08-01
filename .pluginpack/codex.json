@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "target": "codex",
+  "files": [
+    ".agents/plugins/marketplace.json",
+    "build/codex/glean-connector-builder/.codex-plugin/plugin.json",
+    "build/codex/glean-connector-builder/skills/connector-api-exploration/SKILL.md",
+    "build/codex/glean-connector-builder/skills/connector-auth/SKILL.md",
+    "build/codex/glean-connector-builder/skills/connector-builder/SKILL.md",
+    "build/codex/glean-connector-builder/skills/connector-deployment/SKILL.md",
+    "build/codex/glean-connector-builder/skills/connector-observability/SKILL.md",
+    "build/codex/glean-connector-builder/skills/connector-pull/SKILL.md",
+    "build/codex/glean-connector-builder/skills/connector-push/SKILL.md",
+    "build/codex/glean-connector-builder/skills/connector-testing/SKILL.md"
+  ]
+}

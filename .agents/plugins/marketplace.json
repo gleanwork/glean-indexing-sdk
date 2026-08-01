@@ -1,0 +1,25 @@
+{
+  "name": "glean-indexing-sdk",
+  "interface": {
+    "displayName": "glean-indexing-sdk"
+  },
+  "plugins": [
+    {
+      "name": "glean-connector-builder",
+      "source": "./build/codex/glean-connector-builder",
+      "description": "Build a Glean connector from a description of your source: explore its API, plan, generate against the Indexing SDK, and test.",
+      "version": "0.0.1",
+      "author": {
+        "name": "Glean"
+      },
+      "homepage": "https://developers.glean.com/libraries/indexing-sdk/connector-builder",
+      "repository": "https://github.com/gleanwork/glean-indexing-sdk",
+      "license": "MIT",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

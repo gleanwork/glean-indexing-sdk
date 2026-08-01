@@ -8,7 +8,17 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
+build/*
+# ...except the emitted agent-plugin content, which is committed: each root
+# marketplace manifest's `source` points at it, so it must exist in a fresh
+# clone — that clone is what installing from GitHub gets. Regenerate with
+# `npm run build:plugins`; CI fails on drift. Note `build/*` above rather than
+# `build/`: git never descends into an excluded directory, so negating a child
+# of `build/` only works if `build/` itself is not excluded. Scoped to the
+# three target dirs so Python build artifacts under build/ stay ignored.
+!build/claude/
+!build/codex/
+!build/cursor/
 node_modules/
 develop-eggs/
 dist/

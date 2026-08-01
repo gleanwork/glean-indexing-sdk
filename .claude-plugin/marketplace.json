@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "glean-indexing-sdk",
+  "version": "0.0.1",
+  "description": "Build Glean Indexing SDK connectors hands-free from Claude Code, Cursor, or Codex.",
+  "owner": {
+    "name": "Glean",
+    "email": "support@glean.com"
+  },
+  "plugins": [
+    {
+      "name": "glean-connector-builder",
+      "source": "./build/claude/glean-connector-builder",
+      "description": "Build a Glean connector from a description of your source: explore its API, plan, generate against the Indexing SDK, and test.",
+      "version": "0.0.1",
+      "author": {
+        "name": "Glean"
+      },
+      "homepage": "https://developers.glean.com/libraries/indexing-sdk/connector-builder",
+      "repository": "https://github.com/gleanwork/glean-indexing-sdk",
+      "license": "MIT"
+    }
+  ]
+}

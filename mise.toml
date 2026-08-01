@@ -1,7 +1,7 @@
 [tools]
 python = "3.10"
 uv = "latest"
-node = "22"
+node = "24"   # pluginpack requires >= 24.15 (package.json engines)
 
 [tasks]
 

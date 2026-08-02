@@ -73,7 +73,11 @@ def render_error(error: "CliError", mode: OutputMode) -> str:
     if error.searched:
         lines += ["", "  Searched:", *[f"    {path}" for path in error.searched]]
     if error.hint:
-        lines += ["", "  Do one of:", *[f"    {item}" for item in error.hint]]
+        # Not "do one of": some errors list steps that are all required (both
+        # missing environment variables), others list alternatives (a connector
+        # reference, or a different directory). "Hint" is true either way.
+        lines += ["", f"  {'Hint' if len(error.hint) == 1 else 'Hints'}:"]
+        lines += [f"    {item}" for item in error.hint]
     if error.docs:
         lines += ["", f"  {error.docs}"]
     return "\n".join(lines)

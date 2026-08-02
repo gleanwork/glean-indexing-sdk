@@ -23,12 +23,9 @@ datasource_option = click.option("--datasource", required=True, help="Datasource
 def _remote(action: str, exc: Exception, datasource: str) -> RemoteError:
     """Wrap an API failure with the datasource it was attempted against."""
     return RemoteError(
-        f"could not {action}",
+        f"could not {action} for datasource {datasource!r}",
         detail=str(exc),
-        hint=[
-            f"datasource: {datasource}",
-            "glean-idx doctor --datasource <name>    check credentials",
-        ],
+        hint=[f"glean-idx doctor --datasource {datasource}    check credentials and reachability"],
         docs=DOCS,
     )
 

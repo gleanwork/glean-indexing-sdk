@@ -26,7 +26,7 @@ An incremental crawl processes only changes since a durable checkpoint, includin
 - Do not generate code until API exploration is complete and the user confirms the connector plan.
 - Prefer official source-system docs over prior connector implementations.
 - Persist repeated context in the connector folder's `.glean/` directory, not only in the chat. Connector artifacts must live under `<connector-folder>/.glean/`, not a repo-level `.glean/`.
-- Do not write connector implementation code until `connector_builder.py validate` passes.
+- Do not write connector implementation code until `glean-idx validate` passes.
 - Redact secrets from any API call logs.
 - The AI-building workflow generates full-crawl connectors only. Do not implement incremental crawl in generated code; record it only as developer follow-up after full crawl works end-to-end.
 - Do not add unit tests during initial connector generation. First get a full-crawl connector compiling and passing an end-to-end smoke run; add focused regression tests only after the E2E path is confirmed.
@@ -62,8 +62,18 @@ An incremental crawl processes only changes since a durable checkpoint, includin
 7. Revalidate before implementation:
 
 ```bash
-python scripts/connector_builder/connector_builder.py validate <connector-folder>
+glean-idx validate <connector-folder>
 ```
+
+If the SDK is not installed in the current environment, run it without installing:
+
+```bash
+uvx --from glean-indexing-sdk glean-idx validate <connector-folder>
+```
+
+The command exits `0` when the artifacts are complete and confirmed, and `5` when
+they are not, listing every problem it found. Use `--output json` to read the
+findings as a list.
 
 8. Implement the data client and connector using the `connector-auth`, `connector-pull`, `connector-push`, `connector-observability`, and `connector-deployment` skills as applicable. Post-validation code generation is handled by the agent following the skills, not by the local validator.
 9. Evaluate with compile checks and an end-to-end full-crawl smoke run. Add unit tests only after that path works and the behavior is stable enough for regression coverage.

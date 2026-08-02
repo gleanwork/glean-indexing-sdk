@@ -27,6 +27,7 @@ COMMANDS: dict[str, str] = {
     "deploy": "glean.indexing.cli.commands.deploy:deploy",
     "doctor": "glean.indexing.cli.commands.doctor:doctor",
     "document": "glean.indexing.cli.commands.document:document",
+    "validate": "glean.indexing.cli.commands.validate:validate",
 }
 
 # Click rewraps help text paragraph by paragraph, which folds the example

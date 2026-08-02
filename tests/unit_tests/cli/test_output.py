@@ -65,3 +65,51 @@ def test_error_text_names_the_code_and_the_fix():
 
 def test_precondition_failures_share_one_exit_code():
     assert MissingCredentialsError("nope").exit_code == EXIT_PRECONDITION
+
+
+# --- which stream a failure goes to --------------------------------------
+
+
+def _failing_cli():
+    """A command that fails the way every precondition failure does."""
+    import click
+
+    from glean.indexing.cli.errors import MissingCredentialsError
+    from glean.indexing.cli.main import global_options
+    from glean.indexing.cli.output import set_output_mode
+
+    @click.command()
+    @global_options
+    def command(output, assume_yes):
+        set_output_mode(OutputMode(output) if output else OutputMode.TEXT)
+        raise MissingCredentialsError("no credentials", hint=["export GLEAN_SERVER_URL=..."])
+
+    return command
+
+
+def test_a_json_failure_goes_to_stdout():
+    """JSON mode is machine mode: one stream carries the envelope, always.
+
+    A caller should never have to guess which stream to parse, and `run`'s
+    connector logs share stderr.
+    """
+    from click.testing import CliRunner
+
+    result = CliRunner().invoke(_failing_cli(), ["--output", "json"])
+
+    assert result.exit_code != 0
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "missing_credentials"
+    assert result.stderr == ""
+
+
+def test_a_text_failure_goes_to_stderr():
+    """Human diagnostics belong where a person's tooling expects them."""
+    from click.testing import CliRunner
+
+    result = CliRunner().invoke(_failing_cli(), ["--output", "text"])
+
+    assert result.exit_code != 0
+    assert "no credentials" in result.stderr
+    assert result.stdout == ""

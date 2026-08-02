@@ -1,4 +1,8 @@
-"""glean-deploy CLI entry point."""
+"""`glean-idx deploy` — generate and operate customer-hosted connector deployments.
+
+The generation and cloud logic lives in `glean.indexing.deployment`; this module
+is only the command surface.
+"""
 
 from __future__ import annotations
 
@@ -8,8 +12,20 @@ from pathlib import Path
 
 import click
 
+from glean.indexing.cli.main import context, global_options
 from glean.indexing.deployment.config import DeploymentConfig
 from glean.indexing.deployment.generator import generate_artifacts, list_generated_files
+
+
+def _confirm(ctx: click.Context, prompt: str) -> None:
+    """Require confirmation for a mutating action, unless --yes was passed.
+
+    Uniform across every destructive command: `click.confirmation_option` gives
+    no escape hatch, which hangs an unattended caller with no way to proceed.
+    """
+    if context(ctx).assume_yes:
+        return
+    click.confirm(prompt, abort=True)
 
 
 def _load_config(config_path: Path) -> DeploymentConfig:
@@ -17,7 +33,7 @@ def _load_config(config_path: Path) -> DeploymentConfig:
     if not config_path.exists():
         raise click.ClickException(
             f"Deployment config not found at {config_path}. "
-            "Run `glean-deploy init --cloud gcp|aws` first."
+            "Run `glean-idx deploy init --cloud gcp|aws` first."
         )
     try:
         return DeploymentConfig.from_yaml(config_path)
@@ -26,17 +42,16 @@ def _load_config(config_path: Path) -> DeploymentConfig:
 
 
 @click.group()
-@click.version_option(package_name="glean-indexing-sdk")
-def cli() -> None:
-    """glean-deploy: deploy Glean custom connectors to your own cloud.
+def deploy() -> None:
+    """Deploy connectors to your own cloud.
 
     \b
     Quickstart:
-        glean-deploy init --cloud gcp
+        glean-idx deploy init --cloud gcp
         # Edit glean_deployment.yaml and .env
-        glean-deploy build --push
-        glean-deploy secrets upload
-        glean-deploy apply
+        glean-idx deploy build --push
+        glean-idx deploy secrets upload
+        glean-idx deploy apply
 
     \b
     References:
@@ -47,7 +62,7 @@ def cli() -> None:
     """
 
 
-@cli.command()
+@deploy.command()
 @click.option("--cloud", required=True, type=click.Choice(["gcp", "aws"], case_sensitive=False))
 @click.option(
     "--connector-name", default=None, help="Connector name. Defaults to current directory name."
@@ -121,12 +136,12 @@ def init(
             "     AWS ECR docs:              https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html"
         )
     click.echo("  2. cp .env.example .env  # fill in connector credentials")
-    click.echo("  3. glean-deploy build --push")
-    click.echo("  4. glean-deploy secrets upload")
-    click.echo("  5. glean-deploy apply")
+    click.echo("  3. glean-idx deploy build --push")
+    click.echo("  4. glean-idx deploy secrets upload")
+    click.echo("  5. glean-idx deploy apply")
 
 
-@cli.command()
+@deploy.command()
 @click.option("--push", is_flag=True, help="Push image to registry after building.")
 @click.option("--tag", default="latest", show_default=True)
 @click.option(
@@ -170,7 +185,7 @@ def build(push: bool, tag: str, platform: str, config_path: str) -> None:
     click.echo(f"Done: {image}")
 
 
-@cli.group()
+@deploy.group()
 def secrets() -> None:
     """Manage connector secrets in cloud secret manager."""
 
@@ -212,10 +227,16 @@ def secrets_list(config_path: str) -> None:
     show_default=True,
     type=click.Path(dir_okay=False),
 )
-@click.confirmation_option(prompt="This will permanently delete the secret. Are you sure?")
-def secrets_delete(key: str, config_path: str) -> None:
+@global_options
+@click.pass_context
+def secrets_delete(
+    ctx: click.Context, key: str, config_path: str, output: str | None, assume_yes: bool
+) -> None:
     """Delete a connector secret KEY from GCP Secret Manager or AWS Secrets Manager."""
     from glean.indexing.deployment.secrets import get_secrets_backend
+
+    context(ctx, output=output, assume_yes=assume_yes)
+    _confirm(ctx, f"Permanently delete the secret {key!r}?")
 
     config = _load_config(Path(config_path))
     try:
@@ -223,7 +244,7 @@ def secrets_delete(key: str, config_path: str) -> None:
     except KeyError:
         raise click.ClickException(
             f"Secret '{key}' not found for connector '{config.connector_name}'. "
-            "Use `glean-deploy secrets list` to see available secrets."
+            "Use `glean-idx deploy secrets list` to see available secrets."
         )
     click.echo(f"Deleted secret '{key}' for connector '{config.connector_name}'.")
 
@@ -261,7 +282,7 @@ def secrets_upload(env_file: str, config_path: str) -> None:
     click.echo(f"\nUploaded {len(results)} secret(s).")
 
 
-@cli.command()
+@deploy.command()
 @click.option(
     "--config",
     "config_path",
@@ -272,13 +293,22 @@ def secrets_upload(env_file: str, config_path: str) -> None:
 @click.option(
     "--terraform-dir", default="terraform", show_default=True, type=click.Path(file_okay=False)
 )
-def apply(config_path: str, terraform_dir: str) -> None:
+@global_options
+@click.pass_context
+def apply(
+    ctx: click.Context,
+    config_path: str,
+    terraform_dir: str,
+    output: str | None,
+    assume_yes: bool,
+) -> None:
     """Apply generated Terraform to deploy the connector CronJob."""
+    context(ctx, output=output, assume_yes=assume_yes)
     config = _load_config(Path(config_path))
     tf_dir = Path(terraform_dir)
     if not tf_dir.exists():
         raise click.ClickException(
-            f"Terraform directory not found: {tf_dir}. Run `glean-deploy init` first."
+            f"Terraform directory not found: {tf_dir}. Run `glean-idx deploy init` first."
         )
 
     if config.cloud == "gcp":
@@ -304,6 +334,15 @@ def apply(config_path: str, terraform_dir: str) -> None:
     if subprocess.run(["terraform", "init"], cwd=tf_dir, check=False).returncode != 0:
         raise click.ClickException("terraform init failed.")
 
+    # terraform runs with -auto-approve below, so this is the only thing standing
+    # between an accidental invocation and mutated cloud infrastructure. Read the
+    # plan first: `terraform plan` in the generated directory.
+    _confirm(
+        ctx,
+        f"Apply Terraform to {config.cloud.upper()} "
+        f"cluster {config.cluster_name!r} for connector {config.connector_name!r}?",
+    )
+
     click.echo("Running terraform apply...")
     if (
         subprocess.run(
@@ -314,7 +353,7 @@ def apply(config_path: str, terraform_dir: str) -> None:
         raise click.ClickException("terraform apply failed.")
 
 
-@cli.command()
+@deploy.command()
 @click.option("--follow", "-f", is_flag=True)
 @click.option(
     "--config",
@@ -348,7 +387,7 @@ def logs(follow: bool, config_path: str) -> None:
     if not job_name:
         raise click.ClickException(
             f"No jobs found for connector '{config.k8s_name}' in namespace '{config.namespace}'. "
-            "Has the CronJob run at least once? Use `glean-deploy status` to check."
+            "Has the CronJob run at least once? Use `glean-idx deploy status` to check."
         )
 
     cmd = ["kubectl", "logs", f"job/{job_name}", "-n", config.namespace, "--tail=200"]
@@ -358,11 +397,11 @@ def logs(follow: bool, config_path: str) -> None:
     click.echo(f"Fetching logs for {job_name} in namespace {config.namespace}...")
     result = subprocess.run(cmd, check=False)
     if result.returncode != 0:
-        click.echo("\nTip: Use `glean-deploy status` to see job history.", err=True)
+        click.echo("\nTip: Use `glean-idx deploy status` to see job history.", err=True)
         sys.exit(result.returncode)
 
 
-@cli.command()
+@deploy.command()
 @click.option(
     "--config",
     "config_path",
@@ -393,7 +432,7 @@ def status(config_path: str) -> None:
     )
 
 
-@cli.command()
+@deploy.command()
 @click.option(
     "--config",
     "config_path",

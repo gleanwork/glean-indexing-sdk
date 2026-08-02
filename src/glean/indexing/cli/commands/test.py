@@ -17,26 +17,58 @@ import click
 from glean.indexing.cli.errors import CliError, ValidationFailedError
 from glean.indexing.cli.main import context, global_options
 from glean.indexing.cli.output import emit
-from glean.indexing.cli.preconditions import check_credentials, project_option, requires
+from glean.indexing.cli.preconditions import (
+    check_credentials,
+    missing_credentials,
+    project_option,
+    requires,
+)
 
 DOCS = "https://developers.glean.com/libraries/indexing-sdk/testing"
 
 CONFIG_FILE = "testing_config.yaml"
 
-PHASES = {
-    1: "mocked Glean, the connector's own data clients",
-    2: "real source, mocked Glean, recorded to a local cache",
-    3: "real source, real Glean",
+#: Phase name -> what it does and which harness method runs it. Insertion order
+#: is the progression from cheapest to most consequential, which is what lets a
+#: failure point at an earlier phase. Names match the headings in the
+#: connector-testing skill rather than inventing a second vocabulary.
+PHASES: dict[str, dict[str, str]] = {
+    "mock": {
+        "method": "run_full_mock",
+        "summary": "mocked Glean, the connector's own data clients",
+    },
+    "integration": {
+        "method": "run_integration_test",
+        "summary": "real source, mocked Glean, recorded to a local cache",
+    },
+    "live": {
+        "method": "run_end_to_end",
+        "summary": "real source, real Glean",
+    },
 }
+
+#: The cheapest phase, and the one a failure elsewhere should point back to.
+MOCK = "mock"
+
+#: The only phase that contacts Glean, and so the only one needing credentials.
+LIVE = "live"
+
+#: The only phase that records source calls to a cache.
+INTEGRATION = "integration"
+
+#: Runs every phase in order. The connector-testing workflow is a batch by
+#: nature -- it reports "phases run and skipped" -- and assembling that from
+#: three separate invocations loses which ones were even attempted.
+ALL = "all"
 
 
 @click.command()
 @click.option(
     "--phase",
-    type=click.IntRange(1, 3),
-    default=1,
+    type=click.Choice([*PHASES, ALL]),
+    default="mock",
     show_default=True,
-    help="1 mocked Glean; 2 real source, mocked Glean; 3 both real.",
+    help="How much of the real world to involve. See the description.",
 )
 @click.option(
     "--connector",
@@ -61,7 +93,7 @@ PHASES = {
 @click.option(
     "--refresh-cache",
     is_flag=True,
-    help="Phase 2: re-record fixtures instead of replaying them.",
+    help="integration: re-record fixtures instead of replaying them.",
 )
 @click.option(
     "--max-items",
@@ -75,7 +107,7 @@ PHASES = {
 @requires(project=True)
 def test(
     ctx: click.Context,
-    phase: int,
+    phase: str,
     reference: Optional[str],
     mode: Optional[str],
     config_path: Optional[Path],
@@ -87,12 +119,23 @@ def test(
 ) -> None:
     """Exercise a connector without writing a test file.
 
-    Phase 1 mocks Glean but still calls the connector's data clients, so it
-    reaches the real source unless the connector is built with a static client.
-    Phase 2 is the one that makes source calls repeatable: the first run records
-    them, later runs replay from the cache.
+    \b
+    --phase mock          nothing real. Glean is mocked, and the connector's
+                          own data clients are called as-is -- so this still
+                          reaches the source unless the connector was built
+                          with a static client.
+    --phase integration   the source is real and Glean is mocked. The first run
+                          records source calls to a local cache and later runs
+                          replay them, which is what makes results repeatable.
+    --phase live          both are real. This uploads to Glean, and a full
+                          crawl removes documents the run does not produce.
+    --phase all           every phase in order, stopping at the first failure.
+                          A phase that cannot run is skipped and reported, not
+                          treated as a failure.
 
-    Only phase 3 uploads anything, so only phase 3 needs credentials.
+    Each phase involves more of the real world than the one above it, so start
+    at mock and move down. Only live contacts Glean, so only live needs
+    credentials.
     """
     from glean.indexing.models import IndexingMode
 
@@ -101,44 +144,137 @@ def test(
     cli_ctx = context(ctx, output=output, assume_yes=assume_yes, project_dir=project_dir)
     assert cli_ctx.project_dir is not None  # guaranteed by requires(project=True)
 
-    # Phases 1 and 2 mock the push side, so demanding credentials for them would
-    # block the two cheapest checks for no reason.
-    if phase == 3:
+    plan = list(PHASES) if phase == ALL else [phase]
+    batch = phase == ALL
+
+    # Only live contacts Glean, so demanding credentials for the others would
+    # block the two cheapest checks for no reason. In a batch, a missing token
+    # skips live rather than failing everything -- the workflow reports live as
+    # skipped, and the earlier phases still carry real information.
+    if LIVE in plan and not batch:
         check_credentials()
 
     resolved_mode = IndexingMode(mode or cli_ctx.project_config.get("indexing_mode") or "full")
     connector_class = load_connector(cli_ctx.project_dir, cli_ctx.project_config, reference)
     connector = instantiate_connector(connector_class)
 
-    config = _load_config(cli_ctx.project_dir, config_path, refresh_cache, max_items)
+    # Clients are discovered first because --max-items has to name them: the
+    # harness looks each one up by attribute name.
     clients = _discover_clients(connector)
+    config = _load_config(
+        cli_ctx.project_dir, config_path, refresh_cache, max_items, sorted(clients)
+    )
 
-    if phase == 2 and not clients:
+    # Asking for a phase that cannot run is an error; running a batch steps over
+    # what does not apply.
+    if phase == INTEGRATION and not clients:
         raise ValidationFailedError(
-            "phase 2 needs at least one data client to record",
-            detail=(
-                f"No data client attributes were found on {connector_class.__name__}. "
-                "Phase 2 wraps each client to record source calls, so there is "
-                "nothing for it to do."
-            ),
-            hint=["glean-idx test --phase 1", "glean-idx test --phase 3"],
+            f"the {INTEGRATION} phase needs at least one data client to record",
+            detail=_no_clients_detail(connector_class.__name__),
+            hint=[f"glean-idx test --phase {name}" for name in (MOCK, LIVE)],
             docs=DOCS,
         )
 
-    result = _run_phase(connector, config, clients, phase, resolved_mode)
+    phases = _run_plan(connector, config, clients, plan, resolved_mode, batch=batch)
     data = {
         "connector": connector_class.__name__,
-        "phase": phase,
-        "fidelity": PHASES[phase],
         "mode": resolved_mode.value,
         "clients": sorted(clients),
-        **result,
+        "phases": phases,
     }
+
+    failures = [entry for entry in phases if entry["status"] == "failed"]
+    if failures:
+        raise ValidationFailedError(
+            f"the {failures[0]['phase']} phase failed: {failures[0]['error_type']}",
+            detail=failures[0]["detail"],
+            hint=[f"glean-idx test --phase {MOCK}    start at the cheapest phase"]
+            if failures[0]["phase"] != MOCK
+            else ["check the connector's transform output"],
+            docs=DOCS,
+            data=data,
+        )
+
     emit(data, cli_ctx.output, text=_render(data))
 
 
+def _no_clients_detail(connector_name: str) -> str:
+    return (
+        f"No data client attributes were found on {connector_name}. The "
+        f"{INTEGRATION} phase wraps each client to record source calls, so there "
+        "is nothing for it to do."
+    )
+
+
+def _skip_reason(phase: str, clients: dict[str, Any], connector_name: str) -> Optional[str]:
+    """Why a batch should step over this phase instead of stopping.
+
+    Only consulted for `--phase all`. A phase that cannot run is not the same as
+    one that ran and failed, and conflating them would mean a machine without
+    Glean credentials could never report on the phases it *can* do.
+    """
+    if phase == LIVE:
+        missing = missing_credentials()
+        if missing:
+            return "no Glean credentials: " + ", ".join(missing)
+    if phase == INTEGRATION and not clients:
+        return _no_clients_detail(connector_name)
+    return None
+
+
+def _run_plan(
+    connector: Any,
+    config: Any,
+    clients: dict[str, Any],
+    plan: list[str],
+    mode: Any,
+    *,
+    batch: bool,
+) -> list[dict[str, Any]]:
+    """Run each phase in order, stopping at the first real failure.
+
+    A later phase cannot pass when an earlier one failed, and in the case of
+    live it would upload the output that just proved wrong.
+    """
+    results: list[dict[str, Any]] = []
+    for phase in plan:
+        reason = _skip_reason(phase, clients, type(connector).__name__) if batch else None
+        if reason is not None:
+            results.append({"phase": phase, "status": "skipped", "reason": reason})
+            continue
+
+        try:
+            summary = _run_phase(connector, config, clients, phase, mode)
+        except ValidationFailedError as exc:
+            if not batch:
+                raise
+            results.append(
+                {
+                    "phase": phase,
+                    "status": "failed",
+                    "error_type": (exc.data or {}).get("error_type", type(exc).__name__),
+                    "detail": exc.detail or exc.format_message(),
+                }
+            )
+            break
+
+        results.append(
+            {
+                "phase": phase,
+                "status": "ran",
+                "fidelity": PHASES[phase]["summary"],
+                **summary,
+            }
+        )
+    return results
+
+
 def _load_config(
-    project_dir: Path, config_path: Optional[Path], refresh: bool, cap: Optional[int]
+    project_dir: Path,
+    config_path: Optional[Path],
+    refresh: bool,
+    cap: Optional[int],
+    client_names: list[str],
 ) -> Any:
     """Harness config from the given file, the project's default, or defaults."""
     from glean.indexing.testing.harness import ClientConfig, TestConfig
@@ -155,11 +291,14 @@ def _load_config(
     if refresh:
         config.refresh_cache = True
     if cap is not None:
-        # Applied to configured clients and used as the default for the rest,
-        # so --max-items means the same thing whatever the config declares.
-        for client in config.clients.values():
-            client.max_items = cap
-        config.clients.setdefault("__default__", ClientConfig(max_items=cap))
+        # Named one client at a time. The harness reads
+        # `config.clients.get(attr_name, ClientConfig())`, so a client absent
+        # from this mapping silently keeps the built-in default -- and a project
+        # without a config file has no entries at all, so a cap applied any other
+        # way would do nothing in the common case.
+        for name in {*config.clients, *client_names}:
+            config.clients.setdefault(name, ClientConfig())
+            config.clients[name].max_items = cap
     return config
 
 
@@ -191,7 +330,7 @@ def _is_async(connector: Any) -> bool:
 
 
 def _run_phase(
-    connector: Any, config: Any, clients: dict[str, Any], phase: int, mode: Any
+    connector: Any, config: Any, clients: dict[str, Any], phase: str, mode: Any
 ) -> dict[str, Any]:
     """Run one phase and summarize what it produced."""
     from glean.indexing.testing.harness import TestHarness
@@ -208,11 +347,7 @@ def _run_phase(
             docs=DOCS,
         ) from exc
 
-    method = {
-        1: "run_full_mock",
-        2: "run_integration_test",
-        3: "run_end_to_end",
-    }[phase]
+    method = PHASES[phase]["method"]
     if _is_async(connector):
         method += "_async"
 
@@ -223,11 +358,11 @@ def _run_phase(
         raise
     except Exception as exc:  # noqa: BLE001 - reported with its type and message
         raise ValidationFailedError(
-            f"phase {phase} failed: {type(exc).__name__}",
+            f"the {phase} phase failed: {type(exc).__name__}",
             detail=str(exc),
             hint=[
-                "glean-idx test --phase 1    start at the cheapest phase"
-                if phase > 1
+                f"glean-idx test --phase {MOCK}    start at the cheapest phase"
+                if phase != MOCK
                 else "check the connector's transform output",
             ],
             docs=DOCS,
@@ -237,13 +372,13 @@ def _run_phase(
     return _summarize(phase, outcome)
 
 
-def _summarize(phase: int, outcome: Any) -> dict[str, Any]:
+def _summarize(phase: str, outcome: Any) -> dict[str, Any]:
     """What the phase produced, in whichever shape it returns.
 
-    Phases 1 and 2 hand back a recording client; phase 3 hands back an indexing
-    wait result, or nothing when it did not wait.
+    The mock and integration phases hand back a recording client; live hands
+    back an indexing wait result, or nothing when it did not wait.
     """
-    if phase == 3:
+    if phase == LIVE:
         return {"indexing_result": getattr(outcome, "value", None) if outcome else None}
 
     counts = {
@@ -254,23 +389,43 @@ def _summarize(phase: int, outcome: Any) -> dict[str, Any]:
 
 
 def _render(data: dict[str, Any]) -> str:
+    """The run report: which phases ran, which were skipped, and what they produced."""
     lines = [
-        f"  {data['connector']} - phase {data['phase']} ({data['fidelity']})",
-        f"  Mode: {data['mode']}",
+        f"  {data['connector']} ({data['mode']} crawl)",
         f"  Data clients: {', '.join(data['clients']) or 'none found'}",
+        "",
     ]
-    if data["phase"] == 3:
-        lines.append(f"  Indexing: {data['indexing_result'] or 'not waited for'}")
-        return "\n".join(lines)
+    for entry in data["phases"]:
+        lines += _render_phase(entry)
 
-    posted = data["posted"]
-    if posted:
-        summary = ", ".join(f"{entity}={count}" for entity, count in sorted(posted.items()))
-        lines.append(f"  Posted: {summary}")
-    else:
+    skipped = [entry["phase"] for entry in data["phases"] if entry["status"] == "skipped"]
+    if skipped:
+        # Stated plainly: a batch that quietly stepped over live would read as a
+        # clean end-to-end pass when Glean was never contacted.
         lines += [
             "",
-            "  Nothing was posted. A connector that produced no entities will",
-            "  index nothing, so this is a failure to investigate, not a pass.",
+            f"  Skipped: {', '.join(skipped)}.",
+            "  Phases that did not run prove nothing about the ones they cover.",
         ]
     return "\n".join(lines)
+
+
+def _render_phase(entry: dict[str, Any]) -> list[str]:
+    phase = entry["phase"]
+    if entry["status"] == "skipped":
+        return [f"  - {phase}: skipped ({entry['reason']})"]
+    if entry["status"] == "failed":
+        return [f"  - {phase}: FAILED ({entry['error_type']})"]
+
+    if phase == LIVE:
+        return [f"  - {phase}: indexing {entry['indexing_result'] or 'not waited for'}"]
+
+    posted = entry.get("posted") or {}
+    if posted:
+        counts = ", ".join(f"{name}={count}" for name, count in sorted(posted.items()))
+        return [f"  - {phase}: posted {counts}"]
+    return [
+        f"  - {phase}: posted nothing",
+        "      A connector that produced no entities will index nothing, so this",
+        "      is a failure to investigate, not a pass.",
+    ]

@@ -77,12 +77,26 @@ class CliError(click.ClickException):
         return payload
 
     def show(self, file: Any = None) -> None:
-        """Render to stderr, as JSON when the run is in JSON mode."""
+        """Render the failure, to stdout in JSON mode and stderr otherwise.
+
+        JSON mode is machine mode, and there stdout is the result channel: an
+        `ok: false` envelope is still the result. Keeping it there means a caller
+        parses one stream and never has to guess which. It matters most for
+        `run`, whose connector logs share stderr — an envelope written there
+        would arrive interleaved with them.
+
+        Text mode keeps errors on stderr, where a person's tooling expects
+        diagnostics to be.
+        """
         # Imported here: output imports errors, so a module-level import would
         # be circular.
-        from glean.indexing.cli.output import current_output_mode, render_error
+        from glean.indexing.cli.output import OutputMode, current_output_mode, render_error
 
-        click.echo(render_error(self, current_output_mode()), file=file or sys.stderr)
+        mode = current_output_mode()
+        stream = file
+        if stream is None:
+            stream = sys.stdout if mode is OutputMode.JSON else sys.stderr
+        click.echo(render_error(self, mode), file=stream)
 
 
 class MissingCredentialsError(CliError):
@@ -118,3 +132,15 @@ class ValidationFailedError(CliError):
 
     code = "validation_failed"
     exit_code = EXIT_VALIDATION
+
+
+class ConnectorRunError(CliError):
+    """The connector was loaded and started, and then raised.
+
+    Distinct from `RemoteError`: the failure may be in the connector, the source
+    system, or Glean, and the CLI cannot tell which. The traceback travels in
+    `detail` because that is the only thing that makes a failed run debuggable.
+    """
+
+    code = "connector_run_failed"
+    exit_code = EXIT_INTERNAL

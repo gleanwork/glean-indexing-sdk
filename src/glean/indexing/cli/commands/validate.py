@@ -1,13 +1,29 @@
-"""Validation gate for AI-built connector planning artifacts."""
+"""`glean-idx validate` — the gate between planning a connector and building one.
+
+The artifacts under a connector's `.glean/` directory are what an agent and a
+person agreed the connector would do. This checks they are complete, filled in,
+and confirmed before any implementation code gets written.
+
+Shipped as part of the CLI rather than as a repository script because the agent
+skills that call it are distributed as a plugin: the machine running them has the
+SDK installed, not a checkout of this repository.
+"""
 
 from __future__ import annotations
 
-import argparse
 import json
-import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
+import click
+
+from glean.indexing.cli.errors import ValidationFailedError
+from glean.indexing.cli.main import context, global_options
+from glean.indexing.cli.output import emit
+
+DOCS = "https://developers.glean.com/libraries/indexing-sdk/connector-builder"
+
+ARTIFACT_DIR = ".glean"
 REQUIRED_MARKDOWN_ARTIFACTS = ("connector_plan.md", "source_investigation.md", "api_inventory.md")
 REQUIRED_JSON_ARTIFACTS = ("source_docs.json", "api_endpoints.json")
 TEST_AUTH_LABELS = (
@@ -20,39 +36,70 @@ PROD_AUTH_LABELS = ("production auth", "prod auth", "production source auth")
 SDK_USAGE_LABELS = ("sdk usage", "sdk feature usage", "sdk mode", "sdk features")
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Run the connector-builder validator."""
-    parser = argparse.ArgumentParser(description="Validate AI-built connector planning artifacts.")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+@click.command()
+@click.argument(
+    "connector_dir",
+    default=".",
+    type=click.Path(file_okay=False, path_type=Path),
+    metavar="[CONNECTOR_DIR]",
+)
+@global_options
+@click.pass_context
+def validate(
+    ctx: click.Context,
+    connector_dir: Path,
+    output: Optional[str],
+    assume_yes: bool,
+) -> None:
+    """Check a connector's planning artifacts before implementation.
 
-    validate_parser = subparsers.add_parser(
-        "validate", help="Validate a connector folder's .glean artifacts"
-    )
-    validate_parser.add_argument(
-        "connector_dir",
-        nargs="?",
-        default=".",
-        help="Connector folder containing a .glean directory",
-    )
-    validate_parser.set_defaults(func=validate_workspace)
+    Needs nothing but the directory, so it runs anywhere:
 
-    args = parser.parse_args(argv)
-    try:
-        args.func(args)
-    except ConnectorBuilderError as error:
-        print(f"error: {error}", file=sys.stderr)
-        return 1
-    return 0
-
-
-def validate_workspace(args: argparse.Namespace) -> None:
-    """Validate that connector planning artifacts are ready for implementation."""
-    connector_dir = Path(args.connector_dir)
-    artifact_dir = connector_dir / ".glean"
-    errors: list[str] = []
+        uvx --from glean-indexing-sdk glean-idx validate ./my-connector
+    """
+    cli_ctx = context(ctx, output=output, assume_yes=assume_yes)
+    artifact_dir = connector_dir / ARTIFACT_DIR
 
     if not artifact_dir.is_dir():
-        raise ConnectorBuilderError(f"missing connector artifact directory {artifact_dir}")
+        raise ValidationFailedError(
+            f"no connector artifacts at {artifact_dir}",
+            detail=("Planning artifacts live in the connector folder, not at the repository root."),
+            hint=[f"mkdir -p {artifact_dir}", "then run the connector-builder skill"],
+            docs=DOCS,
+            data={"connector_dir": str(connector_dir), "artifact_dir": str(artifact_dir)},
+        )
+
+    errors = collect_errors(artifact_dir)
+    data = {
+        "connector_dir": str(connector_dir),
+        "artifact_dir": str(artifact_dir),
+        "valid": not errors,
+        "errors": errors,
+    }
+
+    # Reported as a failure, not a report of one: an agent branching on `ok`
+    # has to be stopped by an incomplete plan, which is the whole point of a
+    # gate. The findings travel in `data` so nothing measured is lost.
+    if errors:
+        raise ValidationFailedError(
+            f"{len(errors)} problem{'' if len(errors) == 1 else 's'} in {artifact_dir}",
+            detail="\n".join(f"  - {error}" for error in errors),
+            hint=["fix the artifacts above, then re-run this command"],
+            docs=DOCS,
+            data=data,
+        )
+
+    emit(data, cli_ctx.output, text=f"  {artifact_dir} is complete and confirmed.")
+
+
+def collect_errors(artifact_dir: Path) -> list[str]:
+    """Every problem with a connector's planning artifacts, in reading order.
+
+    Returns findings rather than raising on the first one: a half-finished plan
+    usually has several gaps, and fixing them one round-trip at a time is the
+    slowest way to get through this gate.
+    """
+    errors: list[str] = []
 
     for filename in (*REQUIRED_JSON_ARTIFACTS, *REQUIRED_MARKDOWN_ARTIFACTS):
         path = artifact_dir / filename
@@ -109,10 +156,7 @@ def validate_workspace(args: argparse.Namespace) -> None:
     if not has_filled_label(plan_text, SDK_USAGE_LABELS):
         errors.append("connector plan must specify the confirmed SDK usage mode")
 
-    if errors:
-        raise ConnectorBuilderError("\n".join(errors))
-
-    print("Connector workspace validation passed")
+    return errors
 
 
 def read_json_artifact(path: Path, errors: list[str]) -> dict[str, Any] | None:
@@ -178,11 +222,3 @@ def is_substantive_value(value: str) -> bool:
         "none",
         "<redacted>",
     }
-
-
-class ConnectorBuilderError(Exception):
-    """Raised for expected connector-builder validation failures."""
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

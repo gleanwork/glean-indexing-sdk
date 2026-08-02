@@ -1,1 +1,0 @@
-"""Connector-builder local tools."""

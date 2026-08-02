@@ -33,13 +33,18 @@ document_argument = click.option(
 datasource_option = click.option("--datasource", required=True, help="Datasource name.")
 
 
-def _remote(action: str, exc: Exception, **hint_context: str) -> RemoteError:
-    """Wrap an API failure with the datasource it was attempted against."""
-    hints = [f"{key}: {value}" for key, value in hint_context.items()]
+def _remote(action: str, exc: Exception, **subject: str) -> RemoteError:
+    """Wrap an API failure with the subject it was attempted against.
+
+    The subject is context rather than a remedy, so it belongs in the message;
+    hints stay limited to commands the caller can actually run.
+    """
+    described = ", ".join(f"{key} {value!r}" for key, value in subject.items())
+    datasource = subject.get("datasource", "<name>")
     return RemoteError(
-        f"could not {action}",
+        f"could not {action}" + (f" for {described}" if described else ""),
         detail=str(exc),
-        hint=[*hints, "glean-idx doctor --datasource <name>    check credentials"],
+        hint=[f"glean-idx doctor --datasource {datasource}    check credentials and reachability"],
         docs=DOCS,
     )
 

@@ -25,6 +25,7 @@ CONTEXT_SETTINGS = {
 COMMANDS: dict[str, str] = {
     "deploy": "glean.indexing.cli.commands.deploy:deploy",
     "doctor": "glean.indexing.cli.commands.doctor:doctor",
+    "document": "glean.indexing.cli.commands.document:document",
 }
 
 EPILOG = """\

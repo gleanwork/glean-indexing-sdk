@@ -23,7 +23,7 @@ from glean.indexing.testing.harness import (
     assert_negative_identities_absent,
     extract_permission_refs,
 )
-from glean.indexing.testing.indexing_status import (
+from glean.indexing.push.status import (
     IndexingStatusSnapshot,
     IndexingWaitResult,
     check_documents_status,

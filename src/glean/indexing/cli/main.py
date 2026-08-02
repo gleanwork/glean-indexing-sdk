@@ -23,11 +23,14 @@ CONTEXT_SETTINGS = {
 
 #: Subcommand name -> "module:attribute", imported on first use.
 COMMANDS: dict[str, str] = {
+    "completion": "glean.indexing.cli.commands.completion:completion",
     "datasource": "glean.indexing.cli.commands.datasource:datasource",
     "deploy": "glean.indexing.cli.commands.deploy:deploy",
     "doctor": "glean.indexing.cli.commands.doctor:doctor",
     "document": "glean.indexing.cli.commands.document:document",
     "run": "glean.indexing.cli.commands.run:run",
+    "schema": "glean.indexing.cli.commands.schema:schema",
+    "test": "glean.indexing.cli.commands.test:test",
     "validate": "glean.indexing.cli.commands.validate:validate",
 }
 

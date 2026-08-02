@@ -215,3 +215,46 @@ def _environment_note() -> str:
     if isolated_run():
         note += "\n\nThis looks like an isolated run (uvx), which cannot see your project."
     return note
+
+
+def instantiate_connector(connector_class: Any) -> Any:
+    """Construct the connector the way the deployed entrypoint does.
+
+    The generated Kubernetes entrypoint calls the class with no arguments, so a
+    connector that cannot be built that way is already undeployable. Failing here
+    with that explanation is more useful than a bare `TypeError` about a missing
+    positional argument.
+    """
+    if not callable(connector_class):
+        raise ConnectorNotImportableError(
+            f"{connector_class!r} is not a class",
+            hint=["glean-idx run --connector connector:MyConnector"],
+            docs=DOCS,
+        )
+    try:
+        connector = connector_class()
+    except TypeError as exc:
+        raise ConnectorNotImportableError(
+            f"{connector_class.__name__} cannot be constructed without arguments",
+            detail=(
+                f"{exc}\n\n"
+                "A connector supplies its own name and data client from its "
+                "constructor, so that it can be started the same way here and in "
+                "the deployed CronJob:\n\n"
+                "    def __init__(self) -> None:\n"
+                '        super().__init__("my-datasource", MyDataClient())'
+            ),
+            docs=DOCS,
+        ) from exc
+
+    if not callable(getattr(connector, "index_data", None)):
+        raise ConnectorNotImportableError(
+            f"{connector_class.__name__} has no index_data method",
+            detail=(
+                "Connectors extend one of BaseDatasourceConnector, "
+                "BaseStreamingDatasourceConnector, "
+                "BaseAsyncStreamingDatasourceConnector, or BasePeopleConnector."
+            ),
+            docs=DOCS,
+        )
+    return connector

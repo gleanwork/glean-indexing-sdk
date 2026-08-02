@@ -17,11 +17,11 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import click
 
-from glean.indexing.cli.errors import ConnectorNotImportableError, ConnectorRunError
+from glean.indexing.cli.errors import ConnectorRunError
 from glean.indexing.cli.main import context, global_options
 from glean.indexing.cli.output import OutputMode, emit
 from glean.indexing.cli.preconditions import project_option, requires
@@ -112,14 +112,14 @@ def run(
     from glean.indexing.models import ConnectorOptions, IndexingMode
     from glean.indexing.observability import setup_connector_logging
 
-    from glean.indexing.cli.project import load_connector
+    from glean.indexing.cli.project import instantiate_connector, load_connector
 
     cli_ctx = context(ctx, output=output, assume_yes=assume_yes, project_dir=project_dir)
     assert cli_ctx.project_dir is not None  # guaranteed by requires(project=True)
 
     resolved_mode = IndexingMode(mode or cli_ctx.project_config.get("indexing_mode") or "full")
     connector_class = load_connector(cli_ctx.project_dir, cli_ctx.project_config, reference)
-    connector = _instantiate(connector_class)
+    connector = instantiate_connector(connector_class)
 
     options = ConnectorOptions(
         force_restart=force_restart,
@@ -178,46 +178,3 @@ def run(
 
 def _elapsed(started: float) -> str:
     return f"{time.monotonic() - started:.1f}s"
-
-
-def _instantiate(connector_class: Any) -> Any:
-    """Construct the connector the way the deployed entrypoint does.
-
-    The generated Kubernetes entrypoint calls the class with no arguments, so a
-    connector that cannot be built that way is already undeployable. Failing here
-    with that explanation is more useful than a bare `TypeError` about a missing
-    positional argument.
-    """
-    if not callable(connector_class):
-        raise ConnectorNotImportableError(
-            f"{connector_class!r} is not a class",
-            hint=["glean-idx run --connector connector:MyConnector"],
-            docs=DOCS,
-        )
-    try:
-        connector = connector_class()
-    except TypeError as exc:
-        raise ConnectorNotImportableError(
-            f"{connector_class.__name__} cannot be constructed without arguments",
-            detail=(
-                f"{exc}\n\n"
-                "A connector supplies its own name and data client from its "
-                "constructor, so that it can be started the same way here and in "
-                "the deployed CronJob:\n\n"
-                "    def __init__(self) -> None:\n"
-                '        super().__init__("my-datasource", MyDataClient())'
-            ),
-            docs=DOCS,
-        ) from exc
-
-    if not callable(getattr(connector, "index_data", None)):
-        raise ConnectorNotImportableError(
-            f"{connector_class.__name__} has no index_data method",
-            detail=(
-                "Connectors extend one of BaseDatasourceConnector, "
-                "BaseStreamingDatasourceConnector, "
-                "BaseAsyncStreamingDatasourceConnector, or BasePeopleConnector."
-            ),
-            docs=DOCS,
-        )
-    return connector

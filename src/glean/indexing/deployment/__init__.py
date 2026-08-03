@@ -1,6 +1,6 @@
 """Customer self-deployment toolkit for Glean custom connectors.
 
-Provides the ``glean-deploy`` CLI and supporting utilities for generating
+Provides the ``glean-idx deploy`` CLI and supporting utilities for generating
 cloud-specific deployment artifacts (Dockerfile, Terraform, run.py) and
 managing connector secrets in GCP or AWS.
 """

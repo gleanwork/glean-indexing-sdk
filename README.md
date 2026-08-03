@@ -166,9 +166,52 @@ result.assert_documents_posted(count=1, datasource="company_wiki")
 | [Permissions](https://developers.glean.com/libraries/indexing-sdk/permissions) | Per-document ACLs and datasource identities so results respect who can see what. |
 | [Testing](https://developers.glean.com/libraries/indexing-sdk/testing/overview) | Three phases: fully mocked, real-source-with-record/replay, and live end-to-end. |
 | [Observability](https://developers.glean.com/libraries/indexing-sdk/observability) | Structured logging and metrics, with optional CloudWatch and Google Cloud plugins. |
-| [Status & debugging](https://developers.glean.com/libraries/indexing-sdk/status-and-debugging) | `StatusClient` and the `glean-index-status` CLI to answer "why isn't my document in search?" |
-| [Deployment](https://developers.glean.com/libraries/indexing-sdk/deployment/overview) | `glean-deploy` generates Docker and Terraform for AWS or GCP. |
+| [Status & debugging](https://developers.glean.com/libraries/indexing-sdk/status-and-debugging) | `StatusClient` and `glean-idx document status` to answer "why isn't my document in search?" |
+| [Deployment](https://developers.glean.com/libraries/indexing-sdk/deployment/overview) | `glean-idx deploy` generates Docker and Terraform for AWS or GCP. |
 | [Connector Builder](https://developers.glean.com/libraries/indexing-sdk) | An agent plugin that builds a connector from a description of your source. |
+
+## The CLI
+
+One command, `glean-idx`, covers the whole loop.
+
+```bash
+glean-idx doctor                    # are my credentials right?
+glean-idx validate ./my-connector   # is the plan complete, before writing code?
+glean-idx test --phase all          # mocked, then real source, then live
+glean-idx run                       # crawl for real
+glean-idx datasource status --datasource my-source
+glean-idx document status --datasource my-source --document Article doc-1
+glean-idx deploy init --cloud gcp   # Docker and Terraform for a CronJob
+```
+
+Commands split into two kinds, and `glean-idx --help` says which is which.
+
+Most need only `GLEAN_SERVER_URL` and `GLEAN_INDEXING_API_TOKEN`, so they run
+anywhere, including with no install at all:
+
+```bash
+uvx --from glean-indexing-sdk glean-idx doctor
+```
+
+`run`, `test`, and `datasource configure` import your connector, so they run
+inside the connector project with the SDK installed alongside your code:
+
+```bash
+uv run glean-idx run
+```
+
+Every command takes `--output json` for a stable envelope, `--yes` to skip
+confirmations unattended, and returns a documented exit code — `3` for a
+missing precondition, `4` for a Glean error, `5` for a validation failure. In
+JSON mode the envelope goes to stdout whether it succeeded or not, so there is
+one stream to read:
+
+```bash
+glean-idx datasource status --datasource my-source --output json | jq .data.documents
+```
+
+`glean-idx schema document` prints the JSON Schema your `transform()` has to
+produce, and `glean-idx completion zsh` sets up tab completion.
 
 ## Indexing modes
 

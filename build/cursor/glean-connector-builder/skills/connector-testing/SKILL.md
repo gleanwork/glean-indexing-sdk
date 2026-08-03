@@ -29,14 +29,31 @@ Use these SDK files and their public exports:
 - `src/glean/indexing/testing/harness/cache/`: source recording and replay
 - `src/glean/indexing/testing/harness/permissions.py`: permission-payload assertions
 - `src/glean/indexing/testing/validation.py`: deterministic connector-output validation
-- `src/glean/indexing/testing/indexing_status.py`: shared one-shot and polling status checks
-- `src/glean/indexing/testing/status_cli.py`: `glean-index-status` command
+- `src/glean/indexing/push/status.py`: shared one-shot and polling status checks
 
 ## Connector Validation Phases
+
+Each phase is available from the CLI as well as from Python. Use the CLI when you
+just need the phase run and reported; use the harness directly when you need to
+assert on the returned client.
+
+```bash
+glean-idx test --phase mock          # or integration, live
+glean-idx test --phase all           # every phase in order
+```
+
+`--phase all` stops at the first failure and skips any phase that cannot run,
+reporting which. `--max-items N` caps what each data client yields.
 
 ### 1. Full mock
 
 Use static test data representative of every connector output type. Run:
+
+```bash
+glean-idx test --phase mock
+```
+
+or, to assert on the result:
 
 ```python
 harness.run_full_mock()
@@ -48,9 +65,18 @@ This phase must not call the source or Glean. Inspect the returned `MockGleanCli
 
 Register the connector's real source clients in `TestHarness.clients`, keep Glean mocked, and run:
 
+```bash
+glean-idx test --phase integration   # add --refresh-cache to re-record
+```
+
+or, to assert on the result:
+
 ```python
 harness.run_integration_test()
 ```
+
+The CLI discovers the connector's data clients by type, so `TestHarness.clients`
+does not have to be spelled out when running it that way.
 
 This phase fetches a bounded source sample on a cache miss and records it locally; later runs replay the cache. Verify source parsing, transformation, document counts, and permission payloads without calling Glean.
 
@@ -59,6 +85,12 @@ Use `run_integration_test_async()` for async streaming connectors.
 ### 3. Live end-to-end
 
 Run only when source credentials and `GLEAN_INDEXING_API_TOKEN` plus `GLEAN_SERVER_URL` or `GLEAN_INSTANCE` are available:
+
+```bash
+glean-idx test --phase live
+```
+
+or, to assert on the result:
 
 ```python
 harness.run_end_to_end()
@@ -72,11 +104,13 @@ After upload, the harness waits for normal indexing, requests `processalldocumen
 
 Then determine the next step from the confirmed connector plan and ask whether they want to proceed. Do not treat pending asynchronous indexing as connector failure or generate connector-specific processing code.
 
-If live credentials are unavailable, explicitly report that Phase 3 was skipped. Full-mock and integration results do not prove that Glean accepted or indexed the documents.
+If live credentials are unavailable, explicitly report that the live phase was skipped. Full-mock and integration results do not prove that Glean accepted or indexed the documents.
 
 ## Document Indexing Status
 
-For checking document status during testing, use `glean-index-status --datasource <datasource> --document <object-type> <document-id> --poll`; omit `--poll` for an ad-hoc single check. Repeat `--document <object-type> <document-id>` to check multiple documents.
+For checking document status during testing, use `glean-idx document status --datasource <datasource> --document <object-type> <document-id> --poll`; omit `--poll` for an ad-hoc single check. Repeat `--document <object-type> <document-id>` to check multiple documents.
+
+When a document uploaded but never became searchable, `glean-idx document events --datasource <datasource> --object-type <type> --id <id>` shows its lifecycle, and `glean-idx datasource status --datasource <datasource>` compares uploaded against indexed counts.
 
 ## Run Report
 

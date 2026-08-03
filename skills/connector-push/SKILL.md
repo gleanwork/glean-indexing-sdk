@@ -56,6 +56,25 @@ Use these debug helpers only through `PushUploader`:
 
 Do not use any other Glean-side endpoints in generated connector code.
 
+## Checking Uploads From The CLI
+
+The surface above is what generated connector code may call. To *inspect* what an
+upload did, use `glean-idx` rather than writing a throwaway script; each command
+wraps one of the methods listed above.
+
+| Command | Answers |
+|---|---|
+| `glean-idx datasource status --datasource <name>` | How many documents are uploaded, and how many actually indexed. |
+| `glean-idx document status --datasource <name> --document <type> <id>` | Did this document finish indexing. Add `--poll` to wait. |
+| `glean-idx document access --datasource <name> --object-type <type> --id <id> --user <email>` | Can this user see it. An upload with a correct-looking ACL is still wrong if the identity graph is incomplete. |
+| `glean-idx document events --datasource <name> --object-type <type> --id <id>` | Where the document went, when it uploaded but never became searchable. |
+| `glean-idx datasource process --datasource <name>` | Requests processing now, instead of waiting for the next scheduled run. |
+| `glean-idx datasource configure` | Registers the connector's own `configuration`, so the datasource cannot drift from what the connector uploads to. |
+
+These need only `GLEAN_SERVER_URL` and `GLEAN_INDEXING_API_TOKEN`, except
+`datasource configure`, which imports the connector and so runs inside the
+project. Add `--output json` when the result needs to be parsed.
+
 ## Planning Guidance
 
 In `<connector-folder>/.glean/connector_plan.md`, include:

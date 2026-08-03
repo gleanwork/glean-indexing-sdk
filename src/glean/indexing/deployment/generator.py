@@ -1,4 +1,4 @@
-"""Deployment artifact generator for glean-deploy."""
+"""Deployment artifact generator for glean-idx deploy."""
 
 from __future__ import annotations
 

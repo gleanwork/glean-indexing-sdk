@@ -1,4 +1,4 @@
-"""Cloud secret manager backends for glean-deploy.
+"""Cloud secret manager backends for glean-idx deploy.
 
 Each cloud platform has a dedicated backend class (GCPSecretsBackend,
 AWSSecretsBackend) sharing a common SecretsBackend interface. Use

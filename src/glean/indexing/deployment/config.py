@@ -1,4 +1,4 @@
-"""Deployment configuration model for glean-deploy."""
+"""Deployment configuration model for glean-idx deploy."""
 
 from __future__ import annotations
 

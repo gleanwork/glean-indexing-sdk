@@ -88,7 +88,7 @@ findings as a list.
 - `<connector-folder>/.glean/api_endpoints.json`: structured endpoint list with `name`, `method`, `path`, and `purpose`.
 - `<connector-folder>/.glean/api_calls_log.md`: redacted read-only probe log when live API calls are used.
 - `<connector-folder>/.glean/connector_plan.md` must include observability choices: provider, lifecycle logs, metrics, and evaluation status/debug checks.
-- `<connector-folder>/.glean/connector_plan.md` must include deployment scope: out of scope, customer-hosted GCP/AWS via `glean-deploy`, or follow-up.
+- `<connector-folder>/.glean/connector_plan.md` must include deployment scope: out of scope, customer-hosted GCP/AWS via `glean-idx deploy`, or follow-up.
 
 ## Supporting Skills
 
@@ -97,7 +97,7 @@ findings as a list.
 - `connector-pull`: source-side full-crawl fetching from confirmed endpoints.
 - `connector-push`: Glean-side upload, status, and debug method choices.
 - `connector-observability`: logging, metrics, upload visibility, and evaluation checks.
-- `connector-deployment`: customer-hosted deployment artifacts and `glean-deploy` operations.
+- `connector-deployment`: customer-hosted deployment artifacts and `glean-idx deploy` operations.
 - `connector-testing`: TestHarness validation with full mock, integration/cache, and confirmed E2E modes.
 
 ## Evaluation

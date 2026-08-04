@@ -62,7 +62,8 @@ resource "aws_iam_role" "connector" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "${data.aws_iam_openid_connect_provider.eks.url}:sub" = "system:serviceaccount:${var.namespace}:{{ config.k8s_name }}-ksa"
+          "${trimprefix(data.aws_iam_openid_connect_provider.eks.url, "https://")}:sub" = "system:serviceaccount:${var.namespace}:{{ config.k8s_name }}-ksa"
+          "${trimprefix(data.aws_iam_openid_connect_provider.eks.url, "https://")}:aud" = "sts.amazonaws.com"
         }
       }
     }]

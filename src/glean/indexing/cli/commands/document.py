@@ -79,7 +79,6 @@ def document_status(
     document. `--poll` waits for the transition rather than sampling once.
     """
     from glean.api_client.models import DebugDocumentRequest
-
     from glean.indexing.push.status import check_documents_status, poll_documents_status
 
     cli_ctx = context(ctx, output=output, assume_yes=assume_yes)

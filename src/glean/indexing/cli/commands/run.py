@@ -109,10 +109,9 @@ def run(
     Glean holds that this run does not produce are treated as stale and removed.
     Point `--mode incremental` at a connector that supports it to avoid that.
     """
+    from glean.indexing.cli.project import instantiate_connector, load_connector
     from glean.indexing.models import ConnectorOptions, IndexingMode
     from glean.indexing.observability import setup_connector_logging
-
-    from glean.indexing.cli.project import instantiate_connector, load_connector
 
     cli_ctx = context(ctx, output=output, assume_yes=assume_yes, project_dir=project_dir)
     assert cli_ctx.project_dir is not None  # guaranteed by requires(project=True)

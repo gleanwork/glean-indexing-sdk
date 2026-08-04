@@ -13,7 +13,7 @@ from typing import Optional
 import click
 from click.shell_completion import get_completion_class
 
-from glean.indexing.cli.errors import CliError, EXIT_USAGE
+from glean.indexing.cli.errors import EXIT_USAGE, CliError
 from glean.indexing.cli.main import context, global_options
 
 DOCS = "https://developers.glean.com/libraries/indexing-sdk/cli"

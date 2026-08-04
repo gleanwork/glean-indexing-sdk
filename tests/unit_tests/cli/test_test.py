@@ -12,7 +12,8 @@ from types import SimpleNamespace
 import pytest
 from click.testing import CliRunner
 
-from glean.indexing.cli.commands.test import PHASES, test as test_command
+from glean.indexing.cli.commands.test import PHASES
+from glean.indexing.cli.commands.test import test as test_command
 from glean.indexing.cli.errors import EXIT_PRECONDITION, EXIT_VALIDATION
 from glean.indexing.cli.project import PROJECT_FILE
 

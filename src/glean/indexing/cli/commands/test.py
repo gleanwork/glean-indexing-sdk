@@ -137,9 +137,8 @@ def test(
     at mock and move down. Only live contacts Glean, so only live needs
     credentials.
     """
-    from glean.indexing.models import IndexingMode
-
     from glean.indexing.cli.project import instantiate_connector, load_connector
+    from glean.indexing.models import IndexingMode
 
     cli_ctx = context(ctx, output=output, assume_yes=assume_yes, project_dir=project_dir)
     assert cli_ctx.project_dir is not None  # guaranteed by requires(project=True)

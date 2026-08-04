@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 import click
 
-from glean.indexing.cli.errors import CliError, EXIT_USAGE
+from glean.indexing.cli.errors import EXIT_USAGE, CliError
 from glean.indexing.cli.main import context, global_options
 from glean.indexing.cli.output import emit
 

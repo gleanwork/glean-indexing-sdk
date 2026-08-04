@@ -32,6 +32,7 @@ from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
 from glean.indexing.models import ConnectorOptions, IndexingMode
+from glean.indexing.push.status import IndexingWaitResult
 from glean.indexing.testing.harness.cache.manifest import CacheManifest
 from glean.indexing.testing.harness.cache.recording_client import (
     RecordingAsyncStreamingClientWrapper,
@@ -49,7 +50,6 @@ from glean.indexing.testing.harness.indexing_wait import (
     wait_for_documents_to_index,
 )
 from glean.indexing.testing.harness.permissions import assert_negative_identities_absent
-from glean.indexing.push.status import IndexingWaitResult
 from glean.indexing.testing.mock_client import MockGleanClient
 from glean.indexing.testing.runner import run_connector, run_connector_async
 

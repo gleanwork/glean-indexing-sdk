@@ -1,9 +1,8 @@
 """Unit tests for glean-deploy CLI commands."""
 
+from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-from dataclasses import dataclass
 
 import pytest
 from click.testing import CliRunner

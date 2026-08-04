@@ -12,12 +12,12 @@ from glean.api_client.models import (
     DebugDocumentsResponseItem,
     DocumentStatusResponse,
 )
+from glean.indexing.cli.commands.document import document
+from glean.indexing.cli.errors import EXIT_PRECONDITION, EXIT_REMOTE
 from glean.indexing.push.status import (
     IndexingStatusSnapshot,
     IndexingWaitResult,
 )
-from glean.indexing.cli.errors import EXIT_PRECONDITION, EXIT_REMOTE
-from glean.indexing.cli.commands.document import document
 
 
 @pytest.fixture()

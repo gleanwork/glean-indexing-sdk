@@ -1,3 +1,25 @@
+## v1.0.0rc0 (2026-08-05)
+
+### Feat
+
+- **cli**: add test, schema, and completion commands (#132)
+- **cli**: add glean-idx run (#131)
+- **cli**: ship connector validation as glean-idx validate (#130)
+- **cli**: add the datasource command group (#127)
+- **cli**: add the document command group (#126)
+- **cli**: resolve connector projects and enforce preconditions (#124)
+- **cli**: add the glean-idx foundation and doctor command (#123)
+- add configurable upload timeout to ConnectorOptions (#19)
+
+### Fix
+
+- **deployment**: strip https:// from OIDC issuer URL in AWS IRSA trust policy (#134)
+
+### Refactor
+
+- **cli**: move deploy under glean-idx (#125)
+- remove experimental worker module (#52)
+
 ## v1.0.0b2 (2026-04-23)
 
 ### Feat

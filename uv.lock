@@ -530,7 +530,7 @@ wheels = [
 
 [[package]]
 name = "glean-indexing-sdk"
-version = "1.0.0b2"
+version = "1.0.0rc0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

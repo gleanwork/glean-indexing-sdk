@@ -7,7 +7,12 @@ from typing import Optional, Sequence
 from glean.api_client.models import EmployeeInfoDefinition
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
-from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
+from glean.indexing.models import (
+    DEFAULT_UPLOAD_MAX_WORKERS,
+    ConnectorOptions,
+    IndexingMode,
+    TSourceData,
+)
 from glean.indexing.observability.observability import ConnectorObservability
 from glean.indexing.push import PushUploader
 
@@ -101,6 +106,10 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
                 PushUploader(
                     datasource=self.name,
                     timeout_ms=options.upload_timeout_ms if options else None,
+                    observability=self._observability,
+                    upload_max_workers=options.upload_max_workers
+                    if options
+                    else DEFAULT_UPLOAD_MAX_WORKERS,
                 ).bulk_index_employees(
                     employees=employees,
                     batch_size=self.batch_size,

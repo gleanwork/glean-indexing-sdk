@@ -187,6 +187,9 @@ resource "kubernetes_cron_job_v1" "connector" {
               # No privileged mode, no extra capabilities.
               security_context {
                 allow_privilege_escalation = false
+                # Must match the Dockerfile's numeric USER. Without an explicit
+                # UID, run_as_non_root alone fails the container at config time.
+                run_as_user                = 1000
                 run_as_non_root            = true
               }
             }

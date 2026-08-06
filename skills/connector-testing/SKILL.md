@@ -84,6 +84,15 @@ Use `run_integration_test_async()` for async streaming connectors.
 
 ### 3. Live end-to-end
 
+> **This phase writes to a real Glean instance.** It uploads documents to whatever
+> `GLEAN_SERVER_URL` points at, and a full crawl deletes documents there that the run
+> does not produce — with a bounded `max_items`, that means most of the datasource.
+> Never run it against a production instance. `glean-idx test --phase live` and
+> `--phase all` prompt for confirmation and name the target instance before running;
+> `--yes` skips the prompt and must only be used where the target is known to be a
+> test instance.
+
+
 Run only when source credentials and `GLEAN_INDEXING_API_TOKEN` plus `GLEAN_SERVER_URL` or `GLEAN_INSTANCE` are available:
 
 ```bash

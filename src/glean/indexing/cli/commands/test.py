@@ -9,6 +9,7 @@ made the middle phases go unused.
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -27,6 +28,9 @@ from glean.indexing.cli.preconditions import (
 DOCS = "https://developers.glean.com/libraries/indexing-sdk/testing"
 
 CONFIG_FILE = "testing_config.yaml"
+
+SERVER_URL_VAR = "GLEAN_SERVER_URL"
+LEGACY_INSTANCE_VAR = "GLEAN_INSTANCE"
 
 #: Phase name -> what it does and which harness method runs it. Insertion order
 #: is the progression from cheapest to most consequential, which is what lets a
@@ -153,6 +157,38 @@ def test(
     if LIVE in plan and not batch:
         check_credentials()
 
+    # The live phase writes to a real instance, and a full crawl deletes every
+    # document it does not produce. Confirm before anything runs, and name the
+    # target -- pointing at the wrong instance is the mistake that matters, and
+    # nothing else in the command reveals which one is configured.
+    live_declined: Optional[str] = None
+    if LIVE in plan and not cli_ctx.assume_yes and not missing_credentials():
+        target = os.getenv(SERVER_URL_VAR) or os.getenv(LEGACY_INSTANCE_VAR) or "<unset>"
+        # Both go to stderr: in JSON mode stdout carries exactly one envelope, and
+        # a prompt written there would make it unparseable.
+        click.echo(
+            f"The {LIVE} phase uploads to {target}, and a full crawl deletes documents "
+            f"there that this run does not produce.",
+            err=True,
+        )
+        try:
+            confirmed = click.confirm(
+                f"Run the {LIVE} phase against {target}?", default=False, err=True
+            )
+        except click.Abort:
+            # No terminal to answer on. In a batch that is a refusal, not a
+            # failure: mock and integration still carry real information, which
+            # is the same reasoning that skips live when credentials are absent.
+            if not batch:
+                raise
+            confirmed = False
+        if not confirmed:
+            # An explicitly requested phase that is refused is an abort; in a
+            # batch the cheaper phases still run and live is reported skipped.
+            if not batch:
+                raise click.Abort()
+            live_declined = "not confirmed"
+
     resolved_mode = IndexingMode(mode or cli_ctx.project_config.get("indexing_mode") or "full")
     connector_class = load_connector(cli_ctx.project_dir, cli_ctx.project_config, reference)
     connector = instantiate_connector(connector_class)
@@ -174,7 +210,9 @@ def test(
             docs=DOCS,
         )
 
-    phases = _run_plan(connector, config, clients, plan, resolved_mode, batch=batch)
+    phases = _run_plan(
+        connector, config, clients, plan, resolved_mode, batch=batch, live_declined=live_declined
+    )
     data = {
         "connector": connector_class.__name__,
         "mode": resolved_mode.value,
@@ -205,7 +243,9 @@ def _no_clients_detail(connector_name: str) -> str:
     )
 
 
-def _skip_reason(phase: str, clients: dict[str, Any], connector_name: str) -> Optional[str]:
+def _skip_reason(
+    phase: str, clients: dict[str, Any], connector_name: str, live_declined: Optional[str] = None
+) -> Optional[str]:
     """Why a batch should step over this phase instead of stopping.
 
     Only consulted for `--phase all`. A phase that cannot run is not the same as
@@ -213,6 +253,8 @@ def _skip_reason(phase: str, clients: dict[str, Any], connector_name: str) -> Op
     Glean credentials could never report on the phases it *can* do.
     """
     if phase == LIVE:
+        if live_declined:
+            return live_declined
         missing = missing_credentials()
         if missing:
             return "no Glean credentials: " + ", ".join(missing)
@@ -229,6 +271,7 @@ def _run_plan(
     mode: Any,
     *,
     batch: bool,
+    live_declined: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Run each phase in order, stopping at the first real failure.
 
@@ -237,7 +280,9 @@ def _run_plan(
     """
     results: list[dict[str, Any]] = []
     for phase in plan:
-        reason = _skip_reason(phase, clients, type(connector).__name__) if batch else None
+        reason = (
+            _skip_reason(phase, clients, type(connector).__name__, live_declined) if batch else None
+        )
         if reason is not None:
             results.append({"phase": phase, "status": "skipped", "reason": reason})
             continue

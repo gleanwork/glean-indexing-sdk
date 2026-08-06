@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import ValidationError, BaseModel, Field, field_validator, model_validator
 
 
 class DeploymentConfig(BaseModel):
@@ -70,6 +70,17 @@ class DeploymentConfig(BaseModel):
         default=None, description="AWS IAM role name for IRSA. Defaults to <connector_name>-role."
     )
 
+    @field_validator("account_id", "project_id", mode="before")
+    @classmethod
+    def coerce_numeric_id(cls, v: object) -> object:
+        """Accept a cloud account/project ID that YAML parsed as a number.
+
+        An AWS account ID is twelve digits, so pasting a real one over the
+        placeholder makes YAML produce an `int`. Rejecting that would fail the
+        exact edit the deployment docs ask for, so it is coerced instead.
+        """
+        return str(v) if isinstance(v, int) else v
+
     @field_validator("connector_name")
     @classmethod
     def validate_connector_name(cls, v: str) -> str:
@@ -102,7 +113,17 @@ class DeploymentConfig(BaseModel):
         """Load and validate a DeploymentConfig from a YAML file."""
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        return cls.model_validate(data)
+        try:
+            return cls.model_validate(data)
+        except ValidationError as error:
+            # A raw pydantic dump names the field but not the file, and reads as
+            # an internal error rather than something the reader can fix.
+            problems = "\n".join(
+                f"  {'.'.join(str(part) for part in item['loc']) or '<root>'}: {item['msg']}"
+                for item in error.errors()
+            )
+            # The caller already names the file, so this reports only the problems.
+            raise ValueError(f"\n{problems}") from error
 
     def to_yaml(self, path: Path) -> None:
         """Write this config to a YAML file."""

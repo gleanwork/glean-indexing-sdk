@@ -33,13 +33,13 @@ cron_schedule: "{{ config.cron_schedule }}"
 indexing_mode: {{ config.indexing_mode }}
 
 {% if config.cloud == 'gcp' %}
-project_id: {{ config.project_id }}
+project_id: "{{ config.project_id }}"
 artifact_registry_repo: {{ config.artifact_registry_repo }}
 {% if config.service_account_name %}
 service_account_name: {{ config.service_account_name }}
 {% endif %}
 {% else %}
-account_id: {{ config.account_id }}
+account_id: "{{ config.account_id }}"
 ecr_repo: {{ config.ecr_repo }}
 {% if config.iam_role_name %}
 iam_role_name: {{ config.iam_role_name }}

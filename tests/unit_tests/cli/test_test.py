@@ -6,8 +6,10 @@ connector stores them.
 """
 
 import json
+import os
 import textwrap
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -90,8 +92,8 @@ def no_credentials(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
-def invoke(project, *extra: str):
-    return CliRunner().invoke(test_command, ["--project", str(project), *extra])
+def invoke(project, *extra: str, input: str | None = None):
+    return CliRunner().invoke(test_command, ["--project", str(project), *extra], input=input)
 
 
 def test_the_mock_phase_posts_the_transformed_documents(project, no_credentials):
@@ -112,7 +114,7 @@ def test_the_mock_phase_needs_no_credentials(project, no_credentials):
 
 
 def test_the_live_phase_requires_credentials(project, no_credentials):
-    result = invoke(project, "--phase", "live", "--output", "json")
+    result = invoke(project, "--phase", "live", "--yes", "--output", "json")
 
     assert result.exit_code == EXIT_PRECONDITION
     assert json.loads(result.stdout)["error"]["code"] == "missing_credentials"
@@ -233,7 +235,7 @@ def test_all_runs_every_phase_when_credentials_are_present(project, monkeypatch)
         TestHarness, "run_end_to_end", lambda self, **kwargs: SimpleNamespace(value="INDEXED")
     )
 
-    result = invoke(project, "--phase", "all", "--output", "json")
+    result = invoke(project, "--phase", "all", "--yes", "--output", "json")
 
     assert result.exit_code == 0, result.output
     phases = json.loads(result.stdout)["data"]["phases"]
@@ -264,7 +266,7 @@ def test_a_batch_skips_integration_when_there_is_nothing_to_record():
 
 def test_asking_for_a_phase_that_cannot_run_is_still_an_error(project, no_credentials):
     """Skipping is a batch behaviour; an explicit request should not be silently ignored."""
-    result = invoke(project, "--phase", "live", "--output", "json")
+    result = invoke(project, "--phase", "live", "--yes", "--output", "json")
 
     assert result.exit_code == EXIT_PRECONDITION
     assert json.loads(result.stdout)["error"]["code"] == "missing_credentials"
@@ -301,3 +303,68 @@ def test_the_cap_reaches_clients_the_config_file_never_mentions(project, no_cred
 
     assert config.clients["data_client"].max_items == 7
     assert config.clients["tickets_client"].max_items == 7
+
+
+# --- the live-phase guard -------------------------------------------------
+
+
+@pytest.fixture()
+def credentials(monkeypatch):
+    monkeypatch.setenv("GLEAN_SERVER_URL", "https://acme-be.glean.com")
+    monkeypatch.setenv("GLEAN_INDEXING_API_TOKEN", "token")
+
+
+@patch("glean.indexing.testing.harness.TestHarness.run_end_to_end")
+def test_the_live_phase_does_not_run_unconfirmed(run_live: Mock, project, credentials):
+    """The regression this guards: one command could write to a production index."""
+    result = invoke(project, "--phase", "live", "--output", "text")
+
+    assert result.exit_code != 0
+    run_live.assert_not_called()
+
+
+@patch("glean.indexing.testing.harness.TestHarness.run_end_to_end")
+def test_the_prompt_names_the_instance_it_would_write_to(run_live: Mock, project, credentials):
+    """Pointing at the wrong instance is the mistake that matters, so name it.
+
+    Asserted against whatever the environment configures rather than a hardcoded
+    URL, which is both the actual contract and avoids reading as URL-substring
+    sanitization to static analysis.
+    """
+    configured = os.environ["GLEAN_SERVER_URL"]
+    result = invoke(project, "--phase", "live", "--output", "text")
+
+    assert configured in result.output
+    assert "deletes documents" in result.output
+
+
+@patch("glean.indexing.testing.harness.TestHarness.run_end_to_end")
+def test_declining_in_a_batch_still_runs_the_cheaper_phases(run_live: Mock, project, credentials):
+    """A refusal is not a failure: mock and integration still carry information."""
+    result = invoke(project, "--phase", "all", "--output", "json", input="n\n")
+
+    assert result.exit_code == 0, result.output
+    phases = {entry["phase"]: entry for entry in json.loads(result.stdout)["data"]["phases"]}
+    assert phases["mock"]["status"] == "ran"
+    assert phases["integration"]["status"] == "ran"
+    assert phases["live"]["status"] == "skipped"
+    assert phases["live"]["reason"] == "not confirmed"
+    run_live.assert_not_called()
+
+
+@patch("glean.indexing.testing.harness.TestHarness.run_end_to_end")
+def test_confirming_runs_the_live_phase(run_live: Mock, project, credentials):
+    run_live.return_value = SimpleNamespace(value="INDEXED")
+    result = invoke(project, "--phase", "live", "--output", "json", input="y\n")
+
+    assert result.exit_code == 0, result.output
+    run_live.assert_called_once()
+
+
+@patch("glean.indexing.testing.harness.TestHarness.run_end_to_end")
+def test_yes_skips_the_prompt_for_unattended_use(run_live: Mock, project, credentials):
+    run_live.return_value = SimpleNamespace(value="INDEXED")
+    result = invoke(project, "--phase", "live", "--yes", "--output", "json")
+
+    assert result.exit_code == 0, result.output
+    run_live.assert_called_once()

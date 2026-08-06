@@ -115,6 +115,23 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         PushUploader(datasource=config.name).configure_datasource(config)
         logger.info(f"Successfully configured datasource: {config.name}")
 
+    def _uploader(self, options: Optional[ConnectorOptions]) -> PushUploader:
+        """A `PushUploader` carrying this connector's observability and options.
+
+        Every entity path goes through here. Constructing one inline per call site
+        is how the identity paths silently lost their metrics: `PushUploader`
+        guards every metric behind `if self.observability:`, so omitting the
+        argument is a no-op rather than an error.
+        """
+        return PushUploader(
+            datasource=self.name,
+            timeout_ms=options.upload_timeout_ms if options else None,
+            observability=self._observability,
+            upload_max_workers=options.upload_max_workers
+            if options
+            else DEFAULT_UPLOAD_MAX_WORKERS,
+        )
+
     def index_data(
         self,
         mode: IndexingMode = IndexingMode.FULL,
@@ -138,16 +155,12 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             users = identities.get("users")
             if users:
                 logger.info(f"Indexing {len(users)} users")
-                PushUploader(datasource=self.name).bulk_index_users(
-                    users=users, batch_size=self.batch_size
-                )
+                self._uploader(options).bulk_index_users(users=users, batch_size=self.batch_size)
 
             groups = identities.get("groups")
             if groups:
                 logger.info(f"Indexing {len(groups)} groups")
-                PushUploader(datasource=self.name).bulk_index_groups(
-                    groups=groups, batch_size=self.batch_size
-                )
+                self._uploader(options).bulk_index_groups(groups=groups, batch_size=self.batch_size)
 
                 memberships = identities.get("memberships")
                 if not memberships:
@@ -159,7 +172,7 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                     )
 
                 logger.info(f"Indexing {len(memberships)} memberships")
-                PushUploader(datasource=self.name).bulk_index_memberships(
+                self._uploader(options).bulk_index_memberships(
                     memberships=memberships, batch_size=self.batch_size
                 )
 
@@ -190,14 +203,7 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                 if force_restart:
                     logger.info("Force restarting upload - discarding any previous upload progress")
 
-                PushUploader(
-                    datasource=self.name,
-                    timeout_ms=options.upload_timeout_ms if options else None,
-                    observability=self._observability,
-                    upload_max_workers=options.upload_max_workers
-                    if options
-                    else DEFAULT_UPLOAD_MAX_WORKERS,
-                ).bulk_index_documents(
+                self._uploader(options).bulk_index_documents(
                     documents=documents,
                     batch_size=self.batch_size,
                     force_restart_upload=True if force_restart else None,

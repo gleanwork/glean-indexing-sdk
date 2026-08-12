@@ -233,8 +233,6 @@ mise run lint     # ruff, pyright, markdown-code
 mise run lint:fix # auto-fix and format
 ```
 
-Architecture notes for contributors live in [`docs/`](docs/).
-
 ## License
 
 [MIT](LICENSE)

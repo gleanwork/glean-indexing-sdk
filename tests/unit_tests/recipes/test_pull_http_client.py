@@ -1,8 +1,10 @@
 """Tests for source-side pull HTTP recipes."""
 
+from collections.abc import Iterator
 from email.utils import formatdate
 from time import time
 from typing import cast
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -40,10 +42,38 @@ class CountingRateLimiter:
         self.timeout_seconds_by_call.append(timeout_seconds)
 
 
+class CountingByteStream(httpx.SyncByteStream):
+    def __init__(self, chunks: list[bytes]) -> None:
+        self.chunks = chunks
+        self.bytes_yielded = 0
+        self.closed = False
+
+    def __iter__(self) -> Iterator[bytes]:
+        for chunk in self.chunks:
+            self.bytes_yielded += len(chunk)
+            yield chunk
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class FailingByteStream(httpx.SyncByteStream):
+    def __init__(self) -> None:
+        self.closed = False
+
+    def __iter__(self) -> Iterator[bytes]:
+        yield b"ab"
+        raise httpx.ReadError("stream failed")
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class RecordingObservability:
     def __init__(self) -> None:
         self.api_counts: list[str] = []
         self.api_latencies: list[str] = []
+        self.api_latency_values: list[float] = []
         self.api_errors: list[tuple[str, str]] = []
         self.retries: list[str] = []
         self.data_fetch_starts: list[dict] = []
@@ -54,6 +84,7 @@ class RecordingObservability:
 
     def record_api_request_latency(self, latency_ms: float, endpoint: str) -> None:
         self.api_latencies.append(endpoint)
+        self.api_latency_values.append(latency_ms)
 
     def record_api_request_error(self, endpoint: str, error_type: str) -> None:
         self.api_errors.append((endpoint, error_type))
@@ -618,10 +649,237 @@ def test_get_bytes_applies_size_cap(httpx_mock):
     )
 
     client = PullHttpClient(base_url="https://example.com/v1", options=_fast_options())
-    content, content_type = client.get_bytes("/file", max_bytes=3)
+    with patch("glean.indexing.recipes.pull.http_client.logger.warning") as warning:
+        content, content_type = client.get_bytes(
+            "/file",
+            headers={"accept-encoding": "gzip"},
+            max_bytes=3,
+        )
 
     assert content == b"abc"
     assert content_type == "application/octet-stream"
+    warning.assert_called_once_with("Downloaded source content was truncated to %s bytes", 3)
+    request = httpx_mock.get_request()
+    assert request is not None
+    assert request.headers["Accept-Encoding"] == "identity"
+
+
+def test_get_bytes_stops_streaming_after_size_cap():
+    stream = CountingByteStream([b"ab", b"cd", b"ef"])
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            headers={"Content-Type": "application/octet-stream"},
+            stream=stream,
+        )
+    )
+
+    with httpx.Client(transport=transport) as inner_client:
+        client = PullHttpClient(base_url="https://example.com/v1", client=inner_client)
+        content, content_type = client.get_bytes("/file", max_bytes=3)
+
+    assert content == b"abc"
+    assert content_type == "application/octet-stream"
+    assert stream.bytes_yielded == 4
+    assert stream.closed is True
+
+
+def test_get_bytes_does_not_warn_when_response_matches_cap(httpx_mock):
+    httpx_mock.add_response(
+        url="https://example.com/v1/file",
+        content=b"abc",
+    )
+
+    client = PullHttpClient(base_url="https://example.com/v1", options=_fast_options())
+    with patch("glean.indexing.recipes.pull.http_client.logger.warning") as warning:
+        content, _ = client.get_bytes("/file", max_bytes=3)
+
+    assert content == b"abc"
+    warning.assert_not_called()
+
+
+def test_get_bytes_preserves_retries_rate_limiting_and_observability(httpx_mock):
+    limiter = CountingRateLimiter()
+    observability = RecordingObservability()
+    options = _fast_options(max_attempts=2)
+    options.rate_limit_timeout_seconds = 3
+    httpx_mock.add_response(url="https://example.com/v1/file", status_code=429)
+    httpx_mock.add_response(
+        url="https://example.com/v1/file",
+        content=b"abcd",
+    )
+
+    client = PullHttpClient(
+        base_url="https://example.com/v1",
+        options=options,
+        rate_limiter=limiter,
+        observability=_observability_arg(observability),
+        sleep=lambda _: None,
+    )
+    content, _ = client.get_bytes("/file", max_bytes=3)
+
+    assert content == b"abc"
+    assert limiter.timeout_seconds_by_call == [3, 3]
+    assert observability.api_counts == ["GET /v1/file", "GET /v1/file"]
+    assert observability.api_latencies == ["GET /v1/file", "GET /v1/file"]
+    assert observability.api_errors == [("GET /v1/file", "http_429")]
+    assert observability.retries == ["GET /v1/file"]
+
+
+def test_get_bytes_starts_latency_timer_after_rate_limit(httpx_mock):
+    observability = RecordingObservability()
+    httpx_mock.add_response(
+        url="https://example.com/v1/file",
+        content=b"abc",
+    )
+
+    with patch(
+        "glean.indexing.recipes.pull.http_client.time.time",
+        return_value=10.0,
+    ) as clock:
+
+        class AssertingRateLimiter:
+            def acquire(
+                self,
+                tokens: float = 1.0,
+                timeout_seconds: float | None = None,
+            ) -> None:
+                assert clock.call_count == 0
+
+        client = PullHttpClient(
+            base_url="https://example.com/v1",
+            rate_limiter=AssertingRateLimiter(),
+            observability=_observability_arg(observability),
+        )
+        client.get_bytes("/file", max_bytes=3)
+
+    assert observability.api_latency_values == [0.0]
+
+
+def test_get_bytes_retries_stream_read_errors():
+    failing_stream = FailingByteStream()
+    request_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        if request_count == 1:
+            return httpx.Response(200, request=request, stream=failing_stream)
+        return httpx.Response(200, request=request, content=b"abcd")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as inner_client:
+        client = PullHttpClient(
+            base_url="https://example.com/v1",
+            client=inner_client,
+            options=_fast_options(max_attempts=2),
+            sleep=lambda _: None,
+        )
+        content, _ = client.get_bytes("/file", max_bytes=3)
+
+    assert content == b"abc"
+    assert request_count == 2
+    assert failing_stream.closed is True
+
+
+def test_get_bytes_closes_retryable_streamed_responses():
+    retry_stream = FailingByteStream()
+    request_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        if request_count == 1:
+            return httpx.Response(
+                429,
+                request=request,
+                headers={"Retry-After": "0"},
+                stream=retry_stream,
+            )
+        return httpx.Response(200, request=request, content=b"abcd")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as inner_client:
+        client = PullHttpClient(
+            base_url="https://example.com/v1",
+            client=inner_client,
+            options=_fast_options(max_attempts=2),
+            sleep=lambda _: None,
+        )
+        client.options.retries.retry_connection_errors = False
+        content, _ = client.get_bytes("/file", max_bytes=3)
+
+    assert content == b"abc"
+    assert retry_stream.closed is True
+
+
+def test_get_bytes_preserves_final_retryable_error_content(httpx_mock):
+    httpx_mock.add_response(
+        url="https://example.com/v1/file",
+        status_code=429,
+        content=b"rate limited",
+    )
+
+    client = PullHttpClient(
+        base_url="https://example.com/v1",
+        options=_fast_options(max_attempts=1),
+    )
+    with pytest.raises(PullHttpError) as exc_info:
+        client.get_bytes("/file", max_bytes=5)
+
+    assert exc_info.value.response is not None
+    assert exc_info.value.response.content == b"rate "
+
+
+def test_get_bytes_preserves_bounded_error_response_content():
+    error_stream = CountingByteStream([b"error detail"])
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            400,
+            request=request,
+            headers={"Content-Length": "12"},
+            stream=error_stream,
+        )
+    )
+
+    with httpx.Client(transport=transport) as inner_client:
+        client = PullHttpClient(base_url="https://example.com/v1", client=inner_client)
+        with pytest.raises(PullHttpError) as exc_info:
+            client.get_bytes("/file", max_bytes=5)
+
+    assert exc_info.value.response is not None
+    assert exc_info.value.response.content == b"error"
+    assert exc_info.value.response.headers["Content-Length"] == "5"
+    assert error_stream.closed is True
+
+
+def test_get_bytes_preserves_injected_client_redirect_policy():
+    request_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        return httpx.Response(
+            302,
+            request=request,
+            headers={"Location": "https://example.com/v1/redirected"},
+        )
+
+    with httpx.Client(
+        transport=httpx.MockTransport(handler),
+        follow_redirects=False,
+    ) as inner_client:
+        client = PullHttpClient(base_url="https://example.com/v1", client=inner_client)
+        with pytest.raises(PullHttpError) as exc_info:
+            client.get_bytes("/file", max_bytes=3)
+
+    assert exc_info.value.status_code == 302
+    assert request_count == 1
+
+
+def test_get_bytes_rejects_negative_size_cap():
+    client = PullHttpClient(base_url="https://example.com/v1", options=_fast_options())
+
+    with pytest.raises(ValueError, match="max_bytes"):
+        client.get_bytes("/file", max_bytes=-1)
 
 
 def test_http_client_context_manager_does_not_close_injected_client():

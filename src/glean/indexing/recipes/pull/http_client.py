@@ -153,18 +153,150 @@ class PullHttpClient:
             path_or_url: Relative path or absolute source URL.
             headers: Optional per-request headers.
             timeout_seconds: Optional timeout override.
-            max_bytes: Optional cap for returned bytes.
+            max_bytes: Optional cap for bytes read and returned. When set, the response is streamed
+                and closed as soon as truncation is detected.
 
         Returns:
             A tuple of response bytes and content type.
         """
-        response = self.__request_raw(
-            "GET", path_or_url, headers=headers, timeout_seconds=timeout_seconds
+        if max_bytes is not None and max_bytes < 0:
+            msg = "max_bytes must be non-negative"
+            raise ValueError(msg)
+
+        if max_bytes is None:
+            response = self.__request_raw(
+                "GET", path_or_url, headers=headers, timeout_seconds=timeout_seconds
+            )
+            return response.content, response.headers.get("content-type", "")
+
+        return self.__request_streaming_bytes(
+            path_or_url,
+            headers=headers,
+            timeout_seconds=timeout_seconds,
+            max_bytes=max_bytes,
         )
-        content = response.content if max_bytes is None else response.content[:max_bytes]
-        if max_bytes is not None and len(response.content) > max_bytes:
-            logger.warning("Downloaded source content was truncated to %s bytes", max_bytes)
-        return content, response.headers.get("content-type", "")
+
+    def __request_streaming_bytes(
+        self,
+        path_or_url: str,
+        *,
+        headers: Mapping[str, str] | None,
+        timeout_seconds: float | None,
+        max_bytes: int,
+    ) -> tuple[bytes, str]:
+        url = self.__full_url(path_or_url)
+        endpoint = self.__endpoint_label("GET", url)
+        request_headers = {
+            name: value
+            for name, value in self.__headers(headers).items()
+            if name.lower() != "accept-encoding"
+        }
+        request_headers["Accept-Encoding"] = "identity"
+        retry_options = self.options.retries
+        attempts = max(1, retry_options.max_attempts)
+        last_error: Exception | None = None
+
+        for attempt in range(1, attempts + 1):
+            response_for_retry: httpx.Response | None = None
+            request_start: float | None = None
+            try:
+                if self.rate_limiter is not None:
+                    self.rate_limiter.acquire(
+                        timeout_seconds=self.options.rate_limit_timeout_seconds
+                    )
+                logger.info("Pull GET %s params=%s", url, "***MASKED***")
+                request_start = time.time()
+                self.__record_api_request_count(endpoint)
+                timeout = (
+                    timeout_seconds if timeout_seconds is not None else self.options.timeout_seconds
+                )
+                with self._client.stream(
+                    "GET",
+                    url,
+                    headers=request_headers,
+                    timeout=timeout,
+                ) as response:
+                    if response.status_code in retry_options.retry_status_codes:
+                        content = b""
+                        if attempt == attempts:
+                            try:
+                                content, _ = self.__read_stream(response, max_bytes)
+                            except httpx.RequestError:
+                                pass
+                        response_for_retry = self.__buffer_response(response, content)
+                        self.__record_api_request_latency(request_start, endpoint)
+                        self.__record_api_request_error(endpoint, f"http_{response.status_code}")
+                        last_error = PullHttpError(
+                            f"Retryable source API status {response.status_code}",
+                            response=response_for_retry,
+                        )
+                    else:
+                        try:
+                            response.raise_for_status()
+                        except httpx.HTTPStatusError as exc:
+                            content, _ = self.__read_stream(response, max_bytes)
+                            buffered_response = self.__buffer_response(response, content)
+                            self.__record_api_request_latency(request_start, endpoint)
+                            self.__record_api_request_error(
+                                endpoint, f"http_{response.status_code}"
+                            )
+                            raise PullHttpError(
+                                f"Source API request failed with status {response.status_code}",
+                                response=buffered_response,
+                            ) from exc
+
+                        content, truncated = self.__read_stream(response, max_bytes)
+                        self.__record_api_request_latency(request_start, endpoint)
+                        if truncated:
+                            logger.warning(
+                                "Downloaded source content was truncated to %s bytes", max_bytes
+                            )
+                        return content, response.headers.get("content-type", "")
+            except PullHttpError:
+                raise
+            except httpx.RequestError as exc:
+                last_error = exc
+                if request_start is not None:
+                    self.__record_api_request_latency(request_start, endpoint)
+                self.__record_api_request_error(endpoint, type(exc).__name__)
+                if not retry_options.retry_connection_errors:
+                    raise PullHttpError(f"Source API request failed: {exc}") from exc
+
+            if attempt == attempts:
+                break
+            self.__record_retry(endpoint)
+            self.__sleep_before_retry(attempt, response_for_retry)
+
+        if isinstance(last_error, PullHttpError):
+            raise last_error
+        raise PullHttpError(f"Source API request failed after {attempts} attempts: {last_error}")
+
+    @staticmethod
+    def __read_stream(response: httpx.Response, max_bytes: int) -> tuple[bytes, bool]:
+        content = bytearray()
+        read_limit = max_bytes + 1
+        chunk_size = max(1, min(read_limit, 64 * 1024))
+        for chunk in response.iter_bytes(chunk_size=chunk_size):
+            remaining = read_limit - len(content)
+            content.extend(chunk[:remaining])
+            if len(content) >= read_limit:
+                break
+        return bytes(content[:max_bytes]), len(content) > max_bytes
+
+    @staticmethod
+    def __buffer_response(response: httpx.Response, content: bytes) -> httpx.Response:
+        excluded_headers = {"content-encoding", "content-length", "transfer-encoding"}
+        headers = [
+            (name, value)
+            for name, value in response.headers.multi_items()
+            if name.lower() not in excluded_headers
+        ]
+        return httpx.Response(
+            status_code=response.status_code,
+            headers=headers,
+            content=content,
+            request=response.request,
+        )
 
     def __request_raw(
         self,

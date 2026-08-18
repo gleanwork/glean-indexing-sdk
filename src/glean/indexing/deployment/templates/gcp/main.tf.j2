@@ -87,12 +87,17 @@ resource "google_service_account_iam_member" "workload_identity" {
   member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.namespace}/{{ config.k8s_name }}-ksa]"
 }
 
-# Allow accessing secret values at runtime.
+# Allow accessing secret values at runtime, scoped to this connector's secrets only.
 # Reference: https://cloud.google.com/secret-manager/docs/access-control
 resource "google_project_iam_member" "secret_accessor" {
   project = var.project_id
   role    = "roles/secretmanager.secretAccessor"
   member  = "serviceAccount:${google_service_account.connector.email}"
+  condition {
+    title       = "connector_secrets_only"
+    description = "Restrict secret accessor to secrets for this connector only."
+    expression  = "resource.name.startsWith(\"projects/${var.project_id}/secrets/{{ config.secret_prefix }}\")"
+  }
 }
 
 resource "kubernetes_service_account_v1" "connector" {

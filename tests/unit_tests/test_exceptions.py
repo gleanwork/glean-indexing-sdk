@@ -9,6 +9,7 @@ from glean.indexing.exceptions import (
     InconsistentDataError,
     InvalidDatasourceConfigError,
     InvalidPropertyError,
+    LiveEndToEndNotConfirmedError,
     MissingEnvironmentVariableError,
     UnsupportedConnectorTypeError,
 )
@@ -112,6 +113,25 @@ class TestInvalidDatasourceConfigError:
     def test_inherits_from_configuration_error(self):
         """Test inheritance hierarchy."""
         error = InvalidDatasourceConfigError("display_name")
+        assert isinstance(error, GleanConfigurationError)
+        assert isinstance(error, GleanError)
+        assert isinstance(error, ValueError)
+
+
+class TestLiveEndToEndNotConfirmedError:
+    """Tests for LiveEndToEndNotConfirmedError."""
+
+    def test_names_the_target(self):
+        """Test error message names the resolved Glean target."""
+        error = LiveEndToEndNotConfirmedError("https://prod-be.glean.com")
+        assert error.target == "https://prod-be.glean.com"
+        assert "https://prod-be.glean.com" in str(error)
+        assert "confirm=True" in str(error)
+        assert error.docs_url == LiveEndToEndNotConfirmedError.DOCS_URL
+
+    def test_inherits_from_configuration_error(self):
+        """Test inheritance hierarchy."""
+        error = LiveEndToEndNotConfirmedError("<unset>")
         assert isinstance(error, GleanConfigurationError)
         assert isinstance(error, GleanError)
         assert isinstance(error, ValueError)

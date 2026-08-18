@@ -35,6 +35,13 @@ data "google_container_cluster" "main" {
   location = var.region
 }
 
+# Resolve project number for IAM condition expressions.
+# GCP IAM condition resource names use the numeric project number, not the project ID.
+# Reference: https://cloud.google.com/resource-manager/docs/creating-managing-projects
+data "google_project" "main" {
+  project_id = var.project_id
+}
+
 provider "kubernetes" {
   # For private-only GKE clusters (enablePublicEndpoint: false) set cluster_endpoint in
   # glean_deployment.yaml to the GKE DNS endpoint (*.gke.goog); Terraform will use that instead
@@ -96,7 +103,7 @@ resource "google_project_iam_member" "secret_accessor" {
   condition {
     title       = "connector_secrets_only"
     description = "Restrict secret accessor to secrets for this connector only."
-    expression  = "resource.name.startsWith(\"projects/${var.project_id}/secrets/{{ config.secret_prefix }}\")"
+    expression  = "resource.name.startsWith(\"projects/${data.google_project.main.number}/secrets/{{ config.secret_prefix }}\")"
   }
 }
 

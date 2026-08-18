@@ -781,6 +781,34 @@ def test_get_bytes_retries_stream_read_errors():
     assert failing_stream.closed is True
 
 
+def test_get_bytes_does_not_retry_non_retryable_status_when_error_body_read_fails():
+    failing_stream = FailingByteStream()
+    request_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        if request_count == 1:
+            return httpx.Response(400, request=request, stream=failing_stream)
+        return httpx.Response(200, request=request, content=b"success")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as inner_client:
+        client = PullHttpClient(
+            base_url="https://example.com/v1",
+            client=inner_client,
+            options=_fast_options(max_attempts=2),
+            sleep=lambda _: None,
+        )
+        with pytest.raises(PullHttpError) as exc_info:
+            client.get_bytes("/file", max_bytes=3)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.response is not None
+    assert exc_info.value.response.content == b""
+    assert request_count == 1
+    assert failing_stream.closed is True
+
+
 def test_get_bytes_closes_retryable_streamed_responses():
     retry_stream = FailingByteStream()
     request_count = 0

@@ -234,7 +234,11 @@ class PullHttpClient:
                         try:
                             response.raise_for_status()
                         except httpx.HTTPStatusError as exc:
-                            content, _ = self.__read_stream(response, max_bytes)
+                            content = b""
+                            try:
+                                content, _ = self.__read_stream(response, max_bytes)
+                            except httpx.RequestError:
+                                pass
                             buffered_response = self.__buffer_response(response, content)
                             self.__record_api_request_latency(request_start, endpoint)
                             self.__record_api_request_error(

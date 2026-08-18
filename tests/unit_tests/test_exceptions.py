@@ -125,7 +125,9 @@ class TestLiveEndToEndNotConfirmedError:
         """Test error message names the resolved Glean target."""
         error = LiveEndToEndNotConfirmedError("https://prod-be.glean.com")
         assert error.target == "https://prod-be.glean.com"
-        assert "https://prod-be.glean.com" in str(error)
+        assert str(error).startswith(
+            "Live end-to-end test would upload real documents to 'https://prod-be.glean.com'."
+        )
         assert "confirm=True" in str(error)
         assert error.docs_url == LiveEndToEndNotConfirmedError.DOCS_URL
 

@@ -266,7 +266,9 @@ def test_live_asks_for_confirmation_before_uploading(project, monkeypatch):
     result = invoke(project, "--phase", "live", "--output", "json", input="n\n")
 
     assert result.exit_code != 0
-    assert "acme-be.glean.com" in result.output
+    assert result.output.startswith(
+        "The live phase uploads real documents to Glean at 'https://acme-be.glean.com'"
+    )
 
 
 def test_yes_skips_the_live_confirmation_prompt(project, monkeypatch):

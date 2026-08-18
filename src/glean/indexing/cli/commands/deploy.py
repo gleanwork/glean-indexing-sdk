@@ -43,7 +43,13 @@ def _load_config(config_path: Path) -> DeploymentConfig:
 
 @click.group()
 def deploy() -> None:
-    """Deploy connectors to your own cloud.
+    """[EXPERIMENTAL] Deploy connectors to your own cloud.
+
+    \b
+    This command generates Terraform/Docker artifacts and manages cloud secrets.
+    It has not yet been fully validated end-to-end against all supported cloud
+    configurations. Use in production at your own risk; report issues at
+    https://github.com/gleanwork/glean-indexing-sdk/issues.
 
     \b
     Quickstart:

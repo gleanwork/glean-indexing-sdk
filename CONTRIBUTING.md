@@ -77,8 +77,6 @@ claude plugin update glean-connector-builder@glean-indexing-sdk
 
 (Cursor and Codex have equivalent plugin/marketplace update commands.)
 
-The version reset to `0.0.1` in [#101](https://github.com/gleanwork/glean-indexing-sdk/pull/101): that PR squash-merged the long-running `feature/v0-workstream` branch, on which the plugin had been bumped to `0.1.1` (#47, #70) over several weeks of development. The squash merge intentionally reset it to `0.0.1` rather than carrying that number forward — packaging the plugin fresh for its GA release — but the only record of that choice was one bullet in the PR #101 description, so it read as an unexplained downgrade to anyone checking `git blame` later. Going forward, call out plugin version bumps (and resets) in the PR description, the same way SDK changes are called out via commitizen and `CHANGELOG.md`.
-
 ## Documentation
 
 - Update documentation for any changes to public APIs

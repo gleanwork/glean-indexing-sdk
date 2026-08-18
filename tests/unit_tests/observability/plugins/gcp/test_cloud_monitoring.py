@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch  # noqa: E402
 from glean.indexing.observability.plugins.gcp import CloudMonitoringProvider  # noqa: E402
 
 
+@pytest.mark.cloud_integration
 class TestCloudMonitoringProvider:
     """Tests for CloudMonitoringProvider."""
 

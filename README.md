@@ -7,6 +7,9 @@ Build custom Glean connectors in Python. The SDK handles fetching, transforming,
 
 📖 **[Full documentation](https://developers.glean.com/libraries/indexing-sdk)** on the Glean Developer site.
 
+Repository examples cover [advanced usage](docs/advanced.md) and
+[streaming connectors](docs/streaming-connectors.md).
+
 ## Build one with an agent
 
 The fastest path is to let a coding agent build the connector. Your agent installs it straight from this repository, which doubles as the plugin marketplace.

@@ -96,6 +96,12 @@ class TokenBucketRateLimiter:
             self._sleep(wait_seconds)
 
     def _refill_locked(self) -> None:
+        """Refill tokens from elapsed time while the caller holds `_lock`.
+
+        Long, continuously throttled runs can accumulate tiny floating-point differences. When the
+        computed balance reaches or exceeds capacity, it is clamped to the configured capacity.
+        Normal clock and sleep granularity generally exceeds the practical impact of this drift.
+        """
         now = self._clock()
         elapsed = max(0.0, now - self._last_refill)
         if elapsed == 0:

@@ -147,7 +147,11 @@ class PullHttpClient:
         timeout_seconds: float | None = None,
         max_bytes: int | None = None,
     ) -> tuple[bytes, str]:
-        """Fetch raw bytes with an optional size cap.
+        """Fetch decoded response bytes with optional returned-content truncation.
+
+        HTTPX downloads, content-decodes, and buffers the full response before `max_bytes` is
+        applied to the decoded content. Therefore, `max_bytes` limits only the returned bytes, not
+        network transfer or peak memory. When it is `None`, the full decoded body is returned.
 
         Args:
             path_or_url: Relative path or absolute source URL.

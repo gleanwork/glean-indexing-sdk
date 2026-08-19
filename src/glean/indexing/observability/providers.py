@@ -31,6 +31,7 @@ Example - Custom Provider Implementation:
     ```
 """
 
+import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from enum import Enum
@@ -183,6 +184,7 @@ class InMemoryMetricsProvider(MetricsProvider):
     """
 
     def __init__(self):
+        self._lock = threading.Lock()
         self.metrics: Dict[str, Any] = defaultdict(int)
         self.metric_history: list = []
 
@@ -194,19 +196,20 @@ class InMemoryMetricsProvider(MetricsProvider):
         labels: Optional[Dict[str, str]] = None,
     ) -> None:
         """Store metric in memory."""
-        if metric_type == MetricType.COUNTER:
-            self.metrics[name] += value
-        else:
-            self.metrics[name] = value
+        with self._lock:
+            if metric_type == MetricType.COUNTER:
+                self.metrics[name] += value
+            else:
+                self.metrics[name] = value
 
-        self.metric_history.append(
-            {
-                "name": name,
-                "value": value,
-                "type": metric_type.value,
-                "labels": labels.copy() if labels else {},
-            }
-        )
+            self.metric_history.append(
+                {
+                    "name": name,
+                    "value": value,
+                    "type": metric_type.value,
+                    "labels": labels.copy() if labels else {},
+                }
+            )
 
     def flush(self) -> None:
         """No-op for in-memory provider."""

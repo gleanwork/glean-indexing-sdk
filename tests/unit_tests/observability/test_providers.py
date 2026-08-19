@@ -1,5 +1,6 @@
 """Tests for metrics providers."""
 
+import threading
 from typing import Any, cast
 
 import pytest
@@ -106,6 +107,25 @@ class TestInMemoryMetricsProvider:
         assert metrics["upload_batch_size"] == 100.0
         assert metrics["upload_throughput"] == 50.0
         assert metrics["api_request_count"] == 1.0
+
+    def test_concurrent_counter_increments_are_accurate(self):
+        """Counter increments from multiple threads must not lose updates."""
+        provider = InMemoryMetricsProvider()
+        n_threads = 10
+        increments_per_thread = 100
+
+        def worker():
+            for _ in range(increments_per_thread):
+                provider.emit_metric("counter", 1.0, MetricType.COUNTER)
+
+        threads = [threading.Thread(target=worker) for _ in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert provider.get_metrics()["counter"] == n_threads * increments_per_thread
+        assert len(provider.get_metric_history()) == n_threads * increments_per_thread
 
 
 class TestNoOpMetricsProvider:

@@ -64,8 +64,8 @@ jobs:
       - name: Setup development environment
         run: mise run setup
 
-      - name: Run tests
-        run: mise run test
+      - name: Run tests with coverage
+        run: mise run test:cov
 
       - name: Test package installation
         run: |

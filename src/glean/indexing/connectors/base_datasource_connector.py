@@ -138,16 +138,16 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             users = identities.get("users")
             if users:
                 logger.info(f"Indexing {len(users)} users")
-                PushUploader(datasource=self.name).bulk_index_users(
-                    users=users, batch_size=self.batch_size
-                )
+                PushUploader(
+                    datasource=self.name, observability=self._observability
+                ).bulk_index_users(users=users, batch_size=self.batch_size)
 
             groups = identities.get("groups")
             if groups:
                 logger.info(f"Indexing {len(groups)} groups")
-                PushUploader(datasource=self.name).bulk_index_groups(
-                    groups=groups, batch_size=self.batch_size
-                )
+                PushUploader(
+                    datasource=self.name, observability=self._observability
+                ).bulk_index_groups(groups=groups, batch_size=self.batch_size)
 
                 memberships = identities.get("memberships")
                 if not memberships:
@@ -159,9 +159,9 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                     )
 
                 logger.info(f"Indexing {len(memberships)} memberships")
-                PushUploader(datasource=self.name).bulk_index_memberships(
-                    memberships=memberships, batch_size=self.batch_size
-                )
+                PushUploader(
+                    datasource=self.name, observability=self._observability
+                ).bulk_index_memberships(memberships=memberships, batch_size=self.batch_size)
 
             since = None
             if mode == IndexingMode.INCREMENTAL:

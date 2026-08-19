@@ -1,11 +1,15 @@
 """Tests for BaseDatasourceConnector."""
 
 from typing import List, Sequence
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call as mock_call, patch
 
 from glean.api_client.models import ContentDefinition, DocumentDefinition
 from glean.indexing.connectors import BaseDataClient, BaseDatasourceConnector
-from glean.indexing.models import ConnectorOptions, CustomDatasourceConfig
+from glean.indexing.models import (
+    ConnectorOptions,
+    CustomDatasourceConfig,
+    DatasourceIdentityDefinitions,
+)
 
 
 class MockDataClient(BaseDataClient[dict]):
@@ -97,6 +101,38 @@ class TestBaseDatasourceConnector:
 
         result = connector.get_data()
         assert result == test_data
+
+    @patch("glean.indexing.connectors.base_datasource_connector.PushUploader")
+    def test_identity_uploads_receive_observability(self, mock_uploader):
+        """Test that identity uploaders use the connector's observability instance."""
+        data_client = MockDataClient([])
+        connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
+        users = [object()]
+        groups = [object()]
+        memberships = [object()]
+        identities = DatasourceIdentityDefinitions(
+            users=users,
+            groups=groups,
+            memberships=memberships,
+        )
+
+        with patch.object(connector, "get_identities", return_value=identities):
+            connector.index_data()
+
+        expected_uploader_call = mock_call(
+            datasource="test_connector",
+            observability=connector.observability,
+        )
+        assert mock_uploader.call_args_list == [expected_uploader_call] * 3
+        mock_uploader.return_value.bulk_index_users.assert_called_once_with(
+            users=users, batch_size=connector.batch_size
+        )
+        mock_uploader.return_value.bulk_index_groups.assert_called_once_with(
+            groups=groups, batch_size=connector.batch_size
+        )
+        mock_uploader.return_value.bulk_index_memberships.assert_called_once_with(
+            memberships=memberships, batch_size=connector.batch_size
+        )
 
     def test_transform(self):
         """Test data transformation."""

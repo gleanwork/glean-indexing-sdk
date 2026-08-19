@@ -1,46 +1,27 @@
-from typing import Generator
+from collections.abc import Generator
+from typing import Any
 
-import requests
-
-from glean.indexing.connectors.base_streaming_data_client import StreamingConnectorDataClient
+from glean.indexing.recipes.pull import BasePullHttpStreamingDataClient
 
 from .article_data import ArticleData
 
 
-class LargeKnowledgeBaseClient(StreamingConnectorDataClient[ArticleData]):
-    """Streaming client that yields data incrementally."""
+class LargeKnowledgeBaseClient(BasePullHttpStreamingDataClient[ArticleData]):
+    """Streams every article from an offset-paginated source API."""
 
-    def __init__(self, kb_api_url: str, api_key: str):
-        self.kb_api_url = kb_api_url
-        self.api_key = api_key
+    def __init__(self, kb_api_url: str, api_key: str) -> None:
+        super().__init__(
+            base_url=kb_api_url,
+            path="/articles",
+            items_key=None,
+            pagination="offset",
+            page_size=100,
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
 
-    def get_source_data(self, since=None) -> Generator[ArticleData, None, None]:
-        """Stream documents one page at a time to save memory."""
-        page = 1
-        page_size = 100
-
-        while True:
-            params = {"page": page, "size": page_size}
-            if since:
-                params["modified_since"] = since
-
-            response = requests.get(
-                f"{self.kb_api_url}/articles",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                params=params,
-            )
-            response.raise_for_status()
-
-            data = response.json()
-            articles = data.get("articles", [])
-
-            if not articles:
-                break
-
-            for article in articles:
-                yield ArticleData(article)
-
-            if len(articles) < page_size:
-                break
-
-            page += 1
+    def get_source_data(self, **kwargs: Any) -> Generator[ArticleData, None, None]:
+        """Yield all articles, mapping SDK checkpoints to source parameters."""
+        source_params = dict(kwargs)
+        if since := source_params.pop("since", None):
+            source_params["modified_since"] = since
+        yield from super().get_source_data(**source_params)

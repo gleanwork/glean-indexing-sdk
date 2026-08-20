@@ -63,6 +63,20 @@ DRY_RUN=true mise run release
 mise run release
 ```
 
+## Agent plugin versioning
+
+The bundled `glean-connector-builder` agent plugin (`skills/`, packaged with [pluginpack](https://github.com/gleanwork/pluginpack)) has its own version in the root `package.json`, separate from the SDK's version in `pyproject.toml`. Bump it whenever a skill or plugin change should reach existing installs — `claude plugin update` (and the Cursor/Codex equivalents) skip a same-version rebuild, so an unchanged version string leaves installs on stale content even after `npm run build:plugins`.
+
+After bumping `package.json`, rebuild and update the installed copy:
+
+```bash
+npm run build:plugins
+claude plugin marketplace update glean-indexing-sdk
+claude plugin update glean-connector-builder@glean-indexing-sdk
+```
+
+(Cursor and Codex have equivalent plugin/marketplace update commands.)
+
 ## Documentation
 
 - Update documentation for any changes to public APIs

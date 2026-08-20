@@ -137,6 +137,31 @@ def test_redlist_contains_expected_vars():
     assert "CONNECTOR_MODULE" in _REDLIST
 
 
+def test_redlist_covers_all_template_deployment_env_vars():
+    """Trip-wire: every static env var name in the Terraform templates must be in _REDLIST.
+
+    If this test fails, a deployment-control env var was added to a template without
+    a corresponding _REDLIST entry, meaning it would be silently uploaded as a secret.
+    """
+    import re
+    from pathlib import Path
+
+    templates_dir = Path(__file__).parents[3] / "src" / "glean" / "indexing" / "deployment" / "templates"
+    # Matches:  name  = "UPPER_CASE_VAR"  (only uppercase — Terraform interpolations like ${...} are excluded)
+    pattern = re.compile(r'name\s+=\s+"([A-Z][A-Z0-9_]+)"')
+
+    template_env_vars: set[str] = set()
+    for tf_template in templates_dir.rglob("*.tf.j2"):
+        for match in pattern.finditer(tf_template.read_text()):
+            template_env_vars.add(match.group(1))
+
+    missing = template_env_vars - _REDLIST
+    assert not missing, (
+        f"Deployment env vars in templates but missing from _REDLIST: {sorted(missing)}. "
+        "Add them to _REDLIST in secrets.py or they will be uploaded as connector secrets."
+    )
+
+
 # ---------------------------------------------------------------------------
 # _secret_name (SecretsBackend method)
 # ---------------------------------------------------------------------------

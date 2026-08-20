@@ -7,6 +7,7 @@ from itertools import islice
 from typing import Generator, Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
+from glean.indexing.common import DocumentBatchProcessor
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
 from glean.indexing.models import (
@@ -100,6 +101,7 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
         upload_id = self.generate_upload_id()
         self._force_restart = options.force_restart if options else False
         batch_count = 0
+        max_batch_bytes = self._resolve_max_batch_bytes(options)
 
         try:
 
@@ -113,7 +115,11 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
                         f"Transformed batch {batch_count}: {len(transformed_batch)} documents"
                     )
                     batch_count += 1
-                    yield transformed_batch
+                    yield from DocumentBatchProcessor(
+                        transformed_batch,
+                        batch_size=self.batch_size,
+                        max_batch_bytes=max_batch_bytes,
+                    )
 
             if self._force_restart:
                 logger.info("Force restarting upload - discarding any previous upload progress")

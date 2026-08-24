@@ -59,6 +59,7 @@ def deploy() -> None:
         Terraform:           https://developer.hashicorp.com/terraform/docs
         GCP GKE:             https://cloud.google.com/kubernetes-engine/docs
         AWS EKS:             https://docs.aws.amazon.com/eks/latest/userguide/what-is-eks.html
+        Report issues:       https://github.com/gleanwork/glean-indexing-sdk/issues
     """
 
 

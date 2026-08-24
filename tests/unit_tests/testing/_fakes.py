@@ -20,6 +20,7 @@ def _doc(item: dict, datasource: str) -> DocumentDefinition:
     return DocumentDefinition(
         id=item["id"],
         datasource=datasource,
+        object_type=item.get("object_type"),
         title=item["title"],
         view_url=item.get("url", f"https://example.com/{item['id']}"),
         body=ContentDefinition(mime_type="text/plain", text_content=item.get("body", "")),

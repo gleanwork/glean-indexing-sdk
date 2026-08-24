@@ -15,24 +15,29 @@ Phase 2 (integration — real source, mock Glean, local cache):
 
 Phase 3 (end-to-end — real source, real Glean):
     Calls ``connector.index_data()`` without any mock patching.  Requires
-    ``GLEAN_SERVER_URL`` / ``GLEAN_INDEXING_API_TOKEN`` environment variables.
-    Per-client ``max_items`` from ``TestConfig`` are applied before the run.
+    ``GLEAN_SERVER_URL`` / ``GLEAN_INDEXING_API_TOKEN`` environment variables,
+    and uploads real documents with no automated cleanup -- pass
+    ``confirm=True`` only after verifying the target is a dedicated test
+    instance, not production.  Per-client ``max_items`` from ``TestConfig``
+    are applied before the run.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional, Union
+from typing import Any, Dict, Generator, Optional, Sequence, Union
 
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
+from glean.indexing.exceptions import LiveEndToEndNotConfirmedError
 from glean.indexing.models import ConnectorOptions, IndexingMode
-from glean.indexing.push.status import IndexingWaitResult
+from glean.indexing.push.status import IndexingWaitResult, document_status_requests
 from glean.indexing.testing.harness.cache.manifest import CacheManifest
 from glean.indexing.testing.harness.cache.recording_client import (
     RecordingAsyncStreamingClientWrapper,
@@ -71,6 +76,40 @@ def _sdk_version() -> str:
         return version("glean-indexing-sdk")
     except Exception:
         return "unknown"
+
+
+def _resolve_glean_target() -> str:
+    """Best-effort display string for the configured Glean target.
+
+    Read directly from the environment rather than via
+    :func:`~glean.indexing.common.glean_client.api_client` so the target can
+    be surfaced in the confirmation guard even when it (or the API token) is
+    unset -- that is itself the misconfiguration this guard exists to catch.
+    """
+    return (
+        os.getenv("GLEAN_SERVER_URL") or os.getenv("GLEAN_INSTANCE") or "<GLEAN_SERVER_URL not set>"
+    )
+
+
+def _log_cleanup_instructions(datasource: str, documents: Sequence[Any]) -> None:
+    """Log a copy-pasteable command to remove every document this run uploaded.
+
+    Live end-to-end runs have no automated cleanup, so the operator's only
+    path back to a clean datasource is deleting what was just uploaded.
+    """
+    requests = document_status_requests(documents)
+    if not requests:
+        return
+    document_flags = " ".join(f"--document {req.object_type} {req.doc_id}" for req in requests)
+    logger.warning(
+        "Live end-to-end run uploaded %d document(s) to datasource %r. These are "
+        "NOT cleaned up automatically. To remove them: "
+        "glean-idx document delete --datasource %s %s",
+        len(requests),
+        datasource,
+        datasource,
+        document_flags,
+    )
 
 
 def _should_use_cache(
@@ -374,13 +413,15 @@ class TestHarness:
         *,
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
+        confirm: bool = False,
     ) -> IndexingWaitResult | None:
         """Run the connector against the real source and real Glean.
 
         The Glean API is **not** mocked — this exercises the full indexing
-        path.  Connector clients registered via the ``clients`` constructor
-        argument are temporarily wrapped to enforce per-client ``max_items``
-        limits; clients not passed in ``clients`` are left untouched.
+        path and uploads real documents with **no automated cleanup**.
+        Connector clients registered via the ``clients`` constructor argument
+        are temporarily wrapped to enforce per-client ``max_items`` limits;
+        clients not passed in ``clients`` are left untouched.
 
         The Glean client is configured from environment variables:
 
@@ -389,21 +430,43 @@ class TestHarness:
 
         The :attr:`~TestConfig.run_id_prefix` from config is logged but not
         used to namespace the datasource (the connector's own datasource name
-        is used as-is).  To avoid polluting production data, point
-        ``GLEAN_SERVER_URL`` at a dedicated test instance.
+        is used as-is).
+
+        **Production safety:** this method refuses to run unless ``confirm``
+        is ``True``, since a misconfigured ``GLEAN_SERVER_URL`` would upload
+        test data to a real instance with nothing to catch the mistake and no
+        automated way to remove it afterward. Before passing ``confirm=True``,
+        verify the resolved target is a dedicated test instance, not
+        production. On success, the identifiers of every uploaded document are
+        logged together with the ``glean-idx document delete`` command that
+        removes them, since that is the only cleanup path available.
 
         Args:
             mode: Indexing mode forwarded to ``connector.index_data``.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
+            confirm: Must be explicitly set to ``True`` to run this phase.
 
         Returns:
             The document indexing outcome, or ``None`` when no documents were uploaded.
 
         Raises:
+            ~glean.indexing.exceptions.LiveEndToEndNotConfirmedError: If
+                ``confirm`` is not ``True``.
             ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
                 ``GLEAN_INDEXING_API_TOKEN`` or the server URL is missing from
                 the environment.
         """
+        target = _resolve_glean_target()
+        if not confirm:
+            raise LiveEndToEndNotConfirmedError(target)
+
+        logger.warning(
+            "Running LIVE end-to-end test for connector %r against %s. This "
+            "uploads real documents with no automated cleanup -- make sure "
+            "this is a dedicated test instance, not production.",
+            self._connector.name,  # type: ignore[attr-defined]
+            target,
+        )
         logger.info(
             "Starting end-to-end run (run_id_prefix=%r, mode=%s)",
             self._config.run_id_prefix,
@@ -412,6 +475,8 @@ class TestHarness:
         with capture_document_uploads() as uploaded_documents:
             with _patched_clients(self._connector, self._clients, self._config):
                 self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+
+        _log_cleanup_instructions(self._connector.name, uploaded_documents)  # type: ignore[attr-defined]
 
         return wait_for_documents_to_index(
             self._connector.name,  # type: ignore[attr-defined]
@@ -423,6 +488,7 @@ class TestHarness:
         *,
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
+        confirm: bool = False,
     ) -> IndexingWaitResult | None:
         """Async variant of :meth:`run_end_to_end`.
 
@@ -432,16 +498,20 @@ class TestHarness:
 
         Like the sync variant, connector clients registered via ``clients``
         are temporarily wrapped to enforce ``max_items``; the Glean API itself
-        is not mocked.
+        is not mocked, real documents are uploaded with no automated cleanup,
+        and this method refuses to run unless ``confirm=True``.
 
         Args:
             mode: Indexing mode forwarded to the connector.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
+            confirm: Must be explicitly set to ``True`` to run this phase.
 
         Returns:
             The document indexing outcome, or ``None`` when no documents were uploaded.
 
         Raises:
+            ~glean.indexing.exceptions.LiveEndToEndNotConfirmedError: If
+                ``confirm`` is not ``True``.
             ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
                 environment variables for the Glean client are missing.
         """
@@ -449,6 +519,17 @@ class TestHarness:
             BaseAsyncStreamingDatasourceConnector,
         )
 
+        target = _resolve_glean_target()
+        if not confirm:
+            raise LiveEndToEndNotConfirmedError(target)
+
+        logger.warning(
+            "Running LIVE end-to-end test for connector %r against %s. This "
+            "uploads real documents with no automated cleanup -- make sure "
+            "this is a dedicated test instance, not production.",
+            self._connector.name,  # type: ignore[attr-defined]
+            target,
+        )
         logger.info(
             "Starting async end-to-end run (run_id_prefix=%r, mode=%s)",
             self._config.run_id_prefix,
@@ -460,6 +541,8 @@ class TestHarness:
                     await self._connector.index_data_async(mode=mode, options=options)
                 else:
                     self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+
+        _log_cleanup_instructions(self._connector.name, uploaded_documents)  # type: ignore[attr-defined]
 
         return await asyncio.to_thread(
             wait_for_documents_to_index,

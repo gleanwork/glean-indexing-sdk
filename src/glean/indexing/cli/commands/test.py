@@ -9,6 +9,7 @@ made the middle phases go unused.
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -18,6 +19,8 @@ from glean.indexing.cli.errors import CliError, ValidationFailedError
 from glean.indexing.cli.main import context, global_options
 from glean.indexing.cli.output import emit
 from glean.indexing.cli.preconditions import (
+    LEGACY_INSTANCE_VAR,
+    SERVER_URL_VAR,
     check_credentials,
     missing_credentials,
     project_option,
@@ -127,8 +130,12 @@ def test(
     --phase integration   the source is real and Glean is mocked. The first run
                           records source calls to a local cache and later runs
                           replay them, which is what makes results repeatable.
-    --phase live          both are real. This uploads to Glean, and a full
-                          crawl removes documents the run does not produce.
+    --phase live          both are real. Prompts for confirmation (unless
+                          --yes) before uploading, since this uploads real
+                          documents to Glean with no automated cleanup -- use
+                          `glean-idx document delete` to remove them
+                          afterward. A full crawl removes documents the run
+                          does not produce.
     --phase all           every phase in order, stopping at the first failure.
                           A phase that cannot run is skipped and reported, not
                           treated as a failure.
@@ -152,6 +159,13 @@ def test(
     # skipped, and the earlier phases still carry real information.
     if LIVE in plan and not batch:
         check_credentials()
+
+    # Live uploads real documents with no automated cleanup, so a misconfigured
+    # GLEAN_SERVER_URL could reach production with nothing to catch it. Confirm
+    # once, showing exactly where the upload would land, before it happens --
+    # but only when live will actually run, not when a batch is about to skip it.
+    if LIVE in plan and (not batch or not missing_credentials()):
+        _confirm_live_run(cli_ctx)
 
     resolved_mode = IndexingMode(mode or cli_ctx.project_config.get("indexing_mode") or "full")
     connector_class = load_connector(cli_ctx.project_dir, cli_ctx.project_config, reference)
@@ -202,6 +216,25 @@ def _no_clients_detail(connector_name: str) -> str:
         f"No data client attributes were found on {connector_name}. The "
         f"{INTEGRATION} phase wraps each client to record source calls, so there "
         "is nothing for it to do."
+    )
+
+
+def _confirm_live_run(cli_ctx: Any) -> None:
+    """Require confirmation before the live phase can upload real documents.
+
+    Mirrors the `_confirm` pattern in `deploy.py`: --yes skips the prompt for
+    unattended use; otherwise the operator sees exactly where the upload would
+    land before it happens, which is the only guard against a misconfigured
+    GLEAN_SERVER_URL reaching production.
+    """
+    if cli_ctx.assume_yes:
+        return
+    target = os.getenv(SERVER_URL_VAR) or os.getenv(LEGACY_INSTANCE_VAR) or "<unset>"
+    click.confirm(
+        f"The live phase uploads real documents to Glean at {target!r} with no "
+        "automated cleanup. Make sure this is a dedicated test instance, not "
+        "production. Continue?",
+        abort=True,
     )
 
 
@@ -350,9 +383,16 @@ def _run_phase(
     if _is_async(connector):
         method += "_async"
 
+    # The CLI already confirmed the live upload (or --yes skipped the prompt),
+    # so the harness's own confirm gate would otherwise refuse a run the
+    # operator has already agreed to.
+    call_kwargs: dict[str, Any] = {"mode": mode}
+    if phase == LIVE:
+        call_kwargs["confirm"] = True
+
     call = getattr(harness, method)
     try:
-        outcome = asyncio.run(call(mode=mode)) if _is_async(connector) else call(mode=mode)
+        outcome = asyncio.run(call(**call_kwargs)) if _is_async(connector) else call(**call_kwargs)
     except CliError:
         raise
     except Exception as exc:  # noqa: BLE001 - reported with its type and message

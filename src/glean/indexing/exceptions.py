@@ -7,7 +7,8 @@ Exception Hierarchy:
     GleanError(Exception)
     ├── GleanConfigurationError(GleanError, ValueError)
     │   ├── MissingEnvironmentVariableError
-    │   └── InvalidDatasourceConfigError
+    │   ├── InvalidDatasourceConfigError
+    │   └── LiveEndToEndNotConfirmedError
     └── GleanValidationError(GleanError, ValueError)
         ├── InvalidPropertyError
         ├── InconsistentDataError
@@ -94,6 +95,37 @@ class InvalidDatasourceConfigError(GleanConfigurationError):
         self.field_name = field_name
         message = f"Missing required field '{field_name}' in datasource configuration"
         fix_suggestion = f"Set the '{field_name}' attribute in your CustomDatasourceConfig"
+        super().__init__(message, fix_suggestion, self.DOCS_URL)
+
+
+class LiveEndToEndNotConfirmedError(GleanConfigurationError):
+    """Raised when the live end-to-end test phase runs without explicit confirmation.
+
+    ``TestHarness.run_end_to_end()`` / ``run_end_to_end_async()`` upload real
+    documents to whichever Glean instance ``GLEAN_SERVER_URL`` (or the
+    deprecated ``GLEAN_INSTANCE``) resolves to, with no automated cleanup.
+    Requiring ``confirm=True`` guards against running that phase by accident
+    against a misconfigured (e.g. production) target.
+
+    Attributes:
+        target: The resolved Glean server URL/instance this run would upload to.
+    """
+
+    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing"
+
+    def __init__(self, target: str) -> None:
+        self.target = target
+        message = (
+            f"Live end-to-end test would upload real documents to {target!r}. "
+            "Refusing to run without explicit confirmation."
+        )
+        fix_suggestion = (
+            "Verify GLEAN_SERVER_URL (or GLEAN_INSTANCE) points at a dedicated "
+            "test instance, not production, then pass confirm=True to "
+            "run_end_to_end()/run_end_to_end_async(). Uploaded documents are not "
+            "cleaned up automatically -- use `glean-idx document delete` or "
+            "PushUploader.delete_document(...) afterwards."
+        )
         super().__init__(message, fix_suggestion, self.DOCS_URL)
 
 

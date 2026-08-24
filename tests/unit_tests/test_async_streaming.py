@@ -301,7 +301,9 @@ class TestBaseAsyncStreamingDatasourceConnector:
         """Regression test: document_batch_size_bytes must split async-streamed
         documents that would otherwise fit in a single count-based batch."""
         client = DummyAsyncDataClient(
-            items=[{"id": f"doc-{i}", "title": "x" * 300, "content": f"Content {i}"} for i in range(2)]
+            items=[
+                {"id": f"doc-{i}", "title": "x" * 300, "content": f"Content {i}"} for i in range(2)
+            ]
         )
         connector = DummyAsyncConnector("test", client)
         # Count-based batch size alone would fit both documents in a single upload.

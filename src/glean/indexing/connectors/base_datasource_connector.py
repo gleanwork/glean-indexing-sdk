@@ -237,6 +237,4 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
         Falls back to the uploader's own default when no options are provided, so
         omitting `options` preserves existing byte-aware batching behavior.
         """
-        return (
-            options.document_batch_size_bytes if options else DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
-        )
+        return options.document_batch_size_bytes if options else DEFAULT_DOCUMENT_BATCH_SIZE_BYTES

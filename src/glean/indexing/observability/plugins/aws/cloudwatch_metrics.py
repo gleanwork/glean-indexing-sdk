@@ -8,8 +8,7 @@ from glean.indexing.observability import MetricsProvider, MetricType
 class CloudWatchMetricsProvider(MetricsProvider):
     """AWS CloudWatch metrics provider.
 
-    **Beta:** Community-supported plugin. Requires the ``aws`` extra:
-    ``uv add glean-indexing-sdk[aws]``.
+    Requires the ``aws`` extra: ``uv add glean-indexing-sdk[aws]``.
     """
 
     def __init__(

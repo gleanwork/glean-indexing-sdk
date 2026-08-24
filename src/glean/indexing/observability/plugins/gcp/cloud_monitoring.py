@@ -7,7 +7,10 @@ from glean.indexing.observability import MetricsProvider, MetricType
 
 
 class CloudMonitoringProvider(MetricsProvider):
-    """GCP Cloud Monitoring metrics provider."""
+    """GCP Cloud Monitoring metrics provider.
+
+    Requires the ``gcp`` extra: ``uv add glean-indexing-sdk[gcp]``.
+    """
 
     def __init__(
         self,

@@ -10,6 +10,7 @@ from glean.indexing.observability import MetricType  # noqa: E402
 from glean.indexing.observability.plugins.aws import CloudWatchMetricsProvider  # noqa: E402
 
 
+@pytest.mark.cloud_integration
 class TestCloudWatchMetricsProvider:
     """Tests for CloudWatchMetricsProvider."""
 

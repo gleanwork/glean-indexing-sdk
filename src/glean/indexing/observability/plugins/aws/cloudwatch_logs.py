@@ -6,7 +6,10 @@ from glean.indexing.observability.logging import LoggerProvider
 
 
 class CloudWatchLogsProvider(LoggerProvider):
-    """AWS CloudWatch Logs provider."""
+    """AWS CloudWatch Logs provider.
+
+    Requires the ``aws`` extra: ``uv add glean-indexing-sdk[aws]``.
+    """
 
     def __init__(
         self,

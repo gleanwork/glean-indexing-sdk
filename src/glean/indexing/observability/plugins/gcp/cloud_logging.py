@@ -6,7 +6,10 @@ from glean.indexing.observability.logging import LoggerProvider
 
 
 class CloudLoggingProvider(LoggerProvider):
-    """GCP Cloud Logging provider."""
+    """GCP Cloud Logging provider.
+
+    Requires the ``gcp`` extra: ``uv add glean-indexing-sdk[gcp]``.
+    """
 
     def __init__(
         self,

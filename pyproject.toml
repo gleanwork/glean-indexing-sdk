@@ -128,6 +128,7 @@ markers = [
     "slow: slow tests",
     "network: tests that require network access",
     "compile: mark placeholder test used to compile integration tests without running them",
+    "cloud_integration: tests for cloud provider plugins (AWS/GCP) — not validated against a real cloud API",
 ]
 asyncio_mode = "auto"
 pythonpath = ["src"]

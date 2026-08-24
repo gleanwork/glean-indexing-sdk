@@ -12,7 +12,7 @@ Use this skill after implementing or changing a connector. Exercise the connecto
 - Never run files under the repository's `tests/` directory while using this skill. Those tests validate the SDK implementation and belong to SDK-maintainer CI, not the connector-building workflow.
 - Use only public utilities exported by `glean.indexing.testing`, including `TestHarness`, `TestConfig`, static data clients, `MockGleanClient`, and `run_connector`.
 - Before validation, ask for confirmation once for the whole testing step and state which phases will run. Do not ask again for each phase in the same batch.
-- Before the live end-to-end phase specifically, state the resolved `GLEAN_SERVER_URL` / `GLEAN_INSTANCE` target and confirm with the user that it is a dedicated test instance, not production -- this phase uploads real documents with no automated cleanup. Only call `run_end_to_end(confirm=True)` / `run_end_to_end_async(confirm=True)` after that confirmation.
+- Before the live end-to-end phase specifically, state the resolved `GLEAN_SERVER_URL` / `GLEAN_INSTANCE` target and confirm with the user before proceeding -- this phase uploads real documents with no automated cleanup. Only call `run_end_to_end(confirm=True)` / `run_end_to_end_async(confirm=True)` after that confirmation.
 - Use the existing task context, including the connector-local `.env` file if identified, to determine whether source and Glean credentials are present.
 - If connector code changes after a run, ask whether to run the connector validation again.
 - Never print secrets, commit `.env`, or include recorded source data.
@@ -87,9 +87,9 @@ Use `run_integration_test_async()` for async streaming connectors.
 
 > **Production safety:** this phase uploads real documents to whichever Glean
 > instance `GLEAN_SERVER_URL` (or `GLEAN_INSTANCE`) resolves to, and there is
-> **no automated cleanup**. Before running it, confirm with the user that the
-> resolved target is a dedicated test instance, not production. See
-> **Cleaning up after a live run** below for how to remove what it uploads.
+> **no automated cleanup**. Before running it, state the resolved target and
+> confirm with the user before proceeding. See **Cleaning up after a live
+> run** below for how to remove what it uploads.
 
 Run only when source credentials and `GLEAN_INDEXING_API_TOKEN` plus `GLEAN_SERVER_URL` or `GLEAN_INSTANCE` are available:
 

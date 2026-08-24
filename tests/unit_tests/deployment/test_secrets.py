@@ -146,7 +146,9 @@ def test_redlist_covers_all_template_deployment_env_vars():
     import re
     from pathlib import Path
 
-    templates_dir = Path(__file__).parents[3] / "src" / "glean" / "indexing" / "deployment" / "templates"
+    templates_dir = (
+        Path(__file__).parents[3] / "src" / "glean" / "indexing" / "deployment" / "templates"
+    )
     # Matches:  name  = "UPPER_CASE_VAR"  (only uppercase — Terraform interpolations like ${...} are excluded)
     pattern = re.compile(r'name\s+=\s+"([A-Z][A-Z0-9_]+)"')
 

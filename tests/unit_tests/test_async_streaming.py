@@ -296,6 +296,37 @@ class TestBaseAsyncStreamingDatasourceConnector:
 
             assert bulk_index.call_args[1].get("timeout_ms") is None
 
+    @pytest.mark.asyncio
+    async def test_document_batch_size_bytes_splits_oversized_batch(self):
+        """Regression test: document_batch_size_bytes must split async-streamed
+        documents that would otherwise fit in a single count-based batch."""
+        client = DummyAsyncDataClient(
+            items=[
+                {"id": f"doc-{i}", "title": "x" * 300, "content": f"Content {i}"} for i in range(2)
+            ]
+        )
+        connector = DummyAsyncConnector("test", client)
+        # Count-based batch size alone would fit both documents in a single upload.
+        connector.batch_size = 10
+
+        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
+            bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
+            await connector.index_data_async(
+                options=ConnectorOptions(document_batch_size_bytes=100)
+            )
+
+            assert bulk_index.call_count == 2
+
+            first_call = bulk_index.call_args_list[0][1]
+            assert len(first_call["documents"]) == 1
+            assert first_call["is_first_page"] is True
+            assert first_call["is_last_page"] is False
+
+            last_call = bulk_index.call_args_list[1][1]
+            assert len(last_call["documents"]) == 1
+            assert last_call["is_first_page"] is False
+            assert last_call["is_last_page"] is True
+
     def test_sync_fallback_get_data(self):
         """Test that sync get_data() works as fallback."""
         connector = DummyAsyncConnector("test", DummyAsyncDataClient())

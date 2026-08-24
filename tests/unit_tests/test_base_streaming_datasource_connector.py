@@ -229,3 +229,44 @@ def test_upload_timeout_ms_defaults_to_none():
         connector.index_data()
 
         assert bulk_index.call_args[1].get("timeout_ms") is None
+
+
+def test_document_batch_size_bytes_splits_oversized_batch():
+    """Regression test: document_batch_size_bytes must split streamed documents that
+    would otherwise fit in a single count-based batch."""
+
+    class LargeContentClient(BaseStreamingDataClient[dict]):
+        def get_source_data(self, **kwargs):
+            for i in range(2):
+                yield {
+                    "id": f"doc-{i}",
+                    "title": f"Document {i}",
+                    "content": "x" * 200,
+                    "url": f"https://example.com/{i}",
+                    "created_at": 1672531200,
+                    "updated_at": 1672617600,
+                    "author": {"id": "user@example.com"},
+                    "type": "document",
+                    "tags": ["example"],
+                    "datasource": "test_datasource",
+                }
+
+    connector = DummyStreamingConnector("test_stream", LargeContentClient())
+    # Count-based batch size alone would fit both documents in a single upload.
+    connector.batch_size = 10
+
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
+        bulk_index = api_client().__enter__().indexing.documents.bulk_index
+        connector.index_data(options=ConnectorOptions(document_batch_size_bytes=100))
+
+        assert bulk_index.call_count == 2
+
+        first_call_kwargs = bulk_index.call_args_list[0][1]
+        assert len(first_call_kwargs["documents"]) == 1
+        assert first_call_kwargs["is_first_page"] is True
+        assert first_call_kwargs["is_last_page"] is False
+
+        last_call_kwargs = bulk_index.call_args_list[1][1]
+        assert len(last_call_kwargs["documents"]) == 1
+        assert last_call_kwargs["is_first_page"] is False
+        assert last_call_kwargs["is_last_page"] is True

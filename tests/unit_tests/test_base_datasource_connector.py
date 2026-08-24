@@ -4,6 +4,7 @@ from typing import List, Sequence
 from unittest.mock import Mock, call as mock_call, patch
 
 from glean.api_client.models import ContentDefinition, DocumentDefinition
+from glean.indexing.common.batch_processor import DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
 from glean.indexing.connectors import BaseDataClient, BaseDatasourceConnector
 from glean.indexing.models import (
     ConnectorOptions,
@@ -330,3 +331,71 @@ class TestBaseDatasourceConnector:
 
         call_kwargs = mock_client.indexing.documents.bulk_index.call_args[1]
         assert call_kwargs.get("timeout_ms") is None
+
+    @patch("glean.indexing.connectors.base_datasource_connector.PushUploader")
+    def test_document_batch_size_bytes_forwarded_as_max_batch_bytes(self, mock_uploader):
+        """Test that ConnectorOptions.document_batch_size_bytes reaches the uploader."""
+        test_data = [
+            {"id": "1", "title": "Doc", "content": "Content", "url": "https://test.example.com/1"},
+        ]
+        data_client = MockDataClient(test_data)
+        connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
+
+        connector.index_data(options=ConnectorOptions(document_batch_size_bytes=2048))
+
+        call_kwargs = mock_uploader.return_value.bulk_index_documents.call_args[1]
+        assert call_kwargs["max_batch_bytes"] == 2048
+
+    @patch("glean.indexing.connectors.base_datasource_connector.PushUploader")
+    def test_document_batch_size_bytes_defaults_without_options(self, mock_uploader):
+        """Test that omitting options still applies the uploader's default byte limit."""
+        test_data = [
+            {"id": "1", "title": "Doc", "content": "Content", "url": "https://test.example.com/1"},
+        ]
+        data_client = MockDataClient(test_data)
+        connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
+
+        connector.index_data()
+
+        call_kwargs = mock_uploader.return_value.bulk_index_documents.call_args[1]
+        assert call_kwargs["max_batch_bytes"] == DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
+
+    @patch("glean.indexing.push.uploader.api_client")
+    def test_document_batch_size_bytes_splits_oversized_documents(self, mock_api_client):
+        """Regression test: document_batch_size_bytes must split documents that would
+        otherwise fit in a single count-based batch."""
+        mock_client = Mock()
+        mock_api_client.return_value.__enter__.return_value = mock_client
+
+        test_data = [
+            {
+                "id": "1",
+                "title": "Doc 1",
+                "content": "x" * 200,
+                "url": "https://test.example.com/1",
+            },
+            {
+                "id": "2",
+                "title": "Doc 2",
+                "content": "y" * 200,
+                "url": "https://test.example.com/2",
+            },
+        ]
+        data_client = MockDataClient(test_data)
+        connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
+        # Count-based batch size alone would fit both documents in a single upload.
+        connector.batch_size = 10
+
+        connector.index_data(options=ConnectorOptions(document_batch_size_bytes=100))
+
+        assert mock_client.indexing.documents.bulk_index.call_count == 2
+
+        first_call_kwargs = mock_client.indexing.documents.bulk_index.call_args_list[0][1]
+        assert len(first_call_kwargs["documents"]) == 1
+        assert first_call_kwargs["is_first_page"] is True
+        assert first_call_kwargs["is_last_page"] is False
+
+        last_call_kwargs = mock_client.indexing.documents.bulk_index.call_args_list[1][1]
+        assert len(last_call_kwargs["documents"]) == 1
+        assert last_call_kwargs["is_first_page"] is False
+        assert last_call_kwargs["is_last_page"] is True

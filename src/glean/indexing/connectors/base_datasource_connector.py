@@ -5,6 +5,7 @@ from abc import ABC
 from typing import Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
+from glean.indexing.common.batch_processor import DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.exceptions import InconsistentDataError, InvalidDatasourceConfigError
@@ -200,6 +201,7 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                 ).bulk_index_documents(
                     documents=documents,
                     batch_size=self.batch_size,
+                    max_batch_bytes=self._resolve_max_batch_bytes(options),
                     force_restart_upload=True if force_restart else None,
                     disable_stale_document_deletion_check=True
                     if (options and options.disable_stale_deletion_check)
@@ -227,3 +229,12 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             ISO timestamp string or None for full crawl
         """
         return None
+
+    @staticmethod
+    def _resolve_max_batch_bytes(options: Optional[ConnectorOptions]) -> Optional[int]:
+        """Resolve the max serialized batch byte size to apply from connector options.
+
+        Falls back to the uploader's own default when no options are provided, so
+        omitting `options` preserves existing byte-aware batching behavior.
+        """
+        return options.document_batch_size_bytes if options else DEFAULT_DOCUMENT_BATCH_SIZE_BYTES

@@ -78,6 +78,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up mise
         uses: jdx/mise-action@v2
@@ -89,18 +91,23 @@ jobs:
       - name: Install plugin build dependencies
         run: npm ci
 
+      - name: Check lockstep plugin release configuration
+        run: npm run check:plugin-release
+
+      - name: Check feature PR preserves the release-owned version
+        if: github.event_name == 'pull_request'
+        run: npm run check:plugin-version-policy -- '${{ github.event.pull_request.base.sha }}'
+
+      # Check before building: a build overwrites stale committed output and
+      # would make the comparison false-pass.
+      - name: Check committed plugin output is not stale
+        run: npm run diff:plugins
+
       - name: Build plugin artifacts
         run: npm run build:plugins
 
       - name: Validate all three targets
         run: npm run validate:plugins
-
-      # The emitted plugin content and the root marketplace manifests are
-      # committed: each manifest's `source` points at build/, so it has to exist
-      # in a fresh clone — that clone is what installing from GitHub gets. Fail
-      # if someone edited a skill under skills/ without rebuilding.
-      - name: Check committed plugin output is not stale
-        run: npm run diff:plugins
 
       # Schema check only — `plugin validate` passes even when a plugin's
       # `source` points at a path that does not exist (verified with a negative

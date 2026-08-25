@@ -11,6 +11,7 @@ Run the `/release` command in Claude Code for a guided release process.
 - [`mise`](https://mise.jdx.dev/) - Tool and task management
 - [`commitizen`](https://github.com/commitizen-tools/commitizen) - Conventional commits and versioning
 - [`uv`](https://github.com/astral-sh/uv) - Python package management
+- [`release-it`](https://github.com/release-it/release-it) - Agent plugin version synchronization and rebuild
 
 ## Versioning
 
@@ -43,8 +44,9 @@ DRY_RUN=true mise run release
 ```
 
 This will show you:
-- The version bump (e.g., 0.2.0 → 0.2.1)
+- The shared SDK/plugin version bump (e.g., 0.2.0 → 0.2.1)
 - The changelog entries that will be generated
+- The plugin package and generated artifacts release-it would update
 
 ### 3. Run the release
 
@@ -53,10 +55,11 @@ mise run release
 ```
 
 This will:
-- Bump the version in `pyproject.toml`
-- Update `CHANGELOG.md`
-- Create a git commit
-- Create a git tag (e.g., `v0.2.1`)
+- Bump the SDK version in `pyproject.toml`
+- Apply the same version to the plugin package, lockfile, and generated manifests
+- Rebuild and validate Claude, Cursor, and Codex plugin artifacts
+- Update `CHANGELOG.md` and `uv.lock`
+- Create one release commit and one tag (e.g., `v0.2.1`)
 
 ### 4. Push to trigger automated release
 
@@ -82,3 +85,9 @@ gh release view v0.2.1
 Check:
 - [GitHub Releases](https://github.com/gleanwork/glean-indexing-sdk/releases)
 - [PyPI Package](https://pypi.org/project/glean-indexing-sdk/)
+
+## Agent plugin releases
+
+The bundled agent plugin is part of the SDK release, not an independent product release. Feature PRs rebuild its committed artifacts without changing their version. `mise run release` applies the same semantic version to the plugin package, lockfile, and all generated manifests in the SDK release commit. GA versions are identical; Python prereleases are normalized to npm syntax (`1.0.0rc1` → `1.0.0-rc.1`).
+
+Release-it performs only the plugin version update and rebuild. Commitizen and the mise task retain ownership of the single release commit, annotated `vX.Y.Z` tag, changelog, GitHub Release, and PyPI publication. The private plugin package is not published to npm. If any post-bump step fails, the task restores the starting commit and removes the incomplete tag.

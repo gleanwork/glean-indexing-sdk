@@ -7,7 +7,6 @@ from abc import ABC
 from typing import Generator, Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
-
 from glean.indexing.common import DocumentBatchProcessor
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient

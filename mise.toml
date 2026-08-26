@@ -32,6 +32,7 @@ run = "uv run pytest --cov=glean --cov-report=term --cov-report=html -v tests/"
 [tasks.lint]
 description = "Run all linters"
 run = [
+  "mise run lint:ruff:config",
   "mise run lint:ruff",
   "mise run lint:format:check",
   "mise run lint:pyright",
@@ -86,6 +87,10 @@ run = [
 [tasks."lint:fix:ruff"]
 description = "Run Ruff autofixer"
 run = "uv run ruff check . --fix --exclude .venv/ --exclude **/site-packages/"
+
+[tasks."lint:ruff:config"]
+description = "Verify CI resolves the authoritative Ruff policy"
+run = "uv run python scripts/check_ruff_config.py"
 
 [tasks."lint:ruff"]
 description = "Run Ruff linter"

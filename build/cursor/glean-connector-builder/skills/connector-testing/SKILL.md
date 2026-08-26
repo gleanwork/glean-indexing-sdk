@@ -91,13 +91,15 @@ Use `run_integration_test_async()` for async streaming connectors.
 > confirm with the user before proceeding. See **Cleaning up after a live
 > run** below for how to remove what it uploads.
 
+The built-in live phase is document-only. It rejects people connectors and datasource connectors that override `get_identities()`, because the document cleanup command cannot restore replaced employee, user, group, or membership data. Validate those outputs with mock/integration tests or a purpose-built live smoke test with explicit identity cleanup.
+
 Run only when source credentials and `GLEAN_INDEXING_API_TOKEN` plus `GLEAN_SERVER_URL` or `GLEAN_INSTANCE` are available:
 
 ```bash
 glean-idx test --phase live --allow-destructive-live
 ```
 
-This prompts for confirmation (showing the resolved target) unless `--yes` is passed. `--yes` only skips the prompt; it does not replace the required `--allow-destructive-live` acknowledgement.
+This prompts for confirmation (showing the resolved target) unless `--yes` is passed. `--yes` only skips the prompt; it does not replace the required `--allow-destructive-live` acknowledgement. The CLI carries the confirmed target into the harness, which refuses to upload if the configured target changes before live execution.
 
 or, to assert on the result:
 
@@ -105,7 +107,7 @@ or, to assert on the result:
 harness.run_end_to_end(confirm=True, allow_destructive=True)
 ```
 
-`confirm=True` confirms the target. The separate `allow_destructive=True` acknowledges replacement finalization and possible stale deletion; without it the harness raises `UnsafeLiveEndToEndRunError`. Use `run_end_to_end_async()` for async streaming connectors. This phase uses the real bounded source client and real Glean APIs.
+`confirm=True` confirms the target. The separate `allow_destructive=True` acknowledges replacement finalization and possible stale deletion; without it the harness raises `UnsafeLiveEndToEndRunError`. Use `run_end_to_end_async()` for async streaming connectors. This phase uses the current bounded source client and real Glean APIs; it never reads or writes integration fixtures.
 
 After upload, the harness waits for normal indexing, requests `processalldocuments` once when needed, ignores a rate-limit response from that request, and polls status for a bounded period. If the result is `PENDING`, tell the user:
 

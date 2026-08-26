@@ -40,6 +40,20 @@ CONNECTOR_SOURCE = textwrap.dedent(
             ]
 
 
+    class FactoryWikiConnector(BaseDatasourceConnector):
+        configuration = CustomDatasourceConfig(name="wiki", display_name="Wiki")
+
+        def transform(self, data):
+            return [
+                DocumentDefinition(datasource="wiki", id=record["id"], title=record["title"])
+                for record in data
+            ]
+
+
+    def create_connector():
+        return FactoryWikiConnector("wiki", StaticDataClient(RECORDS))
+
+
     class EmptyConnector(BaseDatasourceConnector):
         configuration = CustomDatasourceConfig(name="wiki", display_name="Wiki")
 
@@ -110,6 +124,38 @@ def test_the_mock_phase_posts_the_transformed_documents(project, no_credentials)
 def test_the_mock_phase_needs_no_credentials(project, no_credentials):
     """Glean is mocked, so demanding a token would block the cheapest check."""
     assert invoke(project).exit_code == 0
+
+
+def test_mock_phase_accepts_explicit_factory_reference(project, no_credentials):
+    result = invoke(
+        project,
+        "--connector",
+        "connector:create_connector",
+        "--output",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert data["connector"] == "create_connector"
+    assert data["clients"] == ["data_client"]
+
+
+def test_mock_phase_uses_project_factory_and_discovers_injected_client(project, no_credentials):
+    (project / PROJECT_FILE).write_text(
+        "connector_name: wiki\n"
+        "connector_module: connector\n"
+        "connector_class: FactoryWikiConnector\n"
+        "connector_factory: create_connector\n"
+    )
+
+    result = invoke(project, "--output", "json")
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert data["connector"] == "FactoryWikiConnector"
+    assert data["clients"] == ["data_client"]
+    assert data["phases"][0]["posted"] == {"documents": 20}
 
 
 def test_the_live_phase_requires_credentials(project, no_credentials):
@@ -309,7 +355,6 @@ def test_yes_does_not_authorize_destructive_live_replacement(project, monkeypatc
 
 
 def test_yes_with_destructive_opt_in_runs_live(project, monkeypatch):
-    """Unattended live runs require both general prompt skipping and destructive opt-in."""
     from glean.indexing.testing.harness import TestHarness
 
     monkeypatch.setenv("GLEAN_SERVER_URL", "https://acme-be.glean.com")
@@ -360,6 +405,7 @@ def test_confirming_the_live_prompt_passes_confirm_to_the_harness(project, monke
     assert result.exit_code == 0, result.output
     assert seen_kwargs["confirm"] is True
     assert seen_kwargs["allow_destructive"] is True
+    assert seen_kwargs["confirmed_target"] == "https://acme-be.glean.com"
 
 
 def test_a_batch_does_not_prompt_when_live_will_be_skipped(project, no_credentials):
@@ -399,6 +445,13 @@ def test_max_items_actually_caps_what_the_source_yields(project, no_credentials)
     assert result.exit_code == 0, result.output
     phase = json.loads(result.stdout)["data"]["phases"][0]
     assert phase["posted"] == {"documents": 4}
+
+
+def test_max_items_must_be_positive(project, no_credentials):
+    result = invoke(project, "--phase", "integration", "--max-items", "0")
+
+    assert result.exit_code != 0
+    assert "0 is not in the range" in result.output
 
 
 def test_without_the_cap_the_harness_default_applies(project, no_credentials):

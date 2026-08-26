@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from typing import Any, List, Optional, Sequence, TypedDict
 
@@ -68,12 +69,18 @@ class CompanyWikiConnector(BaseDatasourceConnector[WikiPage]):
         ]
 
 
-if __name__ == "__main__":
-    connector = CompanyWikiConnector(
+def create_connector() -> CompanyWikiConnector:
+    """Build the production connector after runtime secrets are loaded."""
+    return CompanyWikiConnector(
         name="company_wiki",
         data_client=WikiDataClient(
-            base_url="https://wiki.company.com", api_token="your-wiki-token"
+            base_url="https://wiki.company.com",
+            api_token=os.environ["WIKI_API_TOKEN"],
         ),
     )
+
+
+if __name__ == "__main__":
+    connector = create_connector()
     connector.configure_datasource()
     connector.index_data(mode=IndexingMode.FULL)

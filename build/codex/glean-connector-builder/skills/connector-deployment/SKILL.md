@@ -11,6 +11,7 @@ Use this skill when deployment or hosting is in scope for a connector build. It 
 
 - `<connector-folder>/.glean/connector_plan.md`
 - Generated connector code and Python module/class names
+- A zero-argument connector factory name when the connector class takes dependencies
 - Target cloud: `gcp` or `aws`
 - Cloud project/account, region, Kubernetes cluster, namespace, and container registry
 - Expected crawl schedule and resource sizing from the confirmed connector plan
@@ -23,6 +24,7 @@ Use this skill when deployment or hosting is in scope for a connector build. It 
 - Resolve every known follow-up recorded in the connector plan or source investigation before deployment.
 - Never commit `.env` or raw secrets. Use `.env.example` as the template and upload real secrets through `glean-idx deploy secrets upload`.
 - Keep deployment-control variables separate from connector secrets. Deployment-control variables are not uploaded as connector secrets.
+- Prefer a module-level zero-argument `create_connector()` factory for production wiring. Cloud runners load secrets into environment variables before calling it; never put source credentials in `glean_deployment.yaml` or factory metadata.
 - Keep `.glean` planning artifacts inside the connector folder, and deployment artifacts in the connector folder root.
 - Use the connector folder as the container image build directory by default. Do not ask the user to choose an image directory.
 - When pushing the image to the configured cloud container registry, use only the connector name as its repository path. Do not ask the user to choose an image path.
@@ -72,7 +74,7 @@ Use this sequence for a normal customer-hosted deployment:
 
 ```bash
 # 1. Scaffold deployment files
-glean-idx deploy init --cloud gcp   # or --cloud aws
+glean-idx deploy init --cloud gcp --connector-factory create_connector   # or --cloud aws
 # Edit glean_deployment.yaml: image registry, schedule, cluster, resources, etc.
 # Edit .env: GLEAN_INDEXING_API_TOKEN, GLEAN_SERVER_URL, source credentials, etc.
 
@@ -144,7 +146,7 @@ Use the `glean-idx deploy` CLI:
 | `glean-idx deploy destroy` | Tear down the deployment — two-step confirmation: y/n prompt then type the connector name. |
 | `glean-idx deploy destroy --yes` | Tear down without prompts (CI only). |
 
-For `glean-idx deploy init`, only `--cloud` is required. If omitted, `--connector-name` defaults to the current directory name, `--connector-class` defaults to `MyConnector`, and `--connector-module` defaults to `connector`. Pass those options when the generated connector uses different names.
+For `glean-idx deploy init`, only `--cloud` is required. If omitted, `--connector-name` defaults to the current directory name, `--connector-class` defaults to `MyConnector`, and `--connector-module` defaults to `connector`. Pass those options when the generated connector uses different names. When the class takes a name, data client, or other dependencies, pass `--connector-factory create_connector`; the named module-level function must take no arguments and return an instance of `connector_class`.
 
 Use the Python deployment APIs only when writing tests or advanced tooling:
 
@@ -173,6 +175,7 @@ Ensure `glean_deployment.yaml` has the correct fields before running build/apply
 - `connector_name`
 - `connector_class`
 - `connector_module`
+- `connector_factory` (optional zero-argument production construction hook)
 - `cloud`
 - `region`
 - `cluster_name`
@@ -214,6 +217,7 @@ The deployment code redlists deployment-control variables so they are not upload
 - `INDEXING_MODE`
 - `CONNECTOR_CLASS`
 - `CONNECTOR_MODULE`
+- `CONNECTOR_FACTORY`
 
 Connector secrets should include values such as:
 

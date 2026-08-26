@@ -9,7 +9,9 @@ Exception Hierarchy:
     │   ├── MissingEnvironmentVariableError
     │   ├── InvalidDatasourceConfigError
     │   ├── LiveEndToEndNotConfirmedError
-    │   └── UnsafeLiveEndToEndRunError
+    │   ├── LiveEndToEndTargetChangedError
+    │   ├── UnsafeLiveEndToEndRunError
+    │   └── UnsafeLiveIdentityTestError
     └── GleanValidationError(GleanError, ValueError)
         ├── InvalidPropertyError
         ├── InconsistentDataError
@@ -130,6 +132,25 @@ class LiveEndToEndNotConfirmedError(GleanConfigurationError):
         super().__init__(message, fix_suggestion, self.DOCS_URL)
 
 
+class LiveEndToEndTargetChangedError(GleanConfigurationError):
+    """Raised when a live run's target changes after confirmation."""
+
+    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing"
+
+    def __init__(self, confirmed_target: str, actual_target: str) -> None:
+        self.confirmed_target = confirmed_target
+        self.actual_target = actual_target
+        message = (
+            f"Live end-to-end target changed after confirmation: confirmed "
+            f"{confirmed_target!r}, now configured as {actual_target!r}."
+        )
+        fix_suggestion = (
+            "Stop the run, verify GLEAN_SERVER_URL (or GLEAN_INSTANCE), and confirm the "
+            "current target again."
+        )
+        super().__init__(message, fix_suggestion, self.DOCS_URL)
+
+
 class UnsafeLiveEndToEndRunError(GleanConfigurationError):
     """Raised when a live test lacks explicit destructive-replacement opt-in."""
 
@@ -146,6 +167,24 @@ class UnsafeLiveEndToEndRunError(GleanConfigurationError):
             "Use a disposable datasource whose contents may be replaced, then pass "
             "allow_destructive=True in addition to confirm=True. For the CLI, pass "
             "--allow-destructive-live; --yes alone is not sufficient."
+        )
+        super().__init__(message, fix_suggestion, self.DOCS_URL)
+
+
+class UnsafeLiveIdentityTestError(GleanConfigurationError):
+    """Raised when a live harness run could replace identity data."""
+
+    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing"
+
+    def __init__(self, connector_type: str) -> None:
+        self.connector_type = connector_type
+        message = (
+            f"Live end-to-end testing does not support {connector_type}: identity and people "
+            "uploads cannot be reversed by the document cleanup command."
+        )
+        fix_suggestion = (
+            "Test identity output with the mock or integration phase. Use a separate, "
+            "purpose-built smoke test with documented identity cleanup for live validation."
         )
         super().__init__(message, fix_suggestion, self.DOCS_URL)
 

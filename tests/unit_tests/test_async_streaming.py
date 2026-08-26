@@ -1,8 +1,10 @@
 """Tests for async streaming base classes."""
 
+import asyncio
 import threading
 import time
 from typing import AsyncGenerator, Sequence
+from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +15,7 @@ from glean.indexing.connectors import (
     BaseAsyncStreamingDatasourceConnector,
 )
 from glean.indexing.models import ConnectorOptions
+from glean.indexing.observability import InMemoryMetricsProvider
 from glean.indexing.push import PushUploader
 
 
@@ -144,14 +147,31 @@ class TestBaseAsyncStreamingDatasourceConnector:
 
     @pytest.mark.asyncio
     async def test_index_data_async_empty(self):
-        """Test that empty data results in no uploads."""
+        """Test that empty data completes one observable lifecycle without uploads."""
         client = DummyAsyncDataClient(items=[])
         connector = DummyAsyncConnector("test", client)
 
-        with patch("glean.indexing.push.uploader.api_client") as mock_api_client:
+        with (
+            TestCase().assertLogs(
+                "glean.indexing.observability.observability", level="INFO"
+            ) as captured,
+            patch("glean.indexing.push.uploader.api_client") as mock_api_client,
+        ):
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             await connector.index_data_async()
-            assert bulk_index.call_count == 0
+
+        assert bulk_index.call_count == 0
+        operations = [getattr(record, "operation", None) for record in captured.records]
+        assert operations.count("crawl_started") == 1
+        assert operations.count("crawl_completed") == 1
+        assert (
+            connector.observability.get_metrics_summary().items()
+            >= {
+                "items_fetched": 0,
+                "documents_transformed": 0,
+                "documents_indexed": 0,
+            }.items()
+        )
 
     @pytest.mark.asyncio
     async def test_index_data_async_uploads_middle_pages_concurrently(self):
@@ -243,6 +263,148 @@ class TestBaseAsyncStreamingDatasourceConnector:
 
             with pytest.raises(Exception, match="upload failed"):
                 await connector.index_data_async()
+
+    @pytest.mark.asyncio
+    async def test_index_data_async_emits_success_lifecycle_and_metrics(self):
+        connector = DummyAsyncConnector("test", DummyAsyncDataClient())
+        connector.batch_size = 2
+        metrics = InMemoryMetricsProvider()
+        connector.observability.metrics_provider = metrics
+
+        with (
+            TestCase().assertLogs(
+                "glean.indexing.observability.observability", level="INFO"
+            ) as captured,
+            patch("glean.indexing.push.uploader.api_client"),
+        ):
+            await connector.index_data_async()
+
+        operations = [getattr(record, "operation", None) for record in captured.records]
+        assert operations.count("crawl_started") == 1
+        assert operations.count("crawl_completed") == 1
+        assert "crawl_failed" not in operations
+        summary = connector.observability.get_metrics_summary()
+        assert (
+            summary.items()
+            >= {
+                "items_fetched": 5,
+                "documents_transformed": 5,
+                "documents_indexed": 5,
+            }.items()
+        )
+        assert {"data_fetch_duration", "data_transform_duration"} <= summary.keys()
+        assert "data_upload_duration" not in summary
+        emitted_metric_names = {metric["name"] for metric in metrics.get_metric_history()}
+        assert {
+            "api_request_count",
+            "api_request_latency_ms",
+            "connector_execution_duration_ms",
+        } <= emitted_metric_names
+
+    @pytest.mark.asyncio
+    async def test_slow_async_streaming_fetch_is_not_reported_as_upload_duration(self):
+        class SlowClient(DummyAsyncDataClient):
+            async def get_source_data(self, **kwargs):
+                for item in self.items:
+                    await asyncio.sleep(0.01)
+                    yield item
+
+        connector = DummyAsyncConnector("test", SlowClient())
+        metrics = InMemoryMetricsProvider()
+        connector.observability.metrics_provider = metrics
+
+        with patch("glean.indexing.push.uploader.api_client"):
+            await connector.index_data_async()
+
+        summary = connector.observability.get_metrics_summary()
+        assert summary["data_fetch_duration"] >= 0.04
+        assert "data_upload_duration" not in summary
+        assert any(
+            metric["name"] == "api_request_latency_ms"
+            and metric["labels"]["endpoint"] == "documents.bulk_index"
+            for metric in metrics.get_metric_history()
+        )
+
+    @pytest.mark.asyncio
+    async def test_async_streaming_fetch_failure_records_partial_counts_and_duration(self):
+        class FailingClient(DummyAsyncDataClient):
+            async def get_source_data(self, **kwargs):
+                for index, item in enumerate(self.items):
+                    await asyncio.sleep(0.01)
+                    yield item
+                    if index == 2:
+                        await asyncio.sleep(0.01)
+                        raise RuntimeError("fetch failed")
+
+        connector = DummyAsyncConnector("test", FailingClient())
+        connector.batch_size = 2
+
+        with (
+            patch("glean.indexing.push.uploader.api_client"),
+            pytest.raises(RuntimeError, match="fetch failed"),
+        ):
+            await connector.index_data_async()
+
+        summary = connector.observability.get_metrics_summary()
+        assert summary["items_fetched"] == 3
+        assert summary["documents_transformed"] == 2
+        assert summary["data_fetch_duration"] >= 0.035
+        assert summary["data_transform_duration"] >= 0
+
+    @pytest.mark.asyncio
+    async def test_async_streaming_transform_failure_records_failed_call_duration(self):
+        class FailingTransformConnector(DummyAsyncConnector):
+            def __init__(self, name, data_client):
+                super().__init__(name, data_client)
+                self.transform_calls = 0
+
+            def transform(self, data):
+                self.transform_calls += 1
+                time.sleep(0.01)
+                if self.transform_calls == 2:
+                    raise RuntimeError("transform failed")
+                return super().transform(data)
+
+        connector = FailingTransformConnector("test", DummyAsyncDataClient())
+        connector.batch_size = 2
+
+        with (
+            patch("glean.indexing.push.uploader.api_client"),
+            pytest.raises(RuntimeError, match="transform failed"),
+        ):
+            await connector.index_data_async()
+
+        summary = connector.observability.get_metrics_summary()
+        assert summary["items_fetched"] == 4
+        assert summary["documents_transformed"] == 2
+        assert summary["data_transform_duration"] >= 0.018
+
+    @pytest.mark.asyncio
+    async def test_index_data_async_emits_failure_lifecycle_and_metrics(self):
+        connector = DummyAsyncConnector("test", DummyAsyncDataClient())
+        metrics = InMemoryMetricsProvider()
+        connector.observability.metrics_provider = metrics
+
+        with (
+            TestCase().assertLogs(
+                "glean.indexing.observability.observability", level="INFO"
+            ) as captured,
+            patch("glean.indexing.push.uploader.api_client") as api_client,
+        ):
+            api_client().__enter__().indexing.documents.bulk_index.side_effect = RuntimeError(
+                "upload failed"
+            )
+            with pytest.raises(RuntimeError, match="upload failed"):
+                await connector.index_data_async()
+
+        operations = [getattr(record, "operation", None) for record in captured.records]
+        assert operations.count("crawl_started") == 1
+        assert operations.count("crawl_failed") == 1
+        assert "crawl_completed" not in operations
+        assert connector.observability.get_metrics_summary()["indexing_errors"] == 1
+        assert "connector_execution_duration_ms" in {
+            metric["name"] for metric in metrics.get_metric_history()
+        }
 
     @pytest.mark.asyncio
     async def test_disable_stale_deletion_check_on_last_page_only(self):
@@ -342,3 +504,18 @@ class TestBaseAsyncStreamingDatasourceConnector:
             bulk_index = mock_api_client().__enter__().indexing.documents.bulk_index
             connector.index_data()
             assert bulk_index.call_count == 1
+
+    def test_sync_fallback_emits_one_lifecycle(self):
+        connector = DummyAsyncConnector("test", DummyAsyncDataClient())
+
+        with (
+            TestCase().assertLogs(
+                "glean.indexing.observability.observability", level="INFO"
+            ) as captured,
+            patch("glean.indexing.push.uploader.api_client"),
+        ):
+            connector.index_data()
+
+        operations = [getattr(record, "operation", None) for record in captured.records]
+        assert operations.count("crawl_started") == 1
+        assert operations.count("crawl_completed") == 1

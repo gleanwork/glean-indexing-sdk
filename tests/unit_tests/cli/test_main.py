@@ -35,3 +35,12 @@ def test_the_example_commands_survive_help_rewrapping():
 
 def test_short_help_flag_works():
     assert CliRunner().invoke(cli, ["-h"]).exit_code == 0
+
+
+def test_click_parse_errors_remain_text_when_json_is_requested():
+    result = CliRunner().invoke(cli, ["deploy", "init", "--output", "json"])
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "Missing option '--cloud'" in result.stderr
+    assert result.stderr.startswith("Usage:")

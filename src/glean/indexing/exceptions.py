@@ -9,6 +9,7 @@ Exception Hierarchy:
     │   ├── MissingEnvironmentVariableError
     │   ├── InvalidDatasourceConfigError
     │   ├── LiveEndToEndNotConfirmedError
+    │   ├── LiveEndToEndTargetChangedError
     │   └── UnsafeLiveIdentityTestError
     └── GleanValidationError(GleanError, ValueError)
         ├── InvalidPropertyError
@@ -126,6 +127,25 @@ class LiveEndToEndNotConfirmedError(GleanConfigurationError):
             "run_end_to_end()/run_end_to_end_async(). Uploaded documents are not "
             "cleaned up automatically -- use `glean-idx document delete` or "
             "PushUploader.delete_document(...) afterwards."
+        )
+        super().__init__(message, fix_suggestion, self.DOCS_URL)
+
+
+class LiveEndToEndTargetChangedError(GleanConfigurationError):
+    """Raised when a live run's target changes after confirmation."""
+
+    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing"
+
+    def __init__(self, confirmed_target: str, actual_target: str) -> None:
+        self.confirmed_target = confirmed_target
+        self.actual_target = actual_target
+        message = (
+            f"Live end-to-end target changed after confirmation: confirmed "
+            f"{confirmed_target!r}, now configured as {actual_target!r}."
+        )
+        fix_suggestion = (
+            "Stop the run, verify GLEAN_SERVER_URL (or GLEAN_INSTANCE), and confirm the "
+            "current target again."
         )
         super().__init__(message, fix_suggestion, self.DOCS_URL)
 

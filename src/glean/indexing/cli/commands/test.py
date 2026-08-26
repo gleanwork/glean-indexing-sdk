@@ -100,7 +100,7 @@ ALL = "all"
 )
 @click.option(
     "--max-items",
-    type=int,
+    type=click.IntRange(min=1),
     default=None,
     help="Cap items fetched per data client. Applies to every client.",
 )

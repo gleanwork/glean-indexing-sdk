@@ -102,6 +102,18 @@ def test_aws_missing_ecr_repo_raises():
         DeploymentConfig(**kwargs)
 
 
+@pytest.mark.parametrize("account_id", ["123", "1234567890123", "12345678901x", True])
+def test_aws_account_id_must_be_twelve_digits(account_id):
+    with pytest.raises(ValidationError, match="account_id must be exactly 12 decimal digits"):
+        DeploymentConfig(**{**AWS_KWARGS, "account_id": account_id})
+
+
+def test_quoted_aws_account_id_preserves_leading_zero():
+    config = DeploymentConfig(**{**AWS_KWARGS, "account_id": "061039763644"})
+
+    assert config.account_id == "061039763644"
+
+
 def test_invalid_connector_name_raises():
     with pytest.raises(ValidationError, match="connector_name must be lowercase"):
         DeploymentConfig(**{**GCP_KWARGS, "connector_name": "MyConnector"})
@@ -182,6 +194,15 @@ def test_yaml_round_trip_aws(tmp_path):
     loaded = DeploymentConfig.from_yaml(yaml_path)
     assert loaded.connector_name == config.connector_name
     assert loaded.account_id == config.account_id
+
+
+def test_unquoted_aws_account_id_loads_as_string(tmp_path):
+    yaml_path = tmp_path / "glean_deployment.yaml"
+    yaml_path.write_text(yaml.safe_dump({**AWS_KWARGS, "account_id": 123456789012}))
+
+    loaded = DeploymentConfig.from_yaml(yaml_path)
+
+    assert loaded.account_id == "123456789012"
 
 
 def test_from_yaml_file_not_found():

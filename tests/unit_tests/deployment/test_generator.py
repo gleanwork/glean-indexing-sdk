@@ -154,6 +154,12 @@ def test_aws_run_py_has_reference_link():
     )
 
 
+def test_aws_generated_config_quotes_account_id():
+    artifacts = generate_artifacts(AWS_CONFIG)
+
+    assert 'account_id: "123456789012"' in artifacts["glean_deployment.yaml"]
+
+
 @pytest.mark.parametrize("cloud", ["aws", "gcp"])
 def test_generated_runner_uses_factory_for_connector_with_required_arguments(
     cloud, tmp_path, monkeypatch

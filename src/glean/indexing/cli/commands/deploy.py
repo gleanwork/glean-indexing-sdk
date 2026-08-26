@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import click
+from pydantic import ValidationError
 
 from glean.indexing.cli.main import context, global_options
 from glean.indexing.deployment.config import DeploymentConfig
@@ -37,8 +38,16 @@ def _load_config(config_path: Path) -> DeploymentConfig:
         )
     try:
         return DeploymentConfig.from_yaml(config_path)
+    except ValidationError as exc:
+        details = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+            for error in exc.errors(include_url=False, include_context=False, include_input=False)
+        )
+        raise click.ClickException(
+            f"Invalid deployment config at {config_path}: {details}"
+        ) from exc
     except Exception as exc:
-        raise click.ClickException(f"Invalid glean_deployment.yaml: {exc}") from exc
+        raise click.ClickException(f"Invalid deployment config at {config_path}: {exc}") from exc
 
 
 @click.group()
@@ -98,7 +107,7 @@ def init(
     )
     aws_kwargs = (
         {
-            "account_id": "<your-aws-account-id>",
+            "account_id": "000000000000",
             "ecr_repo": "<account>.dkr.ecr.<region>.amazonaws.com/connectors",
         }
         if cloud == "aws"

@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# 4. Import, construct, and run the connector.
+# ---------------------------------------------------------------------------
+
+print(f"Importing connector: {connector_module_path}.{connector_class_name}")
+
+try:
+    module = importlib.import_module(connector_module_path)
+except ModuleNotFoundError as exc:
+    print(
+        f"ERROR: Could not import connector module '{connector_module_path}': {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+connector_cls = getattr(module, connector_class_name, None)
+if connector_cls is None:
+    print(
+        f"ERROR: Class '{connector_class_name}' not found in module '{connector_module_path}'.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+print(f"Starting connector {connector_class_name} with indexing mode: {indexing_mode}")
+
+try:
+    from glean.indexing.models import IndexingMode
+    mode = IndexingMode[indexing_mode]
+except KeyError:
+    print(
+        f"ERROR: Unknown INDEXING_MODE '{indexing_mode}'. Valid values: FULL, INCREMENTAL.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+connector_factory = None
+if connector_factory_name:
+    connector_factory = getattr(module, connector_factory_name, None)
+    if connector_factory is None:
+        print(
+            f"ERROR: Factory '{connector_factory_name}' not found in module "
+            f"'{connector_module_path}'. Define that zero-argument function or remove "
+            "connector_factory from glean_deployment.yaml.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+try:
+    connector = instantiate_connector(connector_cls, connector_factory)
+except ConnectorConstructionError as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    sys.exit(1)
+connector.index_data(mode=mode)
+print("Connector run complete.")

@@ -26,6 +26,9 @@
 DATASOURCE_NAME={{ config.connector_name }}
 CLOUD_PLATFORM={{ config.cloud }}
 INDEXING_MODE={{ config.indexing_mode }}
+{% if config.connector_factory %}
+CONNECTOR_FACTORY={{ config.connector_factory }}
+{% endif %}
 {% if config.cloud == 'gcp' %}
 GOOGLE_CLOUD_PROJECT={{ config.project_id }}  # https://cloud.google.com/resource-manager/docs/creating-managing-projects
 {% else %}

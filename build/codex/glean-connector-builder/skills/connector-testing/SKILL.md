@@ -105,7 +105,7 @@ or, to assert on the result:
 harness.run_end_to_end(confirm=True)
 ```
 
-`run_end_to_end()` / `run_end_to_end_async()` refuse to run and raise `LiveEndToEndNotConfirmedError` unless called with `confirm=True` -- pass it only after verifying the target with the user. Use `run_end_to_end_async()` for async streaming connectors. This phase uses the real bounded source client and real Glean APIs.
+`run_end_to_end()` / `run_end_to_end_async()` refuse to run and raise `LiveEndToEndNotConfirmedError` unless called with `confirm=True` -- pass it only after verifying the target with the user. Use `run_end_to_end_async()` for async streaming connectors. This phase uses the current bounded source client and real Glean APIs; it never reads or writes integration fixtures.
 
 After upload, the harness waits for normal indexing, requests `processalldocuments` once when needed, ignores a rate-limit response from that request, and polls status for a bounded period. If the result is `PENDING`, tell the user:
 

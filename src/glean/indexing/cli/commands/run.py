@@ -4,8 +4,8 @@ The command the whole CLI exists to support. Everything else either prepares for
 this or inspects what it produced.
 
 Deliberately matched to how the deployed connector runs: the generated Kubernetes
-entrypoint imports the class named in the project file, constructs it with no
-arguments, and calls `index_data(mode=...)`. Running the connector locally
+entrypoint imports the target named in the project file, constructs it through the
+optional factory, and calls `index_data(mode=...)`. Running the connector locally
 through a different path would mean local success proving nothing about
 production.
 """
@@ -55,8 +55,8 @@ class _StderrLoggerProvider:
     "--connector",
     "reference",
     default=None,
-    metavar="MODULE:CLASS",
-    help="Connector to run. Defaults to the project file's connector.",
+    metavar="MODULE:CLASS_OR_FACTORY",
+    help="Connector class or zero-argument factory. Defaults to the project file.",
 )
 @click.option(
     "--mode",
@@ -109,16 +109,24 @@ def run(
     Glean holds that this run does not produce are treated as stale and removed.
     Point `--mode incremental` at a connector that supports it to avoid that.
     """
-    from glean.indexing.cli.project import instantiate_connector, load_connector
+    from glean.indexing.cli.project import (
+        instantiate_connector,
+        load_connector,
+        load_connector_factory,
+    )
     from glean.indexing.models import ConnectorOptions, IndexingMode
     from glean.indexing.observability import setup_connector_logging
 
     cli_ctx = context(ctx, output=output, assume_yes=assume_yes, project_dir=project_dir)
     assert cli_ctx.project_dir is not None  # guaranteed by requires(project=True)
 
-    resolved_mode = IndexingMode(mode or cli_ctx.project_config.get("indexing_mode") or "full")
+    configured_mode = mode or cli_ctx.project_config.get("indexing_mode") or "full"
+    resolved_mode = IndexingMode(str(configured_mode).lower())
     connector_class = load_connector(cli_ctx.project_dir, cli_ctx.project_config, reference)
-    connector = instantiate_connector(connector_class)
+    connector_factory = load_connector_factory(
+        cli_ctx.project_dir, cli_ctx.project_config, reference
+    )
+    connector = instantiate_connector(connector_class, connector_factory)
 
     options = ConnectorOptions(
         force_restart=force_restart,

@@ -70,12 +70,18 @@ def deploy() -> None:
 )
 @click.option("--connector-class", default="MyConnector", show_default=True)
 @click.option("--connector-module", default="connector", show_default=True)
+@click.option(
+    "--connector-factory",
+    default=None,
+    help="Optional zero-argument factory in the connector module.",
+)
 @click.option("--output-dir", default=".", show_default=True, type=click.Path(file_okay=False))
 def init(
     cloud: str,
     connector_name: str | None,
     connector_class: str,
     connector_module: str,
+    connector_factory: str | None,
     output_dir: str,
 ) -> None:
     """Generate deployment artifacts (Dockerfile, Terraform, run.py, .env.example)."""
@@ -104,6 +110,7 @@ def init(
             connector_name=effective_name,
             connector_class=connector_class,
             connector_module=connector_module,
+            connector_factory=connector_factory,
             cloud=cloud,  # type: ignore[arg-type]
             region="us-central1" if cloud == "gcp" else "us-east-1",
             cluster_name="<your-cluster-name>",

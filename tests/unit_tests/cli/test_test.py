@@ -40,6 +40,20 @@ CONNECTOR_SOURCE = textwrap.dedent(
             ]
 
 
+    class FactoryWikiConnector(BaseDatasourceConnector):
+        configuration = CustomDatasourceConfig(name="wiki", display_name="Wiki")
+
+        def transform(self, data):
+            return [
+                DocumentDefinition(datasource="wiki", id=record["id"], title=record["title"])
+                for record in data
+            ]
+
+
+    def create_connector():
+        return FactoryWikiConnector("wiki", StaticDataClient(RECORDS))
+
+
     class EmptyConnector(BaseDatasourceConnector):
         configuration = CustomDatasourceConfig(name="wiki", display_name="Wiki")
 
@@ -110,6 +124,38 @@ def test_the_mock_phase_posts_the_transformed_documents(project, no_credentials)
 def test_the_mock_phase_needs_no_credentials(project, no_credentials):
     """Glean is mocked, so demanding a token would block the cheapest check."""
     assert invoke(project).exit_code == 0
+
+
+def test_mock_phase_accepts_explicit_factory_reference(project, no_credentials):
+    result = invoke(
+        project,
+        "--connector",
+        "connector:create_connector",
+        "--output",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert data["connector"] == "create_connector"
+    assert data["clients"] == ["data_client"]
+
+
+def test_mock_phase_uses_project_factory_and_discovers_injected_client(project, no_credentials):
+    (project / PROJECT_FILE).write_text(
+        "connector_name: wiki\n"
+        "connector_module: connector\n"
+        "connector_class: FactoryWikiConnector\n"
+        "connector_factory: create_connector\n"
+    )
+
+    result = invoke(project, "--output", "json")
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert data["connector"] == "FactoryWikiConnector"
+    assert data["clients"] == ["data_client"]
+    assert data["phases"][0]["posted"] == {"documents": 20}
 
 
 def test_the_live_phase_requires_credentials(project, no_credentials):

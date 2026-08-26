@@ -6,6 +6,7 @@ is only the command surface.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -98,7 +99,8 @@ def init(
 ) -> None:
     """Generate deployment artifacts (Dockerfile, Terraform, run.py, .env.example)."""
     out = Path(output_dir).resolve()
-    effective_name = connector_name or Path.cwd().name.lower().replace("-", "_").replace(" ", "_")
+    derived_name = re.sub(r"[^a-z0-9_-]+", "_", Path.cwd().name.lower()).strip("_-")
+    effective_name = connector_name or derived_name or "connector"
 
     gcp_kwargs = (
         {

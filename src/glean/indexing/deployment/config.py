@@ -17,6 +17,13 @@ class DeploymentConfig(BaseModel):
     )
     connector_class: str = Field(description="Python class name of the connector.")
     connector_module: str = Field(description="Python module path containing the connector class.")
+    connector_factory: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional zero-argument factory in connector_module. The factory must return "
+            "an instance of connector_class."
+        ),
+    )
 
     cloud: Literal["gcp", "aws"] = Field(description="Target cloud provider.")
     region: str = Field(
@@ -69,6 +76,20 @@ class DeploymentConfig(BaseModel):
     iam_role_name: Optional[str] = Field(
         default=None, description="AWS IAM role name for IRSA. Defaults to <connector_name>-role."
     )
+
+    @field_validator("account_id", mode="before")
+    @classmethod
+    def normalize_account_id(cls, v: object) -> object:
+        """Normalize YAML integers and enforce the AWS 12-digit account-ID contract."""
+        import re
+
+        if v is None:
+            return v
+        if isinstance(v, int) and not isinstance(v, bool):
+            v = str(v)
+        if not isinstance(v, str) or re.fullmatch(r"[0-9]{12}", v) is None:
+            raise ValueError("account_id must be exactly 12 decimal digits")
+        return v
 
     @field_validator("connector_name")
     @classmethod

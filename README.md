@@ -50,9 +50,9 @@ The agent explores the source's API, confirms a plan with you, generates the con
 ```bash
 pip install glean-indexing-sdk
 
-# Optional cloud observability plugins
-pip install "glean-indexing-sdk[aws]"   # CloudWatch logs + metrics
-pip install "glean-indexing-sdk[gcp]"   # Cloud Logging + Cloud Monitoring
+# Optional cloud integrations
+pip install "glean-indexing-sdk[aws]"   # Beta CloudWatch logs + metrics
+pip install "glean-indexing-sdk[gcp]"   # Beta Cloud Logging/Monitoring + deployment Secret Manager
 ```
 
 ## Quickstart
@@ -64,11 +64,13 @@ Set your credentials:
 ```bash
 export GLEAN_SERVER_URL="https://your-company-be.glean.com"
 export GLEAN_INDEXING_API_TOKEN="your-indexing-api-token"
+export WIKI_API_TOKEN="your-wiki-token"
 ```
 
 Then define and run a connector:
 
 ```python snippet=non_streaming/complete.py
+import os
 from datetime import datetime
 from typing import Any, List, Optional, Sequence, TypedDict
 
@@ -139,13 +141,19 @@ class CompanyWikiConnector(BaseDatasourceConnector[WikiPage]):
         ]
 
 
-if __name__ == "__main__":
-    connector = CompanyWikiConnector(
+def create_connector() -> CompanyWikiConnector:
+    """Build the production connector after runtime secrets are loaded."""
+    return CompanyWikiConnector(
         name="company_wiki",
         data_client=WikiDataClient(
-            base_url="https://wiki.company.com", api_token="your-wiki-token"
+            base_url="https://wiki.company.com",
+            api_token=os.environ["WIKI_API_TOKEN"],
         ),
     )
+
+
+if __name__ == "__main__":
+    connector = create_connector()
     connector.configure_datasource()
     connector.index_data(mode=IndexingMode.FULL)
 ```
@@ -158,6 +166,13 @@ from glean.indexing.testing import StaticDataClient, run_connector
 result = run_connector(CompanyWikiConnector("company_wiki", StaticDataClient([...])))
 result.assert_documents_posted(count=1, datasource="company_wiki")
 ```
+
+The module-level `create_connector()` function is the production construction seam for CLI and
+cloud execution. It keeps the connector constructor dependency-injectable for tests while letting
+runtime code build real clients after environment-backed secrets are loaded. Enable it in generated
+deployments with `glean-idx deploy init --cloud gcp --connector-factory create_connector` (or
+`--cloud aws`). Existing projects with a zero-argument connector class remain supported without a
+factory.
 
 ## What's in the box
 

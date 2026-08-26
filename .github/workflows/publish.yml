@@ -3,56 +3,200 @@ name: Publish to PyPI
 on:
   push:
     tags:
-      - 'v*.*.*'
-  workflow_dispatch:
+      - "v*"
+
+env:
+  RELEASE_TAG: ${{ github.ref_name }}
+  RELEASE_SHA: ${{ github.sha }}
+  RELEASE_REF: ${{ github.ref }}
+  RELEASE_BUNDLE_NAME: release-bundle-${{ github.sha }}
+  VERIFIED_BUNDLE_NAME: verified-release-bundle-${{ github.sha }}
+  RELEASE_NOTES_NAME: release-notes-${{ github.sha }}
 
 jobs:
-  deploy:
+  build:
+    name: Build and verify release bundle
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out the exact release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_REF }}
+
+      - name: Require successful CI for the exact release commit
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        timeout-minutes: 30
+        with:
+          script: |
+            const deadline = Date.now() + 29 * 60 * 1000;
+            for (;;) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: "ci.yml",
+                head_sha: context.sha,
+                event: "push",
+                per_page: 100,
+              });
+              if (runs.some((run) => run.conclusion === "success")) {
+                return;
+              }
+              const active = runs.some((run) => run.status !== "completed");
+              if (runs.length > 0 && !active) {
+                core.setFailed(`Push CI completed without success for release commit ${context.sha}.`);
+                return;
+              }
+              if (Date.now() >= deadline) {
+                core.setFailed(`Timed out waiting for push CI for release commit ${context.sha}.`);
+                return;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 15000));
+            }
+
+      - name: Set up mise
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+        with:
+          cache: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build wheel and source distribution once
+        run: uv build
+
+      - name: Verify tag, commit, versions, and artifacts
+        run: >-
+          python scripts/check_publish_provenance.py
+          --tag "$RELEASE_TAG"
+          --sha "$RELEASE_SHA"
+          --dist dist
+          --write-manifest release-provenance.json
+
+      - name: Transfer verified release bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ env.RELEASE_BUNDLE_NAME }}
+          path: |
+            dist/
+            release-provenance.json
+          if-no-files-found: error
+          retention-days: 1
+
+  verify-bundle:
+    name: Reverify transferred release bundle without credentials
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out the exact release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_REF }}
+
+      - name: Download verified release bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ env.RELEASE_BUNDLE_NAME }}
+          path: .
+
+      - name: Reverify transferred artifact hashes and provenance
+        run: >-
+          python scripts/check_publish_provenance.py
+          --tag "$RELEASE_TAG"
+          --sha "$RELEASE_SHA"
+          --dist dist
+          --verify-manifest release-provenance.json
+
+      - name: Transfer reverified release payload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ env.VERIFIED_BUNDLE_NAME }}
+          path: |
+            dist/
+            release-provenance.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Set up mise
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+        with:
+          cache: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate release notes for the exact tag range
+        run: |
+          PREVIOUS_TAG="$(python scripts/find_previous_release_tag.py --current-tag "$RELEASE_TAG")"
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            uvx --from commitizen cz changelog "${PREVIOUS_TAG}..${RELEASE_TAG}" --dry-run > release-notes.md
+          else
+            uvx --from commitizen cz changelog --dry-run > release-notes.md
+          fi
+
+      - name: Transfer release notes
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ env.RELEASE_NOTES_NAME }}
+          path: release-notes.md
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-pypi:
+    name: Publish reverified bundle to PyPI
+    needs: verify-bundle
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      actions: read
       id-token: write
-      contents: write    # Needed for creating GitHub releases
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0   # Needed for changelog generation
-    
-    - name: Set up mise
-      uses: jdx/mise-action@v2
-      with:
-        cache: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Build package
-      run: uv build
+      - name: Download reverified release payload
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ env.VERIFIED_BUNDLE_NAME }}
+          path: .
 
-    - name: Get Tag and Changelog
-      id: CHANGELOG
-      run: |
-        # Get latest tag for both push and manual triggers
-        LATEST_TAG=$(git describe --tags --abbrev=0)
-        
-        echo "LATEST_TAG=${LATEST_TAG}" >> $GITHUB_OUTPUT
-        echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-        
-        # Try to get previous tag
-        if PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null); then
-          # If we have a previous tag, show changes between tags
-          uvx --from commitizen cz changelog "${PREVIOUS_TAG}..${LATEST_TAG}" --dry-run >> $GITHUB_OUTPUT
-        else
-          # For first tag, show all changes up to this tag
-          uvx --from commitizen cz changelog --dry-run >> $GITHUB_OUTPUT
-        fi
-        echo "EOF" >> $GITHUB_OUTPUT
-      
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ steps.CHANGELOG.outputs.LATEST_TAG }}
-        body: ${{ steps.CHANGELOG.outputs.CHANGELOG }}
-        
-    - name: Publish package to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish verified artifacts to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/
+
+  github-release:
+    name: Create GitHub Release from reverified bundle
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Download reverified release payload
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ env.VERIFIED_BUNDLE_NAME }}
+          path: .
+
+      - name: Download prepared release notes
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ env.RELEASE_NOTES_NAME }}
+          path: .
+
+      - name: Create GitHub Release after PyPI succeeds
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ env.RELEASE_SHA }}
+          body_path: release-notes.md
+          files: dist/*

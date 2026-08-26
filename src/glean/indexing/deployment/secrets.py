@@ -84,8 +84,9 @@ class SecretsBackend(ABC):
 
 
 class GCPSecretsBackend(SecretsBackend):
-    """GCP Secret Manager backend.
+    """GCP Secret Manager backend (beta).
 
+    Requires the ``gcp`` extra: ``uv add glean-indexing-sdk[gcp]``.
     Ref: https://cloud.google.com/secret-manager/docs
     """
 
@@ -97,10 +98,10 @@ class GCPSecretsBackend(SecretsBackend):
         if not env_vars:
             return {}
 
-        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
-        from google.cloud import secretmanager  # type: ignore[import-untyped]
+        from google.api_core.exceptions import NotFound
+        from google.cloud.secretmanager import SecretManagerServiceClient
 
-        client = secretmanager.SecretManagerServiceClient()
+        client = SecretManagerServiceClient()
         parent = f"projects/{self._config.project_id}"
         results: dict[str, str] = {}
 
@@ -135,9 +136,9 @@ class GCPSecretsBackend(SecretsBackend):
         if not self._config.project_id:
             raise ValueError("project_id is required for GCP secret listing")
 
-        from google.cloud import secretmanager  # type: ignore[import-untyped]
+        from google.cloud.secretmanager import SecretManagerServiceClient
 
-        client = secretmanager.SecretManagerServiceClient()
+        client = SecretManagerServiceClient()
         parent = f"projects/{self._config.project_id}"
         prefix = self._config.secret_prefix
 
@@ -152,10 +153,10 @@ class GCPSecretsBackend(SecretsBackend):
         if not self._config.project_id:
             raise ValueError("project_id is required for GCP secret deletion")
 
-        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
-        from google.cloud import secretmanager  # type: ignore[import-untyped]
+        from google.api_core.exceptions import NotFound
+        from google.cloud.secretmanager import SecretManagerServiceClient
 
-        client = secretmanager.SecretManagerServiceClient()
+        client = SecretManagerServiceClient()
         secret_path = f"projects/{self._config.project_id}/secrets/{self._secret_name(key)}"
         try:
             client.delete_secret(request={"name": secret_path})

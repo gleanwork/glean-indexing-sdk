@@ -73,6 +73,44 @@ jobs:
           uv run pip install dist/*.whl
           uv run python -c "import glean.indexing; print('Package installed successfully')"
 
+  optional-dependencies:
+    name: Optional dependency (${{ matrix.extra }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - extra: aws
+            tests: tests/unit_tests/observability/plugins/aws
+            type_paths: src/glean/indexing/observability/plugins/aws tests/unit_tests/observability/plugins/aws
+          - extra: gcp
+            tests: tests/unit_tests/observability/plugins/gcp
+            type_paths: src/glean/indexing/observability/plugins/gcp src/glean/indexing/deployment/secrets.py tests/unit_tests/observability/plugins/gcp tests/optional_dependencies/gcp_smoke.py
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+        with:
+          cache: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install ${{ matrix.extra }} extra
+        run: uv sync --locked --extra test --extra typing --extra ${{ matrix.extra }}
+
+      - name: Run GCP integration construction smoke test
+        if: matrix.extra == 'gcp'
+        run: uv run python tests/optional_dependencies/gcp_smoke.py
+
+      - name: Run provider tests with no skips
+        run: |
+          uv run pytest ${{ matrix.tests }} -v -ra --junitxml="$RUNNER_TEMP/${{ matrix.extra }}-pytest.xml"
+          uv run python tests/optional_dependencies/assert_no_pytest_skips.py "$RUNNER_TEMP/${{ matrix.extra }}-pytest.xml"
+
+      - name: Type check installed integration
+        run: uv run pyright ${{ matrix.type_paths }}
+
   deployment-container-user:
     name: Deployment container user smoke
     runs-on: ubuntu-latest

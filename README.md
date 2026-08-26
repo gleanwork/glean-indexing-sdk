@@ -222,7 +222,10 @@ Every command takes `--output json` for a stable envelope, `--yes` to skip
 confirmations unattended, and returns a documented exit code — `3` for a
 missing precondition, `4` for a Glean error, `5` for a validation failure. In
 JSON mode the envelope goes to stdout whether it succeeded or not, so there is
-one stream to read:
+one stream to read. This contract begins after Click parses the invocation:
+Click usage and parse errors (such as unknown options, invalid values, or
+missing required options) happen before JSON command handling and remain text
+diagnostics on stderr with exit code `2`, even when `--output json` is present.
 
 ```bash
 glean-idx datasource status --datasource my-source --output json | jq .data.documents

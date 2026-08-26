@@ -3,7 +3,7 @@
 Unit tests here validate the method interface and max_items wiring without
 making actual network calls.  Live end-to-end runs are manual — point
 ``GLEAN_SERVER_URL`` at a test instance and set ``GLEAN_INDEXING_API_TOKEN``
-before calling ``harness.run_end_to_end(confirm=True)``.
+before calling ``harness.run_end_to_end(confirm=True, allow_destructive=True)``.
 """
 
 from pathlib import Path
@@ -14,7 +14,10 @@ import pytest
 
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_data_client import BaseDataClient
-from glean.indexing.exceptions import LiveEndToEndNotConfirmedError
+from glean.indexing.exceptions import (
+    LiveEndToEndNotConfirmedError,
+    UnsafeLiveEndToEndRunError,
+)
 from glean.indexing.models import IndexingMode
 from glean.indexing.testing import StaticDataClient, mock_glean_client
 from glean.indexing.testing.harness import IndexingWaitResult, TestConfig, TestHarness
@@ -63,6 +66,27 @@ class TestRunEndToEnd:
                 harness.run_end_to_end()
             mock_index.assert_not_called()
 
+    def test_confirmation_does_not_authorize_destructive_replacement(self, tmp_path: Path):
+        docs = [{"id": str(i), "title": f"Doc {i}"} for i in range(20)]
+        real_client = _CountingDataClient(docs)
+        connector = DatasourceFake(name="ds", data_client=real_client)
+        harness = TestHarness(
+            connector=connector,
+            config=TestConfig(
+                cache_dir=str(tmp_path),
+                use_cache=False,
+                clients={"data_client": ClientConfig(max_items=2)},
+            ),
+            clients={"data_client": real_client},
+        )
+
+        with mock_glean_client() as glean_client:
+            with pytest.raises(UnsafeLiveEndToEndRunError):
+                harness.run_end_to_end(confirm=True)
+
+        assert real_client.call_count == 0
+        glean_client.indexing.documents.bulk_index.assert_not_called()
+
     def test_confirmation_error_names_the_resolved_target(self, tmp_path: Path, monkeypatch):
         monkeypatch.setenv("GLEAN_SERVER_URL", "https://prod-be.glean.com")
         connector = DatasourceFake(name="ds", data_client=StaticDataClient(_DOCS))
@@ -78,7 +102,7 @@ class TestRunEndToEnd:
         harness = TestHarness(connector=connector, config=config)
 
         with patch.object(connector, "index_data") as mock_index:
-            harness.run_end_to_end(confirm=True)
+            harness.run_end_to_end(confirm=True, allow_destructive=True)
             mock_index.assert_called_once_with(mode=IndexingMode.FULL, options=None)
 
     def test_mode_forwarded(self, tmp_path: Path):
@@ -86,7 +110,11 @@ class TestRunEndToEnd:
         harness = TestHarness(connector=connector, config=TestConfig(cache_dir=str(tmp_path)))
 
         with patch.object(connector, "index_data") as mock_index:
-            harness.run_end_to_end(mode=IndexingMode.INCREMENTAL, confirm=True)
+            harness.run_end_to_end(
+                mode=IndexingMode.INCREMENTAL,
+                confirm=True,
+                allow_destructive=True,
+            )
             mock_index.assert_called_once_with(mode=IndexingMode.INCREMENTAL, options=None)
 
     @patch("glean.indexing.testing.harness.harness.wait_for_documents_to_index")
@@ -97,7 +125,7 @@ class TestRunEndToEnd:
         harness = TestHarness(connector=connector, config=config)
 
         with mock_glean_client():
-            result = harness.run_end_to_end(confirm=True)
+            result = harness.run_end_to_end(confirm=True, allow_destructive=True)
 
         assert result is IndexingWaitResult.PENDING
         wait_for_documents.assert_called_once()
@@ -120,7 +148,7 @@ class TestRunEndToEnd:
         harness = TestHarness(connector=connector, config=config)
 
         with mock_glean_client():
-            harness.run_end_to_end(confirm=True)
+            harness.run_end_to_end(confirm=True, allow_destructive=True)
 
         cleanup_calls = [
             call.args
@@ -158,7 +186,7 @@ class TestRunEndToEnd:
 
         with patch.object(connector, "index_data", side_effect=_verify_wrapping_then_raise):
             with pytest.raises(_PatchingConfirmed):
-                harness.run_end_to_end(confirm=True)
+                harness.run_end_to_end(confirm=True, allow_destructive=True)
 
         # Client must be restored after run
         assert connector.data_client is real_client
@@ -176,7 +204,7 @@ class TestRunEndToEnd:
 
         with patch.object(connector, "index_data", side_effect=RuntimeError("no creds")):
             with pytest.raises(RuntimeError, match="no creds"):
-                harness.run_end_to_end(confirm=True)
+                harness.run_end_to_end(confirm=True, allow_destructive=True)
 
         assert connector.data_client is real_client
 
@@ -198,6 +226,25 @@ class TestRunEndToEndAsync:
             mock_async.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_confirmation_does_not_authorize_destructive_async_replacement(
+        self, tmp_path: Path
+    ):
+        from glean.indexing.testing import StaticAsyncStreamingDataClient
+
+        client = StaticAsyncStreamingDataClient(_DOCS)
+        connector = AsyncStreamingFake(name="as", async_data_client=client)
+        harness = TestHarness(
+            connector=connector,
+            config=TestConfig(cache_dir=str(tmp_path)),
+            clients={"async_data_client": client},
+        )
+
+        with patch.object(connector, "index_data_async", new_callable=AsyncMock) as mock_async:
+            with pytest.raises(UnsafeLiveEndToEndRunError):
+                await harness.run_end_to_end_async(confirm=True)
+            mock_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_async_connector_calls_index_data_async(self, tmp_path: Path):
         from glean.indexing.testing import StaticAsyncStreamingDataClient
 
@@ -209,7 +256,7 @@ class TestRunEndToEndAsync:
         harness = TestHarness(connector=connector, config=config)
 
         with patch.object(connector, "index_data_async", new_callable=AsyncMock) as mock_async:
-            await harness.run_end_to_end_async(confirm=True)
+            await harness.run_end_to_end_async(confirm=True, allow_destructive=True)
             mock_async.assert_awaited_once_with(mode=IndexingMode.FULL, options=None)
 
     @pytest.mark.asyncio
@@ -219,7 +266,7 @@ class TestRunEndToEndAsync:
         harness = TestHarness(connector=connector, config=config)
 
         with patch.object(connector, "index_data") as mock_index:
-            await harness.run_end_to_end_async(confirm=True)
+            await harness.run_end_to_end_async(confirm=True, allow_destructive=True)
             mock_index.assert_called_once_with(mode=IndexingMode.FULL, options=None)
 
     @pytest.mark.asyncio
@@ -235,6 +282,6 @@ class TestRunEndToEndAsync:
 
         with patch.object(connector, "index_data_async", side_effect=RuntimeError("no creds")):
             with pytest.raises(RuntimeError, match="no creds"):
-                await harness.run_end_to_end_async(confirm=True)
+                await harness.run_end_to_end_async(confirm=True, allow_destructive=True)
 
         assert connector.async_data_client is real_client

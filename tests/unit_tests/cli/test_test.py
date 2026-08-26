@@ -234,7 +234,15 @@ def test_all_runs_every_phase_when_credentials_are_present(project, monkeypatch)
         TestHarness, "run_end_to_end", lambda self, **kwargs: SimpleNamespace(value="INDEXED")
     )
 
-    result = invoke(project, "--phase", "all", "--yes", "--output", "json")
+    result = invoke(
+        project,
+        "--phase",
+        "all",
+        "--yes",
+        "--allow-destructive-live",
+        "--output",
+        "json",
+    )
 
     assert result.exit_code == 0, result.output
     phases = json.loads(result.stdout)["data"]["phases"]
@@ -263,7 +271,15 @@ def test_live_asks_for_confirmation_before_uploading(project, monkeypatch):
     monkeypatch.setenv("GLEAN_SERVER_URL", "https://acme-be.glean.com")
     monkeypatch.setenv("GLEAN_INDEXING_API_TOKEN", "token")
 
-    result = invoke(project, "--phase", "live", "--output", "json", input="n\n")
+    result = invoke(
+        project,
+        "--phase",
+        "live",
+        "--allow-destructive-live",
+        "--output",
+        "json",
+        input="n\n",
+    )
 
     assert result.exit_code != 0
     assert result.output.startswith(
@@ -271,8 +287,29 @@ def test_live_asks_for_confirmation_before_uploading(project, monkeypatch):
     )
 
 
-def test_yes_skips_the_live_confirmation_prompt(project, monkeypatch):
-    """--yes is required for unattended use, so it must not hang on the prompt."""
+def test_yes_does_not_authorize_destructive_live_replacement(project, monkeypatch):
+    """--yes only skips prompts; it must not opt into replacement side effects."""
+    from glean.indexing.testing.harness import TestHarness
+
+    monkeypatch.setenv("GLEAN_SERVER_URL", "https://acme-be.glean.com")
+    monkeypatch.setenv("GLEAN_INDEXING_API_TOKEN", "token")
+    called = False
+
+    def fake_run_end_to_end(self, **kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(TestHarness, "run_end_to_end", fake_run_end_to_end)
+
+    result = invoke(project, "--phase", "live", "--yes", "--output", "json")
+
+    assert result.exit_code == EXIT_VALIDATION
+    assert "--allow-destructive-live" in result.stdout
+    assert called is False
+
+
+def test_yes_with_destructive_opt_in_runs_live(project, monkeypatch):
+    """Unattended live runs require both general prompt skipping and destructive opt-in."""
     from glean.indexing.testing.harness import TestHarness
 
     monkeypatch.setenv("GLEAN_SERVER_URL", "https://acme-be.glean.com")
@@ -281,7 +318,15 @@ def test_yes_skips_the_live_confirmation_prompt(project, monkeypatch):
         TestHarness, "run_end_to_end", lambda self, **kwargs: SimpleNamespace(value="INDEXED")
     )
 
-    result = invoke(project, "--phase", "live", "--yes", "--output", "json")
+    result = invoke(
+        project,
+        "--phase",
+        "live",
+        "--yes",
+        "--allow-destructive-live",
+        "--output",
+        "json",
+    )
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["data"]["phases"][0]["indexing_result"] == "INDEXED"
@@ -302,10 +347,19 @@ def test_confirming_the_live_prompt_passes_confirm_to_the_harness(project, monke
 
     monkeypatch.setattr(TestHarness, "run_end_to_end", fake_run_end_to_end)
 
-    result = invoke(project, "--phase", "live", "--output", "json", input="y\n")
+    result = invoke(
+        project,
+        "--phase",
+        "live",
+        "--allow-destructive-live",
+        "--output",
+        "json",
+        input="y\n",
+    )
 
     assert result.exit_code == 0, result.output
     assert seen_kwargs["confirm"] is True
+    assert seen_kwargs["allow_destructive"] is True
 
 
 def test_a_batch_does_not_prompt_when_live_will_be_skipped(project, no_credentials):

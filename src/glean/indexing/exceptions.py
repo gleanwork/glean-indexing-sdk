@@ -8,7 +8,8 @@ Exception Hierarchy:
     ├── GleanConfigurationError(GleanError, ValueError)
     │   ├── MissingEnvironmentVariableError
     │   ├── InvalidDatasourceConfigError
-    │   └── LiveEndToEndNotConfirmedError
+    │   ├── LiveEndToEndNotConfirmedError
+    │   └── UnsafeLiveEndToEndRunError
     └── GleanValidationError(GleanError, ValueError)
         ├── InvalidPropertyError
         ├── InconsistentDataError
@@ -125,6 +126,26 @@ class LiveEndToEndNotConfirmedError(GleanConfigurationError):
             "run_end_to_end()/run_end_to_end_async(). Uploaded documents are not "
             "cleaned up automatically -- use `glean-idx document delete` or "
             "PushUploader.delete_document(...) afterwards."
+        )
+        super().__init__(message, fix_suggestion, self.DOCS_URL)
+
+
+class UnsafeLiveEndToEndRunError(GleanConfigurationError):
+    """Raised when a live test lacks explicit destructive-replacement opt-in."""
+
+    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing"
+
+    def __init__(self, target: str) -> None:
+        self.target = target
+        message = (
+            f"Live end-to-end test against {target!r} can finalize replacement state and "
+            "delete documents the crawl does not produce. Refusing to run without explicit "
+            "destructive opt-in."
+        )
+        fix_suggestion = (
+            "Use a disposable datasource whose contents may be replaced, then pass "
+            "allow_destructive=True in addition to confirm=True. For the CLI, pass "
+            "--allow-destructive-live; --yes alone is not sufficient."
         )
         super().__init__(message, fix_suggestion, self.DOCS_URL)
 

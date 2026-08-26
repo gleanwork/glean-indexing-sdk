@@ -18,8 +18,9 @@ Phase 3 (end-to-end — real source, real Glean):
     ``GLEAN_SERVER_URL`` / ``GLEAN_INDEXING_API_TOKEN`` environment variables,
     and uploads real documents with no automated cleanup -- pass
     ``confirm=True`` only after verifying the target is a dedicated test
-    instance, not production.  Per-client ``max_items`` from ``TestConfig``
-    are applied before the run.
+    instance, not production. Because the upload can finalize replacement
+    state, it also requires ``allow_destructive=True``. Per-client ``max_items``
+    from ``TestConfig`` are applied before the run.
 """
 
 from __future__ import annotations
@@ -35,7 +36,10 @@ from glean.indexing.connectors.base_async_streaming_data_client import BaseAsync
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
-from glean.indexing.exceptions import LiveEndToEndNotConfirmedError
+from glean.indexing.exceptions import (
+    LiveEndToEndNotConfirmedError,
+    UnsafeLiveEndToEndRunError,
+)
 from glean.indexing.models import ConnectorOptions, IndexingMode
 from glean.indexing.push.status import IndexingWaitResult, document_status_requests
 from glean.indexing.testing.harness.cache.manifest import CacheManifest
@@ -414,6 +418,7 @@ class TestHarness:
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
         confirm: bool = False,
+        allow_destructive: bool = False,
     ) -> IndexingWaitResult | None:
         """Run the connector against the real source and real Glean.
 
@@ -433,7 +438,8 @@ class TestHarness:
         is used as-is).
 
         **Production safety:** this method refuses to run unless ``confirm``
-        is ``True``, since a misconfigured ``GLEAN_SERVER_URL`` would upload
+        and ``allow_destructive`` are both ``True``. A misconfigured
+        ``GLEAN_SERVER_URL`` would upload
         test data to a real instance with nothing to catch the mistake and no
         automated way to remove it afterward. Before passing ``confirm=True``,
         verify the resolved target is a dedicated test instance, not
@@ -444,7 +450,9 @@ class TestHarness:
         Args:
             mode: Indexing mode forwarded to ``connector.index_data``.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
-            confirm: Must be explicitly set to ``True`` to run this phase.
+            confirm: Must be explicitly set to ``True`` to confirm the target.
+            allow_destructive: Must be explicitly set to ``True`` to acknowledge
+                replacement finalization and stale deletion.
 
         Returns:
             The document indexing outcome, or ``None`` when no documents were uploaded.
@@ -457,8 +465,10 @@ class TestHarness:
                 the environment.
         """
         target = _resolve_glean_target()
-        if not confirm:
+        if confirm is not True:
             raise LiveEndToEndNotConfirmedError(target)
+        if allow_destructive is not True:
+            raise UnsafeLiveEndToEndRunError(target)
 
         logger.warning(
             "Running LIVE end-to-end test for connector %r against %s. This "
@@ -489,6 +499,7 @@ class TestHarness:
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
         confirm: bool = False,
+        allow_destructive: bool = False,
     ) -> IndexingWaitResult | None:
         """Async variant of :meth:`run_end_to_end`.
 
@@ -499,12 +510,14 @@ class TestHarness:
         Like the sync variant, connector clients registered via ``clients``
         are temporarily wrapped to enforce ``max_items``; the Glean API itself
         is not mocked, real documents are uploaded with no automated cleanup,
-        and this method refuses to run unless ``confirm=True``.
+        and this method requires both target confirmation and destructive opt-in.
 
         Args:
             mode: Indexing mode forwarded to the connector.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
-            confirm: Must be explicitly set to ``True`` to run this phase.
+            confirm: Must be explicitly set to ``True`` to confirm the target.
+            allow_destructive: Must be explicitly set to ``True`` to acknowledge
+                replacement finalization and stale deletion.
 
         Returns:
             The document indexing outcome, or ``None`` when no documents were uploaded.
@@ -520,8 +533,10 @@ class TestHarness:
         )
 
         target = _resolve_glean_target()
-        if not confirm:
+        if confirm is not True:
             raise LiveEndToEndNotConfirmedError(target)
+        if allow_destructive is not True:
+            raise UnsafeLiveEndToEndRunError(target)
 
         logger.warning(
             "Running LIVE end-to-end test for connector %r against %s. This "

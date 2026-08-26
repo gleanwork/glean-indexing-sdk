@@ -12,8 +12,9 @@ import yaml
 
 from glean.api_client.models import CustomDatasourceConfig
 from glean.indexing.connectors import BaseDataClient, BaseDatasourceConnector
+from glean.indexing.deployment import generate_artifacts
 from glean.indexing.deployment.config import DeploymentConfig
-from glean.indexing.deployment.generator import generate_artifacts, list_generated_files
+from glean.indexing.deployment.generator import list_generated_files
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -396,6 +397,39 @@ def test_writes_files_to_disk(tmp_path):
     assert (tmp_path / "terraform" / "variables.tf").exists()
     assert (tmp_path / "glean_deployment.yaml").exists()
     assert (tmp_path / ".env.example").exists()
+
+
+def test_disk_write_refuses_collision_and_preserves_exact_bytes(tmp_path):
+    original = b"user-owned Dockerfile\n\xff\x00"
+    (tmp_path / "Dockerfile").write_bytes(original)
+
+    with pytest.raises(FileExistsError, match="Dockerfile"):
+        generate_artifacts(GCP_CONFIG, output_dir=tmp_path)
+
+    assert (tmp_path / "Dockerfile").read_bytes() == original
+    assert not (tmp_path / "run.py").exists()
+    assert not (tmp_path / ".gitignore").exists()
+
+
+def test_disk_write_force_overwrites_with_exact_rendered_bytes(tmp_path):
+    (tmp_path / "Dockerfile").write_bytes(b"user-owned Dockerfile\n")
+
+    artifacts = generate_artifacts(GCP_CONFIG, output_dir=tmp_path, force=True)
+
+    assert (tmp_path / "Dockerfile").read_bytes() == artifacts["Dockerfile"].encode("utf-8")
+    assert (tmp_path / "run.py").read_bytes() == artifacts["run.py"].encode("utf-8")
+
+
+def test_disk_write_gitignore_protection_is_idempotent(tmp_path):
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_bytes(b"build/")
+
+    generate_artifacts(GCP_CONFIG, output_dir=tmp_path)
+    merged = gitignore.read_bytes()
+    generate_artifacts(GCP_CONFIG, output_dir=tmp_path, force=True)
+
+    assert gitignore.read_bytes() == merged
+    assert merged == b"build/\n.env\n.terraform/\n*.tfstate*\n"
 
 
 def test_creates_output_dir_if_missing(tmp_path):

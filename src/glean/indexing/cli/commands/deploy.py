@@ -14,8 +14,9 @@ import click
 from pydantic import ValidationError
 
 from glean.indexing.cli.main import context, global_options
+from glean.indexing.deployment import generate_artifacts
 from glean.indexing.deployment.config import DeploymentConfig
-from glean.indexing.deployment.generator import generate_artifacts, list_generated_files
+from glean.indexing.deployment.generator import list_generated_files
 
 
 def _confirm(ctx: click.Context, prompt: str) -> None:
@@ -85,6 +86,7 @@ def deploy() -> None:
     help="Optional zero-argument factory in the connector module.",
 )
 @click.option("--output-dir", default=".", show_default=True, type=click.Path(file_okay=False))
+@click.option("--force", is_flag=True, help="Overwrite existing generated deployment files.")
 def init(
     cloud: str,
     connector_name: str | None,
@@ -92,6 +94,7 @@ def init(
     connector_module: str,
     connector_factory: str | None,
     output_dir: str,
+    force: bool,
 ) -> None:
     """Generate deployment artifacts (Dockerfile, Terraform, run.py, .env.example)."""
     out = Path(output_dir).resolve()
@@ -130,7 +133,10 @@ def init(
         raise click.ClickException(f"Could not build initial config: {exc}") from exc
 
     click.echo(f"Generating {cloud.upper()} deployment artifacts in {out}/")
-    generate_artifacts(config, output_dir=out)
+    try:
+        generate_artifacts(config, output_dir=out, force=force)
+    except FileExistsError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     for f in list_generated_files(cloud):
         click.echo(f"  created  {f}")

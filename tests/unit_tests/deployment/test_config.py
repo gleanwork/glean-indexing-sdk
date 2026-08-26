@@ -199,3 +199,28 @@ def test_yaml_excludes_none_fields(tmp_path):
 
     assert "account_id" not in data
     assert "ecr_repo" not in data
+
+
+# ---------------------------------------------------------------------------
+# account_id coercion and validation (#157)
+# ---------------------------------------------------------------------------
+
+
+def test_account_id_int_coerced_to_str():
+    config = DeploymentConfig(**{**AWS_KWARGS, "account_id": 123456789012})
+    assert config.account_id == "123456789012"
+
+
+def test_account_id_str_accepted():
+    config = DeploymentConfig(**AWS_KWARGS)
+    assert config.account_id == "123456789012"
+
+
+def test_account_id_too_short_raises():
+    with pytest.raises(ValidationError, match="account_id must be exactly 12 decimal digits"):
+        DeploymentConfig(**{**AWS_KWARGS, "account_id": "12345"})
+
+
+def test_account_id_non_numeric_raises():
+    with pytest.raises(ValidationError, match="account_id must be exactly 12 decimal digits"):
+        DeploymentConfig(**{**AWS_KWARGS, "account_id": "12345678901a"})

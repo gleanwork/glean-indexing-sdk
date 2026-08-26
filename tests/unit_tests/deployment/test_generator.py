@@ -246,3 +246,14 @@ def test_list_generated_files_aws():
 def test_list_generated_files_invalid_cloud_raises():
     with pytest.raises(ValueError, match="Unsupported cloud target"):
         list_generated_files("azure")
+
+
+# ---------------------------------------------------------------------------
+# account_id is quoted in generated YAML (#157)
+# ---------------------------------------------------------------------------
+
+
+def test_aws_deployment_yaml_quotes_account_id():
+    artifacts = generate_artifacts(AWS_CONFIG)
+    yaml_content = artifacts["glean_deployment.yaml"]
+    assert 'account_id: "123456789012"' in yaml_content

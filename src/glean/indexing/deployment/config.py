@@ -82,6 +82,21 @@ class DeploymentConfig(BaseModel):
             )
         return v
 
+    @field_validator("account_id", mode="before")
+    @classmethod
+    def normalize_account_id(cls, v: object) -> str | None:
+        """Coerce numeric YAML values to string and validate 12-digit AWS account ID format."""
+        import re
+
+        if v is None:
+            return None
+        v = str(v)
+        if not re.match(r"^\d{12}$", v):
+            raise ValueError(
+                f"account_id must be exactly 12 decimal digits, got: {v!r}"
+            )
+        return v
+
     @model_validator(mode="after")
     def validate_cloud_specific_fields(self) -> "DeploymentConfig":
         """Validate that required cloud-specific fields are present."""

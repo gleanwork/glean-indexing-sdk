@@ -11,10 +11,12 @@ import sys
 from pathlib import Path
 
 import click
+from pydantic import ValidationError
 
 from glean.indexing.cli.main import context, global_options
+from glean.indexing.deployment import generate_artifacts
 from glean.indexing.deployment.config import DeploymentConfig
-from glean.indexing.deployment.generator import generate_artifacts, list_generated_files
+from glean.indexing.deployment.generator import list_generated_files
 
 
 def _confirm(ctx: click.Context, prompt: str) -> None:
@@ -37,8 +39,16 @@ def _load_config(config_path: Path) -> DeploymentConfig:
         )
     try:
         return DeploymentConfig.from_yaml(config_path)
+    except ValidationError as exc:
+        details = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+            for error in exc.errors(include_url=False, include_context=False, include_input=False)
+        )
+        raise click.ClickException(
+            f"Invalid deployment config at {config_path}: {details}"
+        ) from exc
     except Exception as exc:
-        raise click.ClickException(f"Invalid glean_deployment.yaml: {exc}") from exc
+        raise click.ClickException(f"Invalid deployment config at {config_path}: {exc}") from exc
 
 
 @click.group()
@@ -76,6 +86,7 @@ def deploy() -> None:
     help="Optional zero-argument factory in the connector module.",
 )
 @click.option("--output-dir", default=".", show_default=True, type=click.Path(file_okay=False))
+@click.option("--force", is_flag=True, help="Overwrite existing generated deployment files.")
 def init(
     cloud: str,
     connector_name: str | None,
@@ -83,6 +94,7 @@ def init(
     connector_module: str,
     connector_factory: str | None,
     output_dir: str,
+    force: bool,
 ) -> None:
     """Generate deployment artifacts (Dockerfile, Terraform, run.py, .env.example)."""
     out = Path(output_dir).resolve()
@@ -98,7 +110,7 @@ def init(
     )
     aws_kwargs = (
         {
-            "account_id": "<your-aws-account-id>",
+            "account_id": "000000000000",
             "ecr_repo": "<account>.dkr.ecr.<region>.amazonaws.com/connectors",
         }
         if cloud == "aws"
@@ -121,7 +133,10 @@ def init(
         raise click.ClickException(f"Could not build initial config: {exc}") from exc
 
     click.echo(f"Generating {cloud.upper()} deployment artifacts in {out}/")
-    generate_artifacts(config, output_dir=out)
+    try:
+        generate_artifacts(config, output_dir=out, force=force)
+    except FileExistsError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     for f in list_generated_files(cloud):
         click.echo(f"  created  {f}")

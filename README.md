@@ -50,9 +50,9 @@ The agent explores the source's API, confirms a plan with you, generates the con
 ```bash
 pip install glean-indexing-sdk
 
-# Optional cloud observability plugins
-pip install "glean-indexing-sdk[aws]"   # CloudWatch logs + metrics
-pip install "glean-indexing-sdk[gcp]"   # Cloud Logging + Cloud Monitoring
+# Optional cloud integrations
+pip install "glean-indexing-sdk[aws]"   # Beta CloudWatch logs + metrics
+pip install "glean-indexing-sdk[gcp]"   # Beta Cloud Logging/Monitoring + deployment Secret Manager
 ```
 
 ## Quickstart

@@ -8,7 +8,8 @@ Exception Hierarchy:
     ├── GleanConfigurationError(GleanError, ValueError)
     │   ├── MissingEnvironmentVariableError
     │   ├── InvalidDatasourceConfigError
-    │   └── LiveEndToEndNotConfirmedError
+    │   ├── LiveEndToEndNotConfirmedError
+    │   └── UnsafeLiveIdentityTestError
     └── GleanValidationError(GleanError, ValueError)
         ├── InvalidPropertyError
         ├── InconsistentDataError
@@ -125,6 +126,24 @@ class LiveEndToEndNotConfirmedError(GleanConfigurationError):
             "run_end_to_end()/run_end_to_end_async(). Uploaded documents are not "
             "cleaned up automatically -- use `glean-idx document delete` or "
             "PushUploader.delete_document(...) afterwards."
+        )
+        super().__init__(message, fix_suggestion, self.DOCS_URL)
+
+
+class UnsafeLiveIdentityTestError(GleanConfigurationError):
+    """Raised when a live harness run could replace identity data."""
+
+    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing"
+
+    def __init__(self, connector_type: str) -> None:
+        self.connector_type = connector_type
+        message = (
+            f"Live end-to-end testing does not support {connector_type}: identity and people "
+            "uploads cannot be reversed by the document cleanup command."
+        )
+        fix_suggestion = (
+            "Test identity output with the mock or integration phase. Use a separate, "
+            "purpose-built smoke test with documented identity cleanup for live validation."
         )
         super().__init__(message, fix_suggestion, self.DOCS_URL)
 

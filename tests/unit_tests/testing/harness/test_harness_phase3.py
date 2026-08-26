@@ -14,12 +14,19 @@ import pytest
 
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_data_client import BaseDataClient
-from glean.indexing.exceptions import LiveEndToEndNotConfirmedError
-from glean.indexing.models import IndexingMode
+from glean.indexing.exceptions import (
+    LiveEndToEndNotConfirmedError,
+    UnsafeLiveIdentityTestError,
+)
+from glean.indexing.models import DatasourceIdentityDefinitions, IndexingMode
 from glean.indexing.testing import StaticDataClient, mock_glean_client
 from glean.indexing.testing.harness import IndexingWaitResult, TestConfig, TestHarness
 from glean.indexing.testing.harness.config import ClientConfig
-from tests.unit_tests.testing._fakes import AsyncStreamingFake, DatasourceFake
+from tests.unit_tests.testing._fakes import (
+    AsyncStreamingFake,
+    DatasourceFake,
+    PeopleFake,
+)
 
 _DOCS = [{"id": str(i), "title": f"Doc {i}"} for i in range(3)]
 
@@ -32,6 +39,11 @@ class _CountingDataClient(BaseDataClient[dict]):
     def get_source_data(self, **kwargs: Any) -> Sequence[dict]:
         self.call_count += 1
         return list(self._items)
+
+
+class _IdentityDatasourceFake(DatasourceFake):
+    def get_identities(self) -> DatasourceIdentityDefinitions:
+        return DatasourceIdentityDefinitions(users=[])
 
 
 class _CountingAsyncClient(BaseAsyncStreamingDataClient[dict]):
@@ -62,6 +74,34 @@ class TestRunEndToEnd:
             with pytest.raises(LiveEndToEndNotConfirmedError):
                 harness.run_end_to_end()
             mock_index.assert_not_called()
+
+    def test_refuses_people_connector_before_upload(self, tmp_path: Path):
+        connector = PeopleFake(
+            name="people",
+            data_client=StaticDataClient(
+                [{"email": "ada@example.com", "first_name": "Ada", "last_name": "Lovelace"}]
+            ),
+        )
+        harness = TestHarness(connector=connector, config=TestConfig(cache_dir=str(tmp_path)))
+
+        with mock_glean_client() as glean_client:
+            with pytest.raises(UnsafeLiveIdentityTestError, match="people"):
+                harness.run_end_to_end(confirm=True)
+
+        glean_client.indexing.people.bulk_index.assert_not_called()
+
+    def test_refuses_datasource_identity_crawl_before_upload(self, tmp_path: Path):
+        connector = _IdentityDatasourceFake(name="ds", data_client=StaticDataClient(_DOCS))
+        harness = TestHarness(connector=connector, config=TestConfig(cache_dir=str(tmp_path)))
+
+        with mock_glean_client() as glean_client:
+            with pytest.raises(UnsafeLiveIdentityTestError, match="identity"):
+                harness.run_end_to_end(confirm=True)
+
+        glean_client.indexing.documents.bulk_index.assert_not_called()
+        glean_client.indexing.permissions.bulk_index_users.assert_not_called()
+        glean_client.indexing.permissions.bulk_index_groups.assert_not_called()
+        glean_client.indexing.permissions.bulk_index_memberships.assert_not_called()
 
     def test_confirmation_error_names_the_resolved_target(self, tmp_path: Path, monkeypatch):
         monkeypatch.setenv("GLEAN_SERVER_URL", "https://prod-be.glean.com")
@@ -196,6 +236,22 @@ class TestRunEndToEndAsync:
             with pytest.raises(LiveEndToEndNotConfirmedError):
                 await harness.run_end_to_end_async()
             mock_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_async_entrypoint_refuses_people_connector_before_upload(self, tmp_path: Path):
+        connector = PeopleFake(
+            name="people",
+            data_client=StaticDataClient(
+                [{"email": "ada@example.com", "first_name": "Ada", "last_name": "Lovelace"}]
+            ),
+        )
+        harness = TestHarness(connector=connector, config=TestConfig(cache_dir=str(tmp_path)))
+
+        with mock_glean_client() as glean_client:
+            with pytest.raises(UnsafeLiveIdentityTestError, match="people"):
+                await harness.run_end_to_end_async(confirm=True)
+
+        glean_client.indexing.people.bulk_index.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_async_connector_calls_index_data_async(self, tmp_path: Path):

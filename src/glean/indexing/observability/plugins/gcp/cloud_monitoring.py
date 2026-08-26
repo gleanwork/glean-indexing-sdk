@@ -1,13 +1,16 @@
 """GCP Cloud Monitoring provider for connector metrics."""
 
 import time
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from google.cloud.monitoring_v3.types import TimeSeries
 
 from glean.indexing.observability import MetricsProvider, MetricType
 
 
 class CloudMonitoringProvider(MetricsProvider):
-    """GCP Cloud Monitoring metrics provider.
+    """GCP Cloud Monitoring metrics provider (beta).
 
     Requires the ``gcp`` extra: ``uv add glean-indexing-sdk[gcp]``.
     """
@@ -28,16 +31,17 @@ class CloudMonitoringProvider(MetricsProvider):
             resource_labels: Resource labels for the monitored resource
             buffer_size: Number of metrics to buffer before flushing
         """
-        import google.cloud.monitoring_v3 as monitoring_v3
+        from google.api import monitored_resource_pb2
+        from google.cloud.monitoring_v3 import MetricServiceClient
 
         self.project_id = project_id
         self.project_name = f"projects/{project_id}"
-        self.client = monitoring_v3.MetricServiceClient()
-        self.resource = monitoring_v3.MonitoredResource(
+        self.client = MetricServiceClient()
+        self.resource = monitored_resource_pb2.MonitoredResource(
             type=resource_type,
             labels=resource_labels or {},
         )
-        self.buffer: list = []
+        self.buffer: list["TimeSeries"] = []
         self.buffer_size = buffer_size
 
     def emit_metric(
@@ -47,33 +51,40 @@ class CloudMonitoringProvider(MetricsProvider):
         metric_type: MetricType = MetricType.GAUGE,
         labels: Optional[dict[str, str]] = None,
     ) -> None:
-        import google.cloud.monitoring_v3 as monitoring_v3
+        from google.api import distribution_pb2, metric_pb2
+        from google.cloud.monitoring_v3.types import Point, TimeInterval, TimeSeries, TypedValue
+        from google.protobuf import timestamp_pb2
 
-        series = monitoring_v3.TimeSeries()
-        series.metric.type = f"custom.googleapis.com/{name}"
-        if labels:
-            series.metric.labels.update(labels)
-        series.resource = self.resource
-
-        point = monitoring_v3.Point()
         now = int(time.time())
-        point.interval.end_time.seconds = now
+        end_time = timestamp_pb2.Timestamp(seconds=now)
+        interval = TimeInterval(end_time=end_time)
 
         if metric_type == MetricType.COUNTER:
-            series.metric_kind = monitoring_v3.MetricDescriptor.MetricKind.CUMULATIVE
-            point.value.int64_value = int(value)
-            point.interval.start_time.seconds = now
+            metric_kind = metric_pb2.MetricDescriptor.MetricKind.CUMULATIVE
+            value_type = metric_pb2.MetricDescriptor.ValueType.INT64
+            interval = TimeInterval(
+                start_time=timestamp_pb2.Timestamp(seconds=now),
+                end_time=end_time,
+            )
+            typed_value = TypedValue(int64_value=int(value))
         elif metric_type == MetricType.HISTOGRAM:
-            series.metric_kind = monitoring_v3.MetricDescriptor.MetricKind.GAUGE
-            series.value_type = monitoring_v3.MetricDescriptor.ValueType.DISTRIBUTION
-            point.value.distribution_value.count = 1
-            point.value.distribution_value.mean = value
-            point.value.distribution_value.bucket_counts.extend([1])
+            metric_kind = metric_pb2.MetricDescriptor.MetricKind.GAUGE
+            value_type = metric_pb2.MetricDescriptor.ValueType.DISTRIBUTION
+            distribution = distribution_pb2.Distribution(count=1, mean=value, bucket_counts=[1])
+            typed_value = TypedValue(distribution_value=distribution)
         else:
-            series.metric_kind = monitoring_v3.MetricDescriptor.MetricKind.GAUGE
-            point.value.double_value = value
+            metric_kind = metric_pb2.MetricDescriptor.MetricKind.GAUGE
+            value_type = metric_pb2.MetricDescriptor.ValueType.DOUBLE
+            typed_value = TypedValue(double_value=value)
 
-        series.points = [point]
+        point = Point(interval=interval, value=typed_value)
+        series = TimeSeries(
+            metric=metric_pb2.Metric(type=f"custom.googleapis.com/{name}", labels=labels or {}),
+            resource=self.resource,
+            metric_kind=metric_kind,
+            value_type=value_type,
+            points=[point],
+        )
         self.buffer.append(series)
 
         if len(self.buffer) >= self.buffer_size:
@@ -83,5 +94,5 @@ class CloudMonitoringProvider(MetricsProvider):
         if not self.buffer:
             return
 
-        self.client.create_time_series(name=self.project_name, time_series=self.buffer)
+        self.client.create_time_series(name=self.project_name, time_series=self.buffer.copy())
         self.buffer.clear()

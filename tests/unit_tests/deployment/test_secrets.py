@@ -135,6 +135,7 @@ def test_redlist_contains_expected_vars():
     assert "INDEXING_MODE" in _REDLIST
     assert "CONNECTOR_CLASS" in _REDLIST
     assert "CONNECTOR_MODULE" in _REDLIST
+    assert "CONNECTOR_FACTORY" in _REDLIST
 
 
 def test_redlist_covers_all_template_deployment_env_vars():

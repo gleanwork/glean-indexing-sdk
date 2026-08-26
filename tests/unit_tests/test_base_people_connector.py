@@ -60,6 +60,34 @@ def test_index_data_batches_and_uploads():
         assert len(kwargs["employees"]) == 5
 
 
+@patch("glean.indexing.connectors.base_connector.PushUploader")
+def test_employee_upload_receives_all_supported_options(mock_uploader):
+    client = MagicMock()
+    client.get_source_data.return_value = MockPeopleClient().get_all_people()
+    connector = DummyPeopleConnector("test_people", client)
+    options = ConnectorOptions(
+        force_restart=True,
+        disable_stale_deletion_check=True,
+        upload_timeout_ms=120_000,
+        upload_max_workers=3,
+    )
+
+    connector.index_data(options=options)
+
+    mock_uploader.assert_called_once_with(
+        datasource="test_people",
+        timeout_ms=120_000,
+        observability=connector.observability,
+        upload_max_workers=3,
+    )
+    mock_uploader.return_value.bulk_index_employees.assert_called_once_with(
+        employees=connector.transform(client.get_source_data.return_value),
+        batch_size=connector.batch_size,
+        force_restart_upload=True,
+        disable_stale_data_deletion_check=True,
+    )
+
+
 def test_index_data_empty():
     client = MagicMock()
     client.get_source_data.return_value = []

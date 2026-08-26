@@ -27,6 +27,7 @@ _REDLIST: frozenset[str] = frozenset(
         "INDEXING_MODE",
         "CONNECTOR_CLASS",
         "CONNECTOR_MODULE",
+        "CONNECTOR_FACTORY",
     ]
 )
 _GCP_SECRET_NAME_RE = re.compile(r"[A-Za-z0-9_-]{1,255}", re.ASCII)
@@ -105,8 +106,9 @@ class SecretsBackend(ABC):
 
 
 class GCPSecretsBackend(SecretsBackend):
-    """GCP Secret Manager backend.
+    """GCP Secret Manager backend (beta).
 
+    Requires the ``gcp`` extra: ``uv add glean-indexing-sdk[gcp]``.
     Ref: https://cloud.google.com/secret-manager/docs
     """
 
@@ -119,10 +121,10 @@ class GCPSecretsBackend(SecretsBackend):
             return {}
         secret_entries = self._secret_entries(env_vars)
 
-        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
-        from google.cloud import secretmanager  # type: ignore[import-untyped]
+        from google.api_core.exceptions import NotFound
+        from google.cloud.secretmanager import SecretManagerServiceClient
 
-        client = secretmanager.SecretManagerServiceClient()
+        client = SecretManagerServiceClient()
         parent = f"projects/{self._config.project_id}"
         results: dict[str, str] = {}
 
@@ -159,9 +161,9 @@ class GCPSecretsBackend(SecretsBackend):
         prefix = self._config.secret_prefix
         self._validate_secret_name(prefix)
 
-        from google.cloud import secretmanager  # type: ignore[import-untyped]
+        from google.cloud.secretmanager import SecretManagerServiceClient
 
-        client = secretmanager.SecretManagerServiceClient()
+        client = SecretManagerServiceClient()
         parent = f"projects/{self._config.project_id}"
 
         keys: list[str] = []
@@ -177,10 +179,10 @@ class GCPSecretsBackend(SecretsBackend):
 
         secret_name = self._secret_name(key)
 
-        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
-        from google.cloud import secretmanager  # type: ignore[import-untyped]
+        from google.api_core.exceptions import NotFound
+        from google.cloud.secretmanager import SecretManagerServiceClient
 
-        client = secretmanager.SecretManagerServiceClient()
+        client = SecretManagerServiceClient()
         secret_path = f"projects/{self._config.project_id}/secrets/{secret_name}"
         try:
             client.delete_secret(request={"name": secret_path})

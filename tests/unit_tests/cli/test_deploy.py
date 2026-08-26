@@ -5,9 +5,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from glean.indexing.cli.commands.deploy import deploy
+from glean.indexing.cli.main import cli
 
 
 @pytest.fixture()
@@ -62,6 +64,129 @@ def test_init_gcp_generates_files(runner, tmp_path):
         assert Path(".env.example").exists()
 
 
+def test_init_public_cli_exposes_force(runner):
+    result = runner.invoke(cli, ["deploy", "init", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--force" in result.output
+    assert "Overwrite existing generated deployment files" in result.output
+
+
+def test_init_fresh_project_adds_gitignore_protections(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        result = runner.invoke(cli, ["deploy", "init", "--cloud", "gcp"])
+
+        assert result.exit_code == 0, result.output
+        assert Path(".gitignore").read_text().splitlines() == [
+            ".env",
+            ".terraform/",
+            "*.tfstate*",
+        ]
+
+
+def test_init_collision_aborts_before_writes_and_preserves_existing_bytes(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        original = b"user-owned Dockerfile\n\xff\x00"
+        Path("Dockerfile").write_bytes(original)
+
+        result = runner.invoke(cli, ["deploy", "init", "--cloud", "gcp"])
+
+        assert result.exit_code != 0
+        assert "Dockerfile" in result.output
+        assert "--force" in result.output
+        assert Path("Dockerfile").read_bytes() == original
+        assert not Path("run.py").exists()
+        assert not Path(".gitignore").exists()
+
+
+def test_init_lists_all_collisions_without_partial_generation(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        existing = {
+            "Dockerfile": b"custom Dockerfile\n",
+            "run.py": b"custom runner\n",
+            ".env.example": b"CUSTOM_SECRET=\n",
+        }
+        for path, content in existing.items():
+            Path(path).write_bytes(content)
+
+        result = runner.invoke(cli, ["deploy", "init", "--cloud", "gcp"])
+
+        assert result.exit_code != 0
+        for path, content in existing.items():
+            assert path in result.output
+            assert Path(path).read_bytes() == content
+        assert not Path("glean_deployment.yaml").exists()
+        assert not Path("terraform").exists()
+        assert not Path(".gitignore").exists()
+
+
+def test_init_parent_path_collision_is_atomic_even_with_force(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("terraform").write_bytes(b"user-owned path\n")
+
+        result = runner.invoke(cli, ["deploy", "init", "--cloud", "gcp", "--force"])
+
+        assert result.exit_code != 0
+        assert "terraform" in result.output
+        assert Path("terraform").read_bytes() == b"user-owned path\n"
+        assert not Path("Dockerfile").exists()
+        assert not Path(".gitignore").exists()
+
+
+def test_init_lists_gitignore_and_generated_conflicts_before_writing(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path(".gitignore").mkdir()
+        Path("Dockerfile").write_bytes(b"user-owned Dockerfile\n")
+
+        result = runner.invoke(cli, ["deploy", "init", "--cloud", "gcp"])
+
+        assert result.exit_code != 0
+        assert ".gitignore" in result.output
+        assert "Dockerfile" in result.output
+        assert Path("Dockerfile").read_bytes() == b"user-owned Dockerfile\n"
+        assert not Path("run.py").exists()
+        assert not Path("terraform").exists()
+
+
+def test_init_force_overwrites_generated_file_collisions(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("Dockerfile").write_text("user-owned Dockerfile\n")
+
+        result = runner.invoke(cli, ["deploy", "init", "--cloud", "gcp", "--force"])
+
+        assert result.exit_code == 0, result.output
+        assert Path("Dockerfile").read_text() != "user-owned Dockerfile\n"
+        assert Path("run.py").exists()
+        assert Path("terraform/main.tf").exists()
+
+
+def test_init_merges_gitignore_protections_without_replacing_user_content(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        original = b"# User rules\r\nbuild/\r\n"
+        Path(".gitignore").write_bytes(original)
+
+        result = runner.invoke(cli, ["deploy", "init", "--cloud", "gcp"])
+
+        assert result.exit_code == 0, result.output
+        merged = Path(".gitignore").read_bytes()
+        assert merged == original + b".env\r\n.terraform/\r\n*.tfstate*\r\n"
+
+
+def test_init_gitignore_merge_is_idempotent(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path(".gitignore").write_bytes(b"build/")
+
+        first = runner.invoke(cli, ["deploy", "init", "--cloud", "gcp"])
+        assert first.exit_code == 0, first.output
+        merged = Path(".gitignore").read_bytes()
+
+        second = runner.invoke(cli, ["deploy", "init", "--cloud", "gcp", "--force"])
+
+        assert second.exit_code == 0, second.output
+        assert Path(".gitignore").read_bytes() == merged
+        assert merged == b"build/\n.env\n.terraform/\n*.tfstate*\n"
+
+
 def test_init_aws_generates_files(runner, tmp_path):
     with runner.isolated_filesystem(temp_dir=tmp_path):
         result = runner.invoke(deploy, ["init", "--cloud", "aws"])
@@ -99,6 +224,27 @@ def test_init_with_connector_name(runner, tmp_path):
         assert result.exit_code == 0
         yaml_content = Path("glean_deployment.yaml").read_text()
         assert "my_jira" in yaml_content
+
+
+def test_init_with_connector_factory(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        result = runner.invoke(
+            deploy,
+            [
+                "init",
+                "--cloud",
+                "gcp",
+                "--connector-class",
+                "CompanyWikiConnector",
+                "--connector-factory",
+                "create_connector",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        deployment = yaml.safe_load(Path("glean_deployment.yaml").read_text())
+        assert deployment["connector_class"] == "CompanyWikiConnector"
+        assert deployment["connector_factory"] == "create_connector"
 
 
 # ---------------------------------------------------------------------------
@@ -468,6 +614,32 @@ def test_logs_no_jobs_shows_error(runner, tmp_path, gcp_deployment_yaml):
 # ---------------------------------------------------------------------------
 # status
 # ---------------------------------------------------------------------------
+
+
+def test_invalid_aws_account_id_reports_config_field_and_expected_format(runner, tmp_path):
+    config_path = tmp_path / "custom-deployment.yaml"
+    config_path.write_text(
+        """
+connector_name: my_connector
+connector_class: MyConnector
+connector_module: connector
+cloud: aws
+region: us-east-1
+cluster_name: my-cluster
+account_id: 123
+ecr_repo: 123.dkr.ecr.us-east-1.amazonaws.com/connectors
+"""
+    )
+
+    with patch("subprocess.run") as mock_run:
+        result = runner.invoke(deploy, ["status", "--config", str(config_path)])
+
+    assert result.exit_code != 0
+    assert str(config_path) in result.output
+    assert "account_id" in result.output
+    assert "exactly 12 decimal digits" in result.output
+    assert "errors.pydantic.dev" not in result.output
+    mock_run.assert_not_called()
 
 
 def test_status_shows_cronjob_and_jobs(runner, tmp_path, gcp_deployment_yaml):

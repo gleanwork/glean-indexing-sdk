@@ -47,6 +47,7 @@ typing = [
 gcp = [
     "google-cloud-logging>=3.11.0,<4",
     "google-cloud-monitoring>=2.22.0,<3",
+    "google-cloud-secret-manager>=2.20.0,<3",
 ]
 
 [project.scripts]

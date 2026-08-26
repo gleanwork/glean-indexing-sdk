@@ -16,7 +16,6 @@ from glean.indexing.models import (
     IndexingMode,
     TSourceData,
 )
-from glean.indexing.push import PushUploader
 
 logger = logging.getLogger(__name__)
 
@@ -113,12 +112,7 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
         batch_count = 0
         max_batch_bytes = self._resolve_max_batch_bytes(options)
         upload_max_workers = options.upload_max_workers if options else DEFAULT_UPLOAD_MAX_WORKERS
-        uploader = PushUploader(
-            datasource=self.name,
-            timeout_ms=options.upload_timeout_ms if options else None,
-            observability=self._observability,
-            upload_max_workers=upload_max_workers,
-        )
+        uploader = self._create_uploader(options)
 
         try:
 

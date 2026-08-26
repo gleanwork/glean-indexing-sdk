@@ -86,10 +86,24 @@ For an async streaming connector:
 await connector.index_data_async(mode=IndexingMode.FULL, options=options)
 ```
 
+The connector base classes map options to bulk endpoints as follows:
+
+| Bulk endpoint | `force_restart` | `disable_stale_deletion_check` | `upload_timeout_ms` | `upload_max_workers` | `document_batch_size_bytes` |
+| --- | --- | --- | --- | --- | --- |
+| Documents | Yes | Yes | Yes | Yes | Yes |
+| Datasource users | Yes | Yes | Yes | No | No |
+| Datasource groups | Yes | Yes | Yes | No | No |
+| Datasource memberships | Yes | No | Yes | No | No |
+| Employees | Yes | Yes | Yes | No | No |
+
+Streaming datasource connectors upload only documents, so only the document row applies to them.
+`upload_max_workers` is specific to document uploads; the other endpoints upload their pages
+sequentially.
+
 ### Force restart
 
-`force_restart=True` sends `force_restart_upload=True` on the first document or employee batch. Use
-it to recover from an incomplete upload session; do not enable it for every crawl.
+`force_restart=True` sends `force_restart_upload=True` on the first batch for every bulk endpoint.
+Use it to recover from an incomplete upload session; do not enable it for every crawl.
 
 ```python
 connector.index_data(
@@ -113,9 +127,9 @@ connector.index_data(
 This bypasses the stale-deletion volume safeguard. Use it only when a large deletion is intentional
 and the completed crawl scope has been verified.
 
-The generated API uses different parameter names for documents and employee data, while
-`ConnectorOptions` exposes one connector-level field. Datasource user, group, and membership
-uploads do not currently receive these connector options.
+The generated API uses `disable_stale_document_deletion_check` for documents and
+`disable_stale_data_deletion_check` for datasource users, datasource groups, and employees.
+The memberships endpoint does not support a stale-deletion-check option.
 
 ### Upload timeout
 
@@ -126,20 +140,16 @@ before using very large timeouts for oversized payloads.
 
 `upload_max_workers` controls concurrent middle-page document uploads. The first page opens the
 upload session and the last page completes it, so both remain sequential. The default is five
-workers.
-
-`BasePeopleConnector` does not currently forward `upload_max_workers`; employee batches remain
-sequential.
+workers. Datasource identity and employee uploads remain sequential.
 
 ### Document byte limit
 
-`document_batch_size_bytes` is present on `ConnectorOptions`, but the connector base classes do not
-currently forward it to `PushUploader`. In-memory document uploads still use the uploader's default
-5 MiB limit, while streaming connectors form batches by item count.
+`document_batch_size_bytes` limits the serialized size of document batches for in-memory, sync
+streaming, and async streaming datasource connectors. The default is 5 MiB. Set it to `None` to
+batch documents only by `connector.batch_size`.
 
-To choose a different byte limit today, call `PushUploader.bulk_index_documents()` directly with
-`max_batch_bytes`. Connector-level support is tracked in
-[issue #106](https://github.com/gleanwork/glean-indexing-sdk/issues/106).
+Custom datasource connector bases can override `_resolve_max_batch_bytes()` when they need a
+different policy; that hook applies to both in-memory and streaming document batching.
 
 ## Identity data with streaming connectors
 

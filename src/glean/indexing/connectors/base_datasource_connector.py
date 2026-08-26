@@ -10,7 +10,6 @@ from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.exceptions import InconsistentDataError, InvalidDatasourceConfigError
 from glean.indexing.models import (
-    DEFAULT_UPLOAD_MAX_WORKERS,
     ConnectorOptions,
     CustomDatasourceConfig,
     DatasourceIdentityDefinitions,
@@ -137,32 +136,42 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             identities = self.get_identities()
 
             users = identities.get("users")
+            groups = identities.get("groups")
+            memberships = identities.get("memberships")
+
+            if groups and not memberships:
+                raise InconsistentDataError(
+                    "identity data",
+                    "Groups were provided, but no memberships were provided",
+                    "Implement get_identities() to return both 'groups' and 'memberships' keys, "
+                    "or remove groups if memberships are not available",
+                )
+
+            uploader = self._create_uploader(options)
+
             if users:
                 logger.info(f"Indexing {len(users)} users")
-                PushUploader(
-                    datasource=self.name, observability=self._observability
-                ).bulk_index_users(users=users, batch_size=self.batch_size)
+                uploader.bulk_index_users(
+                    users=users,
+                    batch_size=self.batch_size,
+                    **self._bulk_upload_options(options, "users"),
+                )
 
-            groups = identities.get("groups")
             if groups:
                 logger.info(f"Indexing {len(groups)} groups")
-                PushUploader(
-                    datasource=self.name, observability=self._observability
-                ).bulk_index_groups(groups=groups, batch_size=self.batch_size)
+                uploader.bulk_index_groups(
+                    groups=groups,
+                    batch_size=self.batch_size,
+                    **self._bulk_upload_options(options, "groups"),
+                )
 
-                memberships = identities.get("memberships")
-                if not memberships:
-                    raise InconsistentDataError(
-                        "identity data",
-                        "Groups were provided, but no memberships were provided",
-                        "Implement get_identities() to return both 'groups' and 'memberships' keys, "
-                        "or remove groups if memberships are not available",
-                    )
-
+            if memberships:
                 logger.info(f"Indexing {len(memberships)} memberships")
-                PushUploader(
-                    datasource=self.name, observability=self._observability
-                ).bulk_index_memberships(memberships=memberships, batch_size=self.batch_size)
+                uploader.bulk_index_memberships(
+                    memberships=memberships,
+                    batch_size=self.batch_size,
+                    **self._bulk_upload_options(options, "memberships"),
+                )
 
             since = None
             if mode == IndexingMode.INCREMENTAL:
@@ -191,21 +200,10 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
                 if force_restart:
                     logger.info("Force restarting upload - discarding any previous upload progress")
 
-                PushUploader(
-                    datasource=self.name,
-                    timeout_ms=options.upload_timeout_ms if options else None,
-                    observability=self._observability,
-                    upload_max_workers=options.upload_max_workers
-                    if options
-                    else DEFAULT_UPLOAD_MAX_WORKERS,
-                ).bulk_index_documents(
+                uploader.bulk_index_documents(
                     documents=documents,
                     batch_size=self.batch_size,
-                    max_batch_bytes=self._resolve_max_batch_bytes(options),
-                    force_restart_upload=True if force_restart else None,
-                    disable_stale_document_deletion_check=True
-                    if (options and options.disable_stale_deletion_check)
-                    else None,
+                    **self._bulk_upload_options(options, "documents"),
                 )
             self._observability.end_timer("data_upload")
 

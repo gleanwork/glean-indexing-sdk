@@ -246,3 +246,27 @@ def test_list_generated_files_aws():
 def test_list_generated_files_invalid_cloud_raises():
     with pytest.raises(ValueError, match="Unsupported cloud target"):
         list_generated_files("azure")
+
+
+# ---------------------------------------------------------------------------
+# GCP secretAccessor IAM condition (#105)
+# ---------------------------------------------------------------------------
+
+
+def test_gcp_terraform_secret_accessor_has_iam_condition():
+    artifacts = generate_artifacts(GCP_CONFIG)
+    tf = artifacts["terraform/main.tf"]
+    assert "condition" in tf
+    assert "resource.name.startsWith" in tf
+
+
+def test_gcp_terraform_secret_accessor_condition_uses_secret_prefix():
+    artifacts = generate_artifacts(GCP_CONFIG)
+    tf = artifacts["terraform/main.tf"]
+    assert GCP_CONFIG.secret_prefix in tf
+
+
+def test_aws_terraform_has_no_iam_condition():
+    artifacts = generate_artifacts(AWS_CONFIG)
+    tf = artifacts["terraform/main.tf"]
+    assert "condition {" not in tf

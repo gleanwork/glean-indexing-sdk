@@ -25,6 +25,11 @@ class TestClientConfig:
         cfg = ClientConfig.from_dict({"max_items": None})
         assert cfg.max_items is None
 
+    @pytest.mark.parametrize("max_items", [0, -1, True, 1.5])
+    def test_limit_must_be_a_positive_integer(self, max_items):
+        with pytest.raises(ValueError, match="max_items must be a positive integer"):
+            ClientConfig(max_items=max_items)
+
 
 class TestTestConfigDefaults:
     def test_defaults(self):

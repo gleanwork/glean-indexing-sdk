@@ -393,6 +393,13 @@ def test_max_items_actually_caps_what_the_source_yields(project, no_credentials)
     assert phase["posted"] == {"documents": 4}
 
 
+def test_max_items_must_be_positive(project, no_credentials):
+    result = invoke(project, "--phase", "integration", "--max-items", "0")
+
+    assert result.exit_code != 0
+    assert "0 is not in the range" in result.output
+
+
 def test_without_the_cap_the_harness_default_applies(project, no_credentials):
     """Pins the contrast: 20 records available, five taken."""
     result = invoke(project, "--phase", "integration", "--refresh-cache", "--output", "json")

@@ -200,6 +200,8 @@ resource "kubernetes_cron_job_v1" "connector" {
               security_context {
                 allow_privilege_escalation = false
                 run_as_non_root            = true
+                run_as_user                = 10001
+                run_as_group               = 10001
               }
             }
           }

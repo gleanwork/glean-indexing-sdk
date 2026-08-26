@@ -246,3 +246,38 @@ def test_list_generated_files_aws():
 def test_list_generated_files_invalid_cloud_raises():
     with pytest.raises(ValueError, match="Unsupported cloud target"):
         list_generated_files("azure")
+
+
+# ---------------------------------------------------------------------------
+# Numeric UID in Dockerfiles and security_context (#156)
+# ---------------------------------------------------------------------------
+
+
+def test_gcp_dockerfile_uses_numeric_uid():
+    artifacts = generate_artifacts(GCP_CONFIG)
+    dockerfile = artifacts["Dockerfile"]
+    assert "--uid 10001" in dockerfile
+    assert "USER 10001" in dockerfile
+    assert "USER connector" not in dockerfile
+
+
+def test_aws_dockerfile_uses_numeric_uid():
+    artifacts = generate_artifacts(AWS_CONFIG)
+    dockerfile = artifacts["Dockerfile"]
+    assert "--uid 10001" in dockerfile
+    assert "USER 10001" in dockerfile
+    assert "USER connector" not in dockerfile
+
+
+def test_gcp_terraform_security_context_has_numeric_uid():
+    artifacts = generate_artifacts(GCP_CONFIG)
+    tf = artifacts["terraform/main.tf"]
+    assert "run_as_user" in tf
+    assert "10001" in tf
+
+
+def test_aws_terraform_security_context_has_numeric_uid():
+    artifacts = generate_artifacts(AWS_CONFIG)
+    tf = artifacts["terraform/main.tf"]
+    assert "run_as_user" in tf
+    assert "10001" in tf

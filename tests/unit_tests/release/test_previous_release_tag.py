@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,7 +10,19 @@ SELECTOR = REPOSITORY_ROOT / "scripts" / "find_previous_release_tag.py"
 
 
 def run(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, check=check, capture_output=True, text=True)
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("COV_CORE_", "COVERAGE_"))
+    }
+    return subprocess.run(
+        args,
+        cwd=cwd,
+        check=check,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
 
 
 def git(repository: Path, *args: str) -> str:

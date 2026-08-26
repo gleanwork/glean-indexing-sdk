@@ -175,12 +175,13 @@ def test_effective_service_account_aws_default():
 
 
 def test_yaml_round_trip(tmp_path):
-    config = DeploymentConfig(**GCP_KWARGS)
+    config = DeploymentConfig(**{**GCP_KWARGS, "connector_factory": "create_connector"})
     yaml_path = tmp_path / "glean_deployment.yaml"
     config.to_yaml(yaml_path)
 
     loaded = DeploymentConfig.from_yaml(yaml_path)
     assert loaded.connector_name == config.connector_name
+    assert loaded.connector_factory == "create_connector"
     assert loaded.cloud == config.cloud
     assert loaded.project_id == config.project_id
     assert loaded.artifact_registry_repo == config.artifact_registry_repo

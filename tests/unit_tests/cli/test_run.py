@@ -57,9 +57,25 @@ CONNECTOR_SOURCE = textwrap.dedent(
     class NeedsArguments:
         def __init__(self, name, data_client):
             self.name = name
+            self.data_client = data_client
 
         def index_data(self, mode=None, options=None):
-            pass
+            CALLS.write_text(
+                json.dumps(
+                    {
+                        "constructed_by": self.data_client,
+                        "mode": getattr(mode, "value", mode),
+                    }
+                )
+            )
+
+
+    def create_connector():
+        return NeedsArguments("wiki", "factory")
+
+
+    def failing_factory():
+        raise ValueError("invalid credential: source-secret-token")
 
 
     class NotAConnector:
@@ -170,6 +186,30 @@ def test_a_connector_reference_can_be_given_explicitly(project, credentials):
     assert json.loads(result.stdout)["data"]["connector"] == "WikiConnector"
 
 
+def test_explicit_factory_reference_constructs_connector(project, credentials):
+    result = invoke(project, "--connector", "connector:create_connector", "--output", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["data"]["connector"] == "create_connector"
+    assert calls(project) == {"constructed_by": "factory", "mode": "full"}
+
+
+def test_project_factory_constructs_a_connector_with_required_arguments(project, credentials):
+    (project / PROJECT_FILE).write_text(
+        "connector_name: wiki\n"
+        "connector_module: connector\n"
+        "connector_class: NeedsArguments\n"
+        "connector_factory: create_connector\n"
+        "indexing_mode: FULL\n"
+    )
+
+    result = invoke(project, "--output", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["data"]["connector"] == "NeedsArguments"
+    assert calls(project) == {"constructed_by": "factory", "mode": "full"}
+
+
 # --- failure modes --------------------------------------------------------
 
 
@@ -182,6 +222,23 @@ def test_a_connector_needing_constructor_arguments_explains_the_contract(project
     assert error["code"] == "connector_not_importable"
     assert "without arguments" in error["message"]
     assert "super().__init__" in error["detail"]
+
+
+def test_factory_failure_is_actionable_without_leaking_secret_text(project, credentials):
+    (project / PROJECT_FILE).write_text(
+        "connector_name: wiki\n"
+        "connector_module: connector\n"
+        "connector_class: NeedsArguments\n"
+        "connector_factory: failing_factory\n"
+    )
+
+    result = invoke(project, "--output", "json")
+
+    assert result.exit_code == EXIT_PRECONDITION
+    error = json.loads(result.stdout)["error"]
+    assert "failing_factory" in error["message"]
+    assert "ValueError" in error["detail"]
+    assert "source-secret-token" not in result.output
 
 
 def test_an_object_without_index_data_is_rejected_before_running(project, credentials):

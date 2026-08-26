@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from glean.indexing.cli.commands.deploy import deploy
@@ -99,6 +100,27 @@ def test_init_with_connector_name(runner, tmp_path):
         assert result.exit_code == 0
         yaml_content = Path("glean_deployment.yaml").read_text()
         assert "my_jira" in yaml_content
+
+
+def test_init_with_connector_factory(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        result = runner.invoke(
+            deploy,
+            [
+                "init",
+                "--cloud",
+                "gcp",
+                "--connector-class",
+                "CompanyWikiConnector",
+                "--connector-factory",
+                "create_connector",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        deployment = yaml.safe_load(Path("glean_deployment.yaml").read_text())
+        assert deployment["connector_class"] == "CompanyWikiConnector"
+        assert deployment["connector_factory"] == "create_connector"
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,13 @@ class DeploymentConfig(BaseModel):
     )
     connector_class: str = Field(description="Python class name of the connector.")
     connector_module: str = Field(description="Python module path containing the connector class.")
+    connector_factory: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional zero-argument factory in connector_module. The factory must return "
+            "an instance of connector_class."
+        ),
+    )
 
     cloud: Literal["gcp", "aws"] = Field(description="Target cloud provider.")
     region: str = Field(

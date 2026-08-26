@@ -352,6 +352,7 @@ def test_confirming_the_live_prompt_passes_confirm_to_the_harness(project, monke
 
     assert result.exit_code == 0, result.output
     assert seen_kwargs["confirm"] is True
+    assert seen_kwargs["confirmed_target"] == "https://acme-be.glean.com"
 
 
 def test_a_batch_does_not_prompt_when_live_will_be_skipped(project, no_credentials):

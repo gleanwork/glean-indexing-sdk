@@ -36,7 +36,10 @@ from glean.indexing.connectors.base_async_streaming_data_client import BaseAsync
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
-from glean.indexing.exceptions import LiveEndToEndNotConfirmedError
+from glean.indexing.exceptions import (
+    LiveEndToEndNotConfirmedError,
+    LiveEndToEndTargetChangedError,
+)
 from glean.indexing.models import ConnectorOptions, IndexingMode
 from glean.indexing.push.status import IndexingWaitResult, document_status_requests
 from glean.indexing.testing.harness.cache.manifest import CacheManifest
@@ -474,6 +477,7 @@ class TestHarness:
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
         confirm: bool = False,
+        confirmed_target: Optional[str] = None,
     ) -> IndexingWaitResult | None:
         """Run the connector against the real source and real Glean.
 
@@ -507,6 +511,8 @@ class TestHarness:
             mode: Indexing mode forwarded to ``connector.index_data``.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
             confirm: Must be explicitly set to ``True`` to run this phase.
+            confirmed_target: Target displayed when confirmation was obtained.
+                The run is rejected if the current target differs.
 
         Returns:
             The document indexing outcome, or ``None`` when no documents were uploaded.
@@ -514,6 +520,8 @@ class TestHarness:
         Raises:
             ~glean.indexing.exceptions.LiveEndToEndNotConfirmedError: If
                 ``confirm`` is not ``True``.
+            ~glean.indexing.exceptions.LiveEndToEndTargetChangedError: If the
+                configured target differs from ``confirmed_target``.
             ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
                 ``GLEAN_INDEXING_API_TOKEN`` or the server URL is missing from
                 the environment.
@@ -521,6 +529,8 @@ class TestHarness:
         target = _resolve_glean_target()
         if not confirm:
             raise LiveEndToEndNotConfirmedError(target)
+        if confirmed_target is not None and target != confirmed_target:
+            raise LiveEndToEndTargetChangedError(confirmed_target, target)
 
         logger.warning(
             "Running LIVE end-to-end test for connector %r against %s. This "
@@ -556,6 +566,7 @@ class TestHarness:
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
         confirm: bool = False,
+        confirmed_target: Optional[str] = None,
     ) -> IndexingWaitResult | None:
         """Async variant of :meth:`run_end_to_end`.
 
@@ -572,6 +583,8 @@ class TestHarness:
             mode: Indexing mode forwarded to the connector.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
             confirm: Must be explicitly set to ``True`` to run this phase.
+            confirmed_target: Target displayed when confirmation was obtained.
+                The run is rejected if the current target differs.
 
         Returns:
             The document indexing outcome, or ``None`` when no documents were uploaded.
@@ -579,6 +592,8 @@ class TestHarness:
         Raises:
             ~glean.indexing.exceptions.LiveEndToEndNotConfirmedError: If
                 ``confirm`` is not ``True``.
+            ~glean.indexing.exceptions.LiveEndToEndTargetChangedError: If the
+                configured target differs from ``confirmed_target``.
             ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
                 environment variables for the Glean client are missing.
         """
@@ -589,6 +604,8 @@ class TestHarness:
         target = _resolve_glean_target()
         if not confirm:
             raise LiveEndToEndNotConfirmedError(target)
+        if confirmed_target is not None and target != confirmed_target:
+            raise LiveEndToEndTargetChangedError(confirmed_target, target)
 
         logger.warning(
             "Running LIVE end-to-end test for connector %r against %s. This "

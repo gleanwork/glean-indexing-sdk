@@ -10,6 +10,7 @@ Exception Hierarchy:
     │   ├── InvalidDatasourceConfigError
     │   ├── LiveEndToEndNotConfirmedError
     │   ├── LiveEndToEndTargetChangedError
+    │   ├── UnsafeLiveEndToEndRunError
     │   └── UnsafeLiveIdentityTestError
     └── GleanValidationError(GleanError, ValueError)
         ├── InvalidPropertyError
@@ -146,6 +147,26 @@ class LiveEndToEndTargetChangedError(GleanConfigurationError):
         fix_suggestion = (
             "Stop the run, verify GLEAN_SERVER_URL (or GLEAN_INSTANCE), and confirm the "
             "current target again."
+        )
+        super().__init__(message, fix_suggestion, self.DOCS_URL)
+
+
+class UnsafeLiveEndToEndRunError(GleanConfigurationError):
+    """Raised when a live test lacks explicit destructive-replacement opt-in."""
+
+    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing"
+
+    def __init__(self, target: str) -> None:
+        self.target = target
+        message = (
+            f"Live end-to-end test against {target!r} can finalize replacement state and "
+            "delete documents the crawl does not produce. Refusing to run without explicit "
+            "destructive opt-in."
+        )
+        fix_suggestion = (
+            "Use a disposable datasource whose contents may be replaced, then pass "
+            "allow_destructive=True in addition to confirm=True. For the CLI, pass "
+            "--allow-destructive-live; --yes alone is not sufficient."
         )
         super().__init__(message, fix_suggestion, self.DOCS_URL)
 

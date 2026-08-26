@@ -41,6 +41,7 @@ from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDa
 from glean.indexing.exceptions import (
     LiveEndToEndNotConfirmedError,
     LiveEndToEndTargetChangedError,
+    UnsafeLiveEndToEndRunError,
     UnsafeLiveIdentityTestError,
 )
 from glean.indexing.models import ConnectorOptions, IndexingMode
@@ -491,6 +492,7 @@ class TestHarness:
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
         confirm: bool = False,
+        allow_destructive: bool = False,
         confirmed_target: Optional[str] = None,
     ) -> IndexingWaitResult | None:
         """Run the connector against the real source and real Glean.
@@ -524,7 +526,9 @@ class TestHarness:
         Args:
             mode: Indexing mode forwarded to ``connector.index_data``.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
-            confirm: Must be explicitly set to ``True`` to run this phase.
+            confirm: Must be explicitly set to ``True`` to confirm the target.
+            allow_destructive: Must be explicitly set to ``True`` to acknowledge
+                replacement finalization and stale deletion.
             confirmed_target: Target displayed when confirmation was obtained.
                 The run is rejected if the current target differs.
 
@@ -541,8 +545,10 @@ class TestHarness:
                 the environment.
         """
         target = _resolve_glean_target()
-        if not confirm:
+        if confirm is not True:
             raise LiveEndToEndNotConfirmedError(target)
+        if allow_destructive is not True:
+            raise UnsafeLiveEndToEndRunError(target)
         if confirmed_target is not None and target != confirmed_target:
             raise LiveEndToEndTargetChangedError(confirmed_target, target)
         _ensure_live_identity_cleanup_supported(self._connector)
@@ -581,6 +587,7 @@ class TestHarness:
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
         confirm: bool = False,
+        allow_destructive: bool = False,
         confirmed_target: Optional[str] = None,
     ) -> IndexingWaitResult | None:
         """Async variant of :meth:`run_end_to_end`.
@@ -597,7 +604,9 @@ class TestHarness:
         Args:
             mode: Indexing mode forwarded to the connector.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
-            confirm: Must be explicitly set to ``True`` to run this phase.
+            confirm: Must be explicitly set to ``True`` to confirm the target.
+            allow_destructive: Must be explicitly set to ``True`` to acknowledge
+                replacement finalization and stale deletion.
             confirmed_target: Target displayed when confirmation was obtained.
                 The run is rejected if the current target differs.
 
@@ -617,8 +626,10 @@ class TestHarness:
         )
 
         target = _resolve_glean_target()
-        if not confirm:
+        if confirm is not True:
             raise LiveEndToEndNotConfirmedError(target)
+        if allow_destructive is not True:
+            raise UnsafeLiveEndToEndRunError(target)
         if confirmed_target is not None and target != confirmed_target:
             raise LiveEndToEndTargetChangedError(confirmed_target, target)
         _ensure_live_identity_cleanup_supported(self._connector)

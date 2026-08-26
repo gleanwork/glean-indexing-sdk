@@ -12,7 +12,7 @@ Use this skill after implementing or changing a connector. Exercise the connecto
 - Never run files under the repository's `tests/` directory while using this skill. Those tests validate the SDK implementation and belong to SDK-maintainer CI, not the connector-building workflow.
 - Use only public utilities exported by `glean.indexing.testing`, including `TestHarness`, `TestConfig`, static data clients, `MockGleanClient`, and `run_connector`.
 - Before validation, ask for confirmation once for the whole testing step and state which phases will run. Do not ask again for each phase in the same batch.
-- Before the live end-to-end phase specifically, state the resolved `GLEAN_SERVER_URL` / `GLEAN_INSTANCE` target and confirm with the user before proceeding -- this phase uploads real documents with no automated cleanup. Only call `run_end_to_end(confirm=True)` / `run_end_to_end_async(confirm=True)` after that confirmation.
+- Before the live end-to-end phase specifically, state the resolved `GLEAN_SERVER_URL` / `GLEAN_INSTANCE` target and confirm with the user before proceeding. Live uploads can finalize replacement state and stale-delete documents omitted by a bounded crawl, so use only a disposable datasource. Only call `run_end_to_end(confirm=True, allow_destructive=True)` / `run_end_to_end_async(confirm=True, allow_destructive=True)` after both conditions are satisfied.
 - Use the existing task context, including the connector-local `.env` file if identified, to determine whether source and Glean credentials are present.
 - If connector code changes after a run, ask whether to run the connector validation again.
 - Never print secrets, commit `.env`, or include recorded source data.
@@ -96,18 +96,18 @@ The built-in live phase is document-only. It rejects people connectors and datas
 Run only when source credentials and `GLEAN_INDEXING_API_TOKEN` plus `GLEAN_SERVER_URL` or `GLEAN_INSTANCE` are available:
 
 ```bash
-glean-idx test --phase live
+glean-idx test --phase live --allow-destructive-live
 ```
 
-This prompts for confirmation (showing the resolved target) unless `--yes` is passed. The CLI carries that target into the harness, which refuses to upload if the configured target changes before live execution.
+This prompts for confirmation (showing the resolved target) unless `--yes` is passed. `--yes` only skips the prompt; it does not replace the required `--allow-destructive-live` acknowledgement. The CLI carries the confirmed target into the harness, which refuses to upload if the configured target changes before live execution.
 
 or, to assert on the result:
 
 ```python
-harness.run_end_to_end(confirm=True)
+harness.run_end_to_end(confirm=True, allow_destructive=True)
 ```
 
-`run_end_to_end()` / `run_end_to_end_async()` refuse to run and raise `LiveEndToEndNotConfirmedError` unless called with `confirm=True` -- pass it only after verifying the target with the user. Use `run_end_to_end_async()` for async streaming connectors. This phase uses the current bounded source client and real Glean APIs; it never reads or writes integration fixtures.
+`confirm=True` confirms the target. The separate `allow_destructive=True` acknowledges replacement finalization and possible stale deletion; without it the harness raises `UnsafeLiveEndToEndRunError`. Use `run_end_to_end_async()` for async streaming connectors. This phase uses the current bounded source client and real Glean APIs; it never reads or writes integration fixtures.
 
 After upload, the harness waits for normal indexing, requests `processalldocuments` once when needed, ignores a rate-limit response from that request, and polls status for a bounded period. If the result is `PENDING`, tell the user:
 

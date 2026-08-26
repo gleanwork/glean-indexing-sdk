@@ -133,6 +133,35 @@ class TestRunEndToEnd:
         for doc in typed_docs:
             assert f"--document Article {doc['id']}" in message
 
+    def test_live_uses_current_source_instead_of_integration_fixture(self, tmp_path: Path):
+        old_client = StaticDataClient([{"id": "old", "title": "Old"}])
+        old_connector = DatasourceFake(name="ds", data_client=old_client)
+        config = TestConfig(cache_dir=str(tmp_path), use_cache=True)
+        TestHarness(
+            connector=old_connector,
+            config=config,
+            clients={"data_client": old_client},
+        ).run_integration_test()
+        fixture = tmp_path / "ds" / "integration" / "data_client" / "data.ndjson"
+        recorded = fixture.read_bytes()
+
+        current_client = StaticDataClient([{"id": "new", "title": "New"}])
+        current_connector = DatasourceFake(name="ds", data_client=current_client)
+        harness = TestHarness(
+            connector=current_connector,
+            config=config,
+            clients={"data_client": current_client},
+        )
+
+        with (
+            patch("glean.indexing.testing.harness.harness.wait_for_documents_to_index"),
+            mock_glean_client() as glean_client,
+        ):
+            harness.run_end_to_end(confirm=True)
+
+        assert [document.id for document in glean_client.documents_posted] == ["new"]
+        assert fixture.read_bytes() == recorded
+
     def test_max_items_applied_to_client(self, tmp_path: Path):
         """Clients should be patched with recording wrappers that enforce max_items."""
         real_client = _CountingDataClient(_DOCS)
@@ -196,6 +225,27 @@ class TestRunEndToEndAsync:
             with pytest.raises(LiveEndToEndNotConfirmedError):
                 await harness.run_end_to_end_async()
             mock_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_async_live_uses_source_without_writing_integration_fixture(self, tmp_path: Path):
+        from glean.indexing.testing import StaticAsyncStreamingDataClient
+
+        client = StaticAsyncStreamingDataClient(_DOCS)
+        connector = AsyncStreamingFake(name="as", async_data_client=client)
+        harness = TestHarness(
+            connector=connector,
+            config=TestConfig(cache_dir=str(tmp_path), use_cache=True),
+            clients={"async_data_client": client},
+        )
+
+        with (
+            patch("glean.indexing.testing.harness.harness.wait_for_documents_to_index"),
+            mock_glean_client() as glean_client,
+        ):
+            await harness.run_end_to_end_async(confirm=True)
+
+        assert len(glean_client.documents_posted) == len(_DOCS)
+        assert not (tmp_path / "as" / "integration" / "async_data_client").exists()
 
     @pytest.mark.asyncio
     async def test_async_connector_calls_index_data_async(self, tmp_path: Path):

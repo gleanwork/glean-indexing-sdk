@@ -73,6 +73,25 @@ jobs:
           uv run pip install dist/*.whl
           uv run python -c "import glean.indexing; print('Package installed successfully')"
 
+  deployment-container-user:
+    name: Deployment container user smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+        with:
+          cache: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup development environment
+        run: mise run setup
+
+      - name: Build generated images and verify runtime UID/GID
+        run: uv run python scripts/smoke_deployment_container_user.py
+
   plugins:
     name: Agent plugin
     runs-on: ubuntu-latest

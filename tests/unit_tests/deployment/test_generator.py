@@ -1,5 +1,7 @@
 """Unit tests for deployment artifact generator."""
 
+import re
+
 import pytest
 
 from glean.indexing.deployment.config import DeploymentConfig
@@ -182,6 +184,28 @@ def test_aws_env_example_has_secrets_manager_reference_link():
     artifacts = generate_artifacts(AWS_CONFIG)
     env_ex = artifacts[".env.example"]
     assert "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html" in env_ex
+
+
+# ---------------------------------------------------------------------------
+# Runtime user contract
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("config", [AWS_CONFIG, GCP_CONFIG])
+def test_container_user_matches_kubernetes_security_context(config):
+    artifacts = generate_artifacts(config)
+    dockerfile = artifacts["Dockerfile"]
+    terraform = artifacts["terraform/main.tf"]
+
+    image_user = re.search(r"^USER ([0-9]+):([0-9]+)$", dockerfile, re.MULTILINE)
+    run_as_user = re.search(r"run_as_user\s+=\s+([0-9]+)", terraform)
+    run_as_group = re.search(r"run_as_group\s+=\s+([0-9]+)", terraform)
+
+    assert image_user is not None
+    assert run_as_user is not None
+    assert run_as_group is not None
+    assert image_user.groups() == (run_as_user.group(1), run_as_group.group(1))
+    assert image_user.groups() == ("1000", "1000")
 
 
 # ---------------------------------------------------------------------------

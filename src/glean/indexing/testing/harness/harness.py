@@ -35,10 +35,13 @@ from typing import Any, AsyncGenerator, Dict, Generator, Optional, Sequence, Uni
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
+from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
+from glean.indexing.connectors.base_people_connector import BasePeopleConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
 from glean.indexing.exceptions import (
     LiveEndToEndNotConfirmedError,
     LiveEndToEndTargetChangedError,
+    UnsafeLiveIdentityTestError,
 )
 from glean.indexing.models import ConnectorOptions, IndexingMode
 from glean.indexing.push.status import IndexingWaitResult, document_status_requests
@@ -137,6 +140,17 @@ def _resolve_glean_target() -> str:
     return (
         os.getenv("GLEAN_SERVER_URL") or os.getenv("GLEAN_INSTANCE") or "<GLEAN_SERVER_URL not set>"
     )
+
+
+def _ensure_live_identity_cleanup_supported(connector: BaseConnector) -> None:
+    """Reject live mutations the harness cannot reverse after the run."""
+    if isinstance(connector, BasePeopleConnector):
+        raise UnsafeLiveIdentityTestError("people connectors")
+    if (
+        isinstance(connector, BaseDatasourceConnector)
+        and type(connector).get_identities is not BaseDatasourceConnector.get_identities
+    ):
+        raise UnsafeLiveIdentityTestError("datasource identity crawls")
 
 
 def _log_cleanup_instructions(datasource: str, documents: Sequence[Any]) -> None:
@@ -531,6 +545,7 @@ class TestHarness:
             raise LiveEndToEndNotConfirmedError(target)
         if confirmed_target is not None and target != confirmed_target:
             raise LiveEndToEndTargetChangedError(confirmed_target, target)
+        _ensure_live_identity_cleanup_supported(self._connector)
 
         logger.warning(
             "Running LIVE end-to-end test for connector %r against %s. This "
@@ -606,6 +621,7 @@ class TestHarness:
             raise LiveEndToEndNotConfirmedError(target)
         if confirmed_target is not None and target != confirmed_target:
             raise LiveEndToEndTargetChangedError(confirmed_target, target)
+        _ensure_live_identity_cleanup_supported(self._connector)
 
         logger.warning(
             "Running LIVE end-to-end test for connector %r against %s. This "

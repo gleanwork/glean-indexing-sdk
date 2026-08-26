@@ -91,6 +91,8 @@ Use `run_integration_test_async()` for async streaming connectors.
 > confirm with the user before proceeding. See **Cleaning up after a live
 > run** below for how to remove what it uploads.
 
+The built-in live phase is document-only. It rejects people connectors and datasource connectors that override `get_identities()`, because the document cleanup command cannot restore replaced employee, user, group, or membership data. Validate those outputs with mock/integration tests or a purpose-built live smoke test with explicit identity cleanup.
+
 Run only when source credentials and `GLEAN_INDEXING_API_TOKEN` plus `GLEAN_SERVER_URL` or `GLEAN_INSTANCE` are available:
 
 ```bash

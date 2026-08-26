@@ -18,6 +18,11 @@ from typing import Any, Optional
 import yaml
 
 from glean.indexing.cli.errors import ConnectorNotImportableError, NoProjectError
+from glean.indexing.deployment.bootstrap import (
+    ConnectorConstructionError,
+    ConnectorConstructionReason,
+    instantiate_connector as _instantiate_connector,
+)
 
 #: The file that marks a directory as a connector project. Written by
 #: `glean-idx deploy init`, and the source of the connector's module and class.
@@ -106,9 +111,9 @@ def load_connector(
     config: dict[str, Any],
     reference: Optional[str] = None,
 ) -> Any:
-    """Import and instantiate the project's connector class.
+    """Import the project's connector class or explicit construction target.
 
-    `reference` is an explicit ``module:Class`` override; otherwise the project
+    `reference` is an explicit ``module:ClassOrFactory`` override; otherwise the project
     file's ``connector_module`` and ``connector_class`` are used, which is what
     `deploy init` writes and what the generated entrypoint already imports.
     """
@@ -117,7 +122,10 @@ def load_connector(
         if not module_name or not class_name:
             raise ConnectorNotImportableError(
                 f"malformed connector reference {reference!r}",
-                detail="Expected module:Class, for example connector:CompanyWikiConnector.",
+                detail=(
+                    "Expected module:ClassOrFactory, for example "
+                    "connector:CompanyWikiConnector or connector:create_connector."
+                ),
                 hint=["glean-idx <command> --connector connector:MyConnector"],
                 docs=DOCS,
             )
@@ -141,15 +149,42 @@ def load_connector(
         available = sorted(
             name
             for name, value in vars(module).items()
-            if isinstance(value, type) and not name.startswith("_")
+            if callable(value) and not name.startswith("_")
         )
         raise ConnectorNotImportableError(
-            f"{module_name!r} has no class named {class_name!r}",
-            detail="Classes found in that module: " + (", ".join(available) or "none"),
-            hint=[f"glean-idx <command> --connector {module_name}:<ClassName>"],
+            f"{module_name!r} has no connector target named {class_name!r}",
+            detail="Callable targets found in that module: " + (", ".join(available) or "none"),
+            hint=[f"glean-idx <command> --connector {module_name}:<ClassOrFactory>"],
             docs=DOCS,
         )
     return connector_class
+
+
+def load_connector_factory(
+    project_dir: Path,
+    config: dict[str, Any],
+    reference: Optional[str] = None,
+) -> Any:
+    """Load the project's optional zero-argument connector factory.
+
+    An explicit ``--connector module:ClassOrFactory`` reference deliberately bypasses
+    the project factory: the explicit callable is the complete construction target.
+    """
+    factory_name = config.get("connector_factory")
+    if reference or not factory_name:
+        return None
+
+    module_name = config.get("connector_module") or "connector"
+    module = _import_from_project(project_dir, module_name)
+    factory = getattr(module, factory_name, None)
+    if factory is None:
+        raise ConnectorNotImportableError(
+            f"{module_name!r} has no factory named {factory_name!r}",
+            detail="connector_factory must name a zero-argument callable in connector_module.",
+            hint=[f"define def {factory_name}(): ... in {module_name}.py"],
+            docs=DOCS,
+        )
+    return factory
 
 
 def _import_from_project(project_dir: Path, module_name: str) -> Any:
@@ -217,44 +252,30 @@ def _environment_note() -> str:
     return note
 
 
-def instantiate_connector(connector_class: Any) -> Any:
-    """Construct the connector the way the deployed entrypoint does.
-
-    The generated Kubernetes entrypoint calls the class with no arguments, so a
-    connector that cannot be built that way is already undeployable. Failing here
-    with that explanation is more useful than a bare `TypeError` about a missing
-    positional argument.
-    """
-    if not callable(connector_class):
-        raise ConnectorNotImportableError(
-            f"{connector_class!r} is not a class",
-            hint=["glean-idx run --connector connector:MyConnector"],
-            docs=DOCS,
-        )
+def instantiate_connector(connector_class: Any, connector_factory: Any = None) -> Any:
+    """Construct a connector through the shared local/deployment interface."""
     try:
-        connector = connector_class()
-    except TypeError as exc:
-        raise ConnectorNotImportableError(
-            f"{connector_class.__name__} cannot be constructed without arguments",
-            detail=(
-                f"{exc}\n\n"
-                "A connector supplies its own name and data client from its "
-                "constructor, so that it can be started the same way here and in "
-                "the deployed CronJob:\n\n"
+        return _instantiate_connector(connector_class, connector_factory)
+    except ConnectorConstructionError as exc:
+        detail = str(exc)
+        if (
+            connector_factory is None
+            and exc.reason == ConnectorConstructionReason.REQUIRES_ARGUMENTS
+        ):
+            detail += (
+                "\n\nEither configure a zero-argument connector_factory, or supply the name "
+                "and data client from the connector's own constructor:\n\n"
                 "    def __init__(self) -> None:\n"
                 '        super().__init__("my-datasource", MyDataClient())'
-            ),
-            docs=DOCS,
-        ) from exc
-
-    if not callable(getattr(connector, "index_data", None)):
+            )
+        elif exc.reason == ConnectorConstructionReason.MISSING_INDEX_DATA:
+            detail += (
+                "\n\nConnectors extend one of BaseDatasourceConnector, "
+                "BaseStreamingDatasourceConnector, BaseAsyncStreamingDatasourceConnector, "
+                "or BasePeopleConnector."
+            )
         raise ConnectorNotImportableError(
-            f"{connector_class.__name__} has no index_data method",
-            detail=(
-                "Connectors extend one of BaseDatasourceConnector, "
-                "BaseStreamingDatasourceConnector, "
-                "BaseAsyncStreamingDatasourceConnector, or BasePeopleConnector."
-            ),
+            str(exc),
+            detail=detail,
             docs=DOCS,
-        )
-    return connector
+        ) from None

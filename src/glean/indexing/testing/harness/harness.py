@@ -16,10 +16,10 @@ Phase 2 (integration — real source, mock Glean, local cache):
 Phase 3 (end-to-end — real source, real Glean):
     Calls ``connector.index_data()`` without any mock patching.  Requires
     ``GLEAN_SERVER_URL`` / ``GLEAN_INDEXING_API_TOKEN`` environment variables,
-    and uploads real documents with no automated cleanup -- pass
-    ``confirm=True`` only after verifying the target is a dedicated test
-    instance, not production.  Per-client ``max_items`` from ``TestConfig``
-    are applied before the run.
+    and uploads real documents with no automated cleanup. It never reads or
+    writes Phase 2 integration fixtures. Pass ``confirm=True`` only after
+    verifying the target is a dedicated test instance, not production.
+    Per-client ``max_items`` from ``TestConfig`` are applied before the run.
 """
 
 from __future__ import annotations
@@ -28,8 +28,9 @@ import asyncio
 import logging
 import os
 from contextlib import contextmanager
+from itertools import islice
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional, Sequence, Union
+from typing import Any, AsyncGenerator, Dict, Generator, Optional, Sequence, Union
 
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_connector import BaseConnector
@@ -70,6 +71,50 @@ AnyDataClient = Union[
 ]
 
 _MANIFEST_FILENAME = "manifest.json"
+
+
+class _LiveDataClient(BaseDataClient[Any]):
+    """Apply a live-run limit without reading or writing integration fixtures."""
+
+    def __init__(self, inner: BaseDataClient[Any], max_items: Optional[int]) -> None:
+        self._inner = inner
+        self._max_items = max_items
+
+    def get_source_data(self, **kwargs: Any) -> Sequence[Any]:
+        items = list(self._inner.get_source_data(**kwargs))
+        return items if self._max_items is None else items[: self._max_items]
+
+
+class _LiveStreamingDataClient(BaseStreamingDataClient[Any]):
+    """Streaming live-run limit that reads directly from the source client."""
+
+    def __init__(self, inner: BaseStreamingDataClient[Any], max_items: Optional[int]) -> None:
+        self._inner = inner
+        self._max_items = max_items
+
+    def get_source_data(self, **kwargs: Any) -> Generator[Any, None, None]:
+        items = self._inner.get_source_data(**kwargs)
+        yield from items if self._max_items is None else islice(items, self._max_items)
+
+
+class _LiveAsyncStreamingDataClient(BaseAsyncStreamingDataClient[Any]):
+    """Async live-run limit that reads directly from the source client."""
+
+    def __init__(self, inner: BaseAsyncStreamingDataClient[Any], max_items: Optional[int]) -> None:
+        self._inner = inner
+        self._max_items = max_items
+
+    async def get_source_data(self, **kwargs: Any) -> AsyncGenerator[Any, None]:
+        items = self._inner.get_source_data(**kwargs)
+        if self._max_items is None:
+            async for item in items:
+                yield item
+            return
+        for _ in range(self._max_items):
+            try:
+                yield await anext(items)
+            except StopAsyncIteration:
+                return
 
 
 def _sdk_version() -> str:
@@ -134,6 +179,15 @@ def _should_use_cache(
     except Exception:
         return False
     return not manifest.is_stale(_sdk_version())
+
+
+def _wrap_live_client(client: AnyDataClient, max_items: Optional[int]) -> AnyDataClient:
+    """Limit a real source client without consulting integration fixtures."""
+    if isinstance(client, BaseAsyncStreamingDataClient):
+        return _LiveAsyncStreamingDataClient(client, max_items)
+    if isinstance(client, BaseStreamingDataClient):
+        return _LiveStreamingDataClient(client, max_items)
+    return _LiveDataClient(client, max_items)
 
 
 def _wrap_client(
@@ -202,6 +256,8 @@ def _patched_clients(
     connector: BaseConnector,
     clients: Dict[str, AnyDataClient],
     config: TestConfig,
+    *,
+    use_integration_fixtures: bool = True,
 ) -> Generator[None, None, None]:
     """Context manager that monkey-patches connector client attributes.
 
@@ -228,14 +284,18 @@ def _patched_clients(
             client_cfg = config.clients.get(attr_name, ClientConfig())
             max_items = client_cfg.max_items
 
-            wrapped = _wrap_client(
-                attr_name,
-                client,
-                cache_dir=cache_dir,
-                connector_name=connector_name,
-                use_cache=config.use_cache,
-                refresh_cache=config.refresh_cache,
-                max_items=max_items,
+            wrapped = (
+                _wrap_client(
+                    attr_name,
+                    client,
+                    cache_dir=cache_dir,
+                    connector_name=connector_name,
+                    use_cache=config.use_cache,
+                    refresh_cache=config.refresh_cache,
+                    max_items=max_items,
+                )
+                if use_integration_fixtures
+                else _wrap_live_client(client, max_items)
             )
             setattr(connector, attr_name, wrapped)
 
@@ -424,8 +484,10 @@ class TestHarness:
         The Glean API is **not** mocked — this exercises the full indexing
         path and uploads real documents with **no automated cleanup**.
         Connector clients registered via the ``clients`` constructor argument
-        are temporarily wrapped to enforce per-client ``max_items`` limits;
-        clients not passed in ``clients`` are left untouched.
+        are temporarily wrapped to enforce per-client ``max_items`` limits while
+        still calling the current source. Live runs do not read or write the
+        integration phase's recorded fixtures. Clients not passed in ``clients``
+        are left untouched.
 
         The Glean client is configured from environment variables:
 
@@ -483,7 +545,12 @@ class TestHarness:
             mode.name,
         )
         with capture_document_uploads() as uploaded_documents:
-            with _patched_clients(self._connector, self._clients, self._config):
+            with _patched_clients(
+                self._connector,
+                self._clients,
+                self._config,
+                use_integration_fixtures=False,
+            ):
                 self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
 
         _log_cleanup_instructions(self._connector.name, uploaded_documents)  # type: ignore[attr-defined]
@@ -553,7 +620,12 @@ class TestHarness:
             mode.name,
         )
         with capture_document_uploads() as uploaded_documents:
-            with _patched_clients(self._connector, self._clients, self._config):
+            with _patched_clients(
+                self._connector,
+                self._clients,
+                self._config,
+                use_integration_fixtures=False,
+            ):
                 if isinstance(self._connector, BaseAsyncStreamingDatasourceConnector):
                     await self._connector.index_data_async(mode=mode, options=options)
                 else:

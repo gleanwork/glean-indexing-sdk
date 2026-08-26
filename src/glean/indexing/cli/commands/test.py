@@ -77,8 +77,8 @@ ALL = "all"
     "--connector",
     "reference",
     default=None,
-    metavar="MODULE:CLASS",
-    help="Connector to test. Defaults to the project file's connector.",
+    metavar="MODULE:CLASS_OR_FACTORY",
+    help="Connector class or zero-argument factory. Defaults to the project file.",
 )
 @click.option(
     "--mode",
@@ -100,7 +100,7 @@ ALL = "all"
 )
 @click.option(
     "--max-items",
-    type=int,
+    type=click.IntRange(min=1),
     default=None,
     help="Cap items fetched per data client. Applies to every client.",
 )
@@ -144,7 +144,11 @@ def test(
     at mock and move down. Only live contacts Glean, so only live needs
     credentials.
     """
-    from glean.indexing.cli.project import instantiate_connector, load_connector
+    from glean.indexing.cli.project import (
+        instantiate_connector,
+        load_connector,
+        load_connector_factory,
+    )
     from glean.indexing.models import IndexingMode
 
     cli_ctx = context(ctx, output=output, assume_yes=assume_yes, project_dir=project_dir)
@@ -168,9 +172,13 @@ def test(
     if LIVE in plan and (not batch or not missing_credentials()):
         confirmed_live_target = _confirm_live_run(cli_ctx)
 
-    resolved_mode = IndexingMode(mode or cli_ctx.project_config.get("indexing_mode") or "full")
+    configured_mode = mode or cli_ctx.project_config.get("indexing_mode") or "full"
+    resolved_mode = IndexingMode(str(configured_mode).lower())
     connector_class = load_connector(cli_ctx.project_dir, cli_ctx.project_config, reference)
-    connector = instantiate_connector(connector_class)
+    connector_factory = load_connector_factory(
+        cli_ctx.project_dir, cli_ctx.project_config, reference
+    )
+    connector = instantiate_connector(connector_class, connector_factory)
 
     # Clients are discovered first because --max-items has to name them: the
     # harness looks each one up by attribute name.

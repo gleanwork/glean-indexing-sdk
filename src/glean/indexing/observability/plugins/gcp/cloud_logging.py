@@ -6,7 +6,7 @@ from glean.indexing.observability.logging import LoggerProvider
 
 
 class CloudLoggingProvider(LoggerProvider):
-    """GCP Cloud Logging provider.
+    """GCP Cloud Logging provider (beta).
 
     Requires the ``gcp`` extra: ``uv add glean-indexing-sdk[gcp]``.
     """
@@ -27,17 +27,17 @@ class CloudLoggingProvider(LoggerProvider):
             resource_type: Monitored resource type
             resource_labels: Resource labels for the monitored resource
         """
-        import google.cloud.logging as cloud_logging
+        from google.cloud import logging_v2
 
         self.project_id = project_id
         self.log_name = log_name
-        self.client = cloud_logging.Client(project=project_id)
+        self.client = logging_v2.Client(project=project_id)
         self.resource_type = resource_type
         self.resource_labels = resource_labels or {}
 
     def setup_handler(self, logger_name: str, level: int = logging.INFO) -> logging.Handler:
-        from google.cloud.logging.handlers import CloudLoggingHandler
-        from google.cloud.logging.resource import Resource
+        from google.cloud.logging_v2.handlers import CloudLoggingHandler
+        from google.cloud.logging_v2.resource import Resource
 
         resource = Resource(
             type=self.resource_type,

@@ -226,6 +226,17 @@ def test_init_with_connector_name(runner, tmp_path):
         assert "my_jira" in yaml_content
 
 
+def test_init_sanitizes_default_name_derived_from_directory(runner, tmp_path, monkeypatch):
+    project = tmp_path / "Wiki Connector---"
+    project.mkdir()
+    monkeypatch.chdir(project)
+
+    result = runner.invoke(deploy, ["init", "--cloud", "gcp"])
+
+    assert result.exit_code == 0, result.output
+    assert "connector_name: wiki_connector" in (project / "glean_deployment.yaml").read_text()
+
+
 def test_init_with_connector_factory(runner, tmp_path):
     with runner.isolated_filesystem(temp_dir=tmp_path):
         result = runner.invoke(

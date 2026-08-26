@@ -144,9 +144,28 @@ workers. Datasource identity and employee uploads remain sequential.
 
 ### Document byte limit
 
-`document_batch_size_bytes` limits the serialized size of document batches for in-memory, sync
-streaming, and async streaming datasource connectors. The default is 5 MiB. Set it to `None` to
-batch documents only by `connector.batch_size`.
+`document_batch_size_bytes` is a soft maximum for the UTF-8 size of the serialized documents in
+each upload batch. It applies to in-memory, sync streaming, and async streaming datasource
+connectors. The default is 5 MiB; set it to `None` to batch documents only by
+`connector.batch_size`.
+
+```python snippet=advanced/document_batching.py
+from glean.indexing.models import ConnectorOptions
+
+MIB = 1024 * 1024
+
+# The default applies when ConnectorOptions is omitted or used without an override.
+default_batching = ConnectorOptions()
+assert default_batching.document_batch_size_bytes == 5 * MIB
+
+smaller_batches = ConnectorOptions(document_batch_size_bytes=2 * MIB)
+count_only_batches = ConnectorOptions(document_batch_size_bytes=None)
+```
+
+The byte calculation serializes each document with API field aliases, omits fields set to `None`,
+and uses compact JSON before measuring its UTF-8 size. Request-envelope bytes are not included. A
+single document larger than the configured limit is still uploaded in its own batch, so the limit
+cannot make an individual document smaller.
 
 Custom datasource connector bases can override `_resolve_max_batch_bytes()` when they need a
 different policy; that hook applies to both in-memory and streaming document batching.

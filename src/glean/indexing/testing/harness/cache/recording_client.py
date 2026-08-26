@@ -20,6 +20,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+from itertools import islice
 from pathlib import Path
 from typing import Any, AsyncGenerator, Generator, Generic, Optional, Sequence
 
@@ -151,9 +152,8 @@ class RecordingStreamingClientWrapper(BaseStreamingDataClient[TSourceData], Gene
         return self._cache_dir / self._connector_name / "integration" / self._client_name
 
     def get_source_data(self, **kwargs: Any) -> Generator[TSourceData, None, None]:
-        items = list(self._inner.get_source_data(**kwargs))
-        if self._max_items is not None:
-            items = items[: self._max_items]
+        source = self._inner.get_source_data(**kwargs)
+        items = list(source if self._max_items is None else islice(source, self._max_items))
 
         fixture_dir = self._fixture_dir()
         data_path = fixture_dir / _DATA_FILENAME

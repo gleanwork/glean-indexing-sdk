@@ -31,6 +31,10 @@ class ClientConfig:
 
     max_items: Optional[int] = 5
 
+    def __post_init__(self) -> None:
+        if self.max_items is not None and (type(self.max_items) is not int or self.max_items <= 0):
+            raise ValueError("max_items must be a positive integer or None")
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ClientConfig":
         """Construct a ``ClientConfig`` from a plain dict."""

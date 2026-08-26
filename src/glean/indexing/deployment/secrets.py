@@ -26,6 +26,7 @@ _REDLIST: frozenset[str] = frozenset(
         "INDEXING_MODE",
         "CONNECTOR_CLASS",
         "CONNECTOR_MODULE",
+        "CONNECTOR_FACTORY",
     ]
 )
 

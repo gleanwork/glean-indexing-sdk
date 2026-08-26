@@ -2,7 +2,9 @@
 
 from unittest.mock import patch
 
-from google.cloud import logging_v2, monitoring_v3, secretmanager
+import google.cloud.logging_v2 as logging_v2
+import google.cloud.monitoring_v3 as monitoring_v3
+import google.cloud.secretmanager as secretmanager
 from google.cloud.logging_v2.handlers import CloudLoggingHandler
 
 from glean.indexing.deployment import DeploymentConfig

@@ -32,11 +32,11 @@ class CloudMonitoringProvider(MetricsProvider):
             buffer_size: Number of metrics to buffer before flushing
         """
         from google.api import monitored_resource_pb2
-        from google.cloud import monitoring_v3
+        from google.cloud.monitoring_v3 import MetricServiceClient
 
         self.project_id = project_id
         self.project_name = f"projects/{project_id}"
-        self.client = monitoring_v3.MetricServiceClient()
+        self.client = MetricServiceClient()
         self.resource = monitored_resource_pb2.MonitoredResource(
             type=resource_type,
             labels=resource_labels or {},
@@ -52,33 +52,33 @@ class CloudMonitoringProvider(MetricsProvider):
         labels: Optional[dict[str, str]] = None,
     ) -> None:
         from google.api import distribution_pb2, metric_pb2
-        from google.cloud import monitoring_v3
+        from google.cloud.monitoring_v3.types import Point, TimeInterval, TimeSeries, TypedValue
         from google.protobuf import timestamp_pb2
 
         now = int(time.time())
         end_time = timestamp_pb2.Timestamp(seconds=now)
-        interval = monitoring_v3.TimeInterval(end_time=end_time)
+        interval = TimeInterval(end_time=end_time)
 
         if metric_type == MetricType.COUNTER:
             metric_kind = metric_pb2.MetricDescriptor.MetricKind.CUMULATIVE
             value_type = metric_pb2.MetricDescriptor.ValueType.INT64
-            interval = monitoring_v3.TimeInterval(
+            interval = TimeInterval(
                 start_time=timestamp_pb2.Timestamp(seconds=now),
                 end_time=end_time,
             )
-            typed_value = monitoring_v3.TypedValue(int64_value=int(value))
+            typed_value = TypedValue(int64_value=int(value))
         elif metric_type == MetricType.HISTOGRAM:
             metric_kind = metric_pb2.MetricDescriptor.MetricKind.GAUGE
             value_type = metric_pb2.MetricDescriptor.ValueType.DISTRIBUTION
             distribution = distribution_pb2.Distribution(count=1, mean=value, bucket_counts=[1])
-            typed_value = monitoring_v3.TypedValue(distribution_value=distribution)
+            typed_value = TypedValue(distribution_value=distribution)
         else:
             metric_kind = metric_pb2.MetricDescriptor.MetricKind.GAUGE
             value_type = metric_pb2.MetricDescriptor.ValueType.DOUBLE
-            typed_value = monitoring_v3.TypedValue(double_value=value)
+            typed_value = TypedValue(double_value=value)
 
-        point = monitoring_v3.Point(interval=interval, value=typed_value)
-        series = monitoring_v3.TimeSeries(
+        point = Point(interval=interval, value=typed_value)
+        series = TimeSeries(
             metric=metric_pb2.Metric(type=f"custom.googleapis.com/{name}", labels=labels or {}),
             resource=self.resource,
             metric_kind=metric_kind,

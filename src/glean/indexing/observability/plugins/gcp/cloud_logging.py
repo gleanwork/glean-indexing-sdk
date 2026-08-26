@@ -27,11 +27,11 @@ class CloudLoggingProvider(LoggerProvider):
             resource_type: Monitored resource type
             resource_labels: Resource labels for the monitored resource
         """
-        from google.cloud import logging_v2
+        from google.cloud.logging_v2 import Client
 
         self.project_id = project_id
         self.log_name = log_name
-        self.client = logging_v2.Client(project=project_id)
+        self.client = Client(project=project_id)
         self.resource_type = resource_type
         self.resource_labels = resource_labels or {}
 

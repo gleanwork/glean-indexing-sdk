@@ -98,9 +98,9 @@ class GCPSecretsBackend(SecretsBackend):
             return {}
 
         from google.api_core.exceptions import NotFound
-        from google.cloud import secretmanager
+        from google.cloud.secretmanager import SecretManagerServiceClient
 
-        client = secretmanager.SecretManagerServiceClient()
+        client = SecretManagerServiceClient()
         parent = f"projects/{self._config.project_id}"
         results: dict[str, str] = {}
 
@@ -135,9 +135,9 @@ class GCPSecretsBackend(SecretsBackend):
         if not self._config.project_id:
             raise ValueError("project_id is required for GCP secret listing")
 
-        from google.cloud import secretmanager
+        from google.cloud.secretmanager import SecretManagerServiceClient
 
-        client = secretmanager.SecretManagerServiceClient()
+        client = SecretManagerServiceClient()
         parent = f"projects/{self._config.project_id}"
         prefix = self._config.secret_prefix
 
@@ -153,9 +153,9 @@ class GCPSecretsBackend(SecretsBackend):
             raise ValueError("project_id is required for GCP secret deletion")
 
         from google.api_core.exceptions import NotFound
-        from google.cloud import secretmanager
+        from google.cloud.secretmanager import SecretManagerServiceClient
 
-        client = secretmanager.SecretManagerServiceClient()
+        client = SecretManagerServiceClient()
         secret_path = f"projects/{self._config.project_id}/secrets/{self._secret_name(key)}"
         try:
             client.delete_secret(request={"name": secret_path})

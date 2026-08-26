@@ -32,8 +32,8 @@ class TestCloudMonitoringProvider:
 
     @patch("google.cloud.monitoring_v3.MetricServiceClient")
     @patch("google.api.monitored_resource_pb2.MonitoredResource")
-    @patch("google.cloud.monitoring_v3.TimeSeries")
-    @patch("google.cloud.monitoring_v3.Point")
+    @patch("google.cloud.monitoring_v3.types.TimeSeries")
+    @patch("google.cloud.monitoring_v3.types.Point")
     def test_emit_metric(
         self, mock_point_class, mock_series_class, mock_resource_class, mock_client_class
     ):

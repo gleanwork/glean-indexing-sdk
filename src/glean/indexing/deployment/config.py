@@ -2,11 +2,40 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+_CONNECTOR_NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]*", re.ASCII)
+_KUBERNETES_DNS_LABEL_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", re.ASCII)
+_CRONJOB_NAME_RE = _KUBERNETES_DNS_LABEL_RE
+_GCP_SERVICE_ACCOUNT_RE = re.compile(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", re.ASCII)
+_AWS_IAM_ROLE_RE = re.compile(r"[A-Za-z0-9_+=,.@-]+", re.ASCII)
+_GCP_IMAGE_COMPONENT_RE = re.compile(r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*", re.ASCII)
+_AWS_ECR_COMPONENT_RE = re.compile(r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*", re.ASCII)
+_SCAFFOLD_REPOSITORY_PLACEHOLDERS = frozenset({"<account>", "<project>", "<region>"})
+
+
+def _image_repository_path(image_name: str) -> str:
+    """Return the repository path portion of a container image name, excluding its registry."""
+    first_component, separator, remainder = image_name.partition("/")
+    if separator and (
+        "." in first_component or ":" in first_component or first_component == "localhost"
+    ):
+        return remainder
+    return image_name
+
+
+def _valid_repository_path(
+    path: str, component_pattern: re.Pattern[str], min_length: int, max_length: int
+) -> bool:
+    return min_length <= len(path) <= max_length and all(
+        component_pattern.fullmatch(component) or component in _SCAFFOLD_REPOSITORY_PLACEHOLDERS
+        for component in path.split("/")
+    )
 
 
 class DeploymentConfig(BaseModel):
@@ -38,17 +67,17 @@ class DeploymentConfig(BaseModel):
     )
 
     # GCP-specific
-    project_id: Optional[str] = Field(
+    project_id: str | None = Field(
         default=None, description="GCP project ID. Required when cloud=gcp."
     )
-    artifact_registry_repo: Optional[str] = Field(
+    artifact_registry_repo: str | None = Field(
         default=None, description="Artifact Registry repo URL. Required when cloud=gcp."
     )
-    service_account_name: Optional[str] = Field(
+    service_account_name: str | None = Field(
         default=None,
         description="GCP service account for Workload Identity. Defaults to <connector_name>-sa.",
     )
-    cluster_endpoint: Optional[str] = Field(
+    cluster_endpoint: str | None = Field(
         default=None,
         description=(
             "Override the GKE cluster API endpoint used by Terraform's kubernetes provider. "
@@ -60,30 +89,39 @@ class DeploymentConfig(BaseModel):
     )
 
     # AWS-specific
-    account_id: Optional[str] = Field(
+    account_id: str | None = Field(
         default=None, description="AWS account ID. Required when cloud=aws."
     )
-    ecr_repo: Optional[str] = Field(
+    ecr_repo: str | None = Field(
         default=None, description="ECR repository URI. Required when cloud=aws."
     )
-    iam_role_name: Optional[str] = Field(
+    iam_role_name: str | None = Field(
         default=None, description="AWS IAM role name for IRSA. Defaults to <connector_name>-role."
     )
 
     @field_validator("connector_name")
     @classmethod
     def validate_connector_name(cls, v: str) -> str:
-        """Validate connector_name is lowercase alphanumeric with underscores/hyphens."""
-        import re
-
-        if not re.match(r"^[a-z0-9][a-z0-9_-]*$", v):
+        """Validate connector_name is lowercase ASCII alphanumeric with underscores/hyphens."""
+        if not _CONNECTOR_NAME_RE.fullmatch(v):
             raise ValueError(
-                f"connector_name must be lowercase alphanumeric with underscores or hyphens, got: {v!r}"
+                f"connector_name must be lowercase ASCII alphanumeric with underscores or hyphens, got: {v!r}"
+            )
+        return v
+
+    @field_validator("namespace")
+    @classmethod
+    def validate_namespace(cls, v: str) -> str:
+        """Validate namespace as an ASCII Kubernetes DNS label."""
+        if len(v) > 63 or not _KUBERNETES_DNS_LABEL_RE.fullmatch(v):
+            raise ValueError(
+                "namespace must be 1-63 ASCII lowercase alphanumeric or hyphen characters, "
+                "starting and ending with alphanumeric"
             )
         return v
 
     @model_validator(mode="after")
-    def validate_cloud_specific_fields(self) -> "DeploymentConfig":
+    def validate_cloud_specific_fields(self) -> DeploymentConfig:
         """Validate that required cloud-specific fields are present."""
         if self.cloud == "gcp":
             if not self.project_id:
@@ -98,40 +136,63 @@ class DeploymentConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_resource_names(self) -> "DeploymentConfig":
-        """Validate that derived Kubernetes, GCP, and AWS resource names satisfy provider constraints."""
-        import re
-
-        k8s = self.k8s_name
-        sa = self.effective_service_account
-
-        if not re.match(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", k8s):
+    def validate_resource_names(self) -> DeploymentConfig:
+        """Validate that derived Kubernetes, GCP, AWS, and image names satisfy provider constraints."""
+        k8s_name = self.k8s_name
+        if len(k8s_name) > 52 or not _CRONJOB_NAME_RE.fullmatch(k8s_name):
             raise ValueError(
-                f"Derived Kubernetes name {k8s!r} violates RFC 1123 label constraints "
-                "(1-63 chars, lowercase alphanumeric and hyphens, start and end with alphanumeric). "
+                f"Derived Kubernetes CronJob name {k8s_name!r} is invalid "
+                "(1-52 ASCII lowercase alphanumeric or hyphen characters, starting and ending with alphanumeric). "
                 "Adjust connector_name."
             )
 
+        account_name = self.effective_service_account
         if self.cloud == "gcp":
-            if not re.match(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$", sa):
+            if not _GCP_SERVICE_ACCOUNT_RE.fullmatch(account_name):
+                if self.service_account_name is not None:
+                    raise ValueError(
+                        f"service_account_name {account_name!r} is invalid "
+                        "(6-30 ASCII lowercase alphanumeric or hyphen characters, starting with a letter and ending with alphanumeric)."
+                    )
                 raise ValueError(
-                    f"Derived GCP service account name {sa!r} is invalid "
-                    "(6-30 chars, starts with a lowercase letter, ends with alphanumeric). "
+                    f"Derived GCP service account name {account_name!r} is invalid "
+                    "(6-30 ASCII lowercase alphanumeric or hyphen characters, starting with a letter and ending with alphanumeric). "
                     "Set service_account_name explicitly or adjust connector_name."
                 )
 
-        elif self.cloud == "aws":
-            if len(sa) > 64 or not re.match(r"^[\w+=,.@/-]+$", sa):
+            repository_path = _image_repository_path(self.image_name)
+            if not _valid_repository_path(repository_path, _GCP_IMAGE_COMPONENT_RE, 1, 255):
                 raise ValueError(
-                    f"Derived AWS IAM role name {sa!r} is invalid "
-                    "(1-64 chars, alphanumeric and +=,.@_/-). "
+                    f"Derived GCP Artifact Registry repository path {repository_path!r} is invalid "
+                    "(1-255 ASCII lowercase repository-path characters with valid Docker path components). "
+                    "Adjust artifact_registry_repo or connector_name."
+                )
+
+        else:
+            if len(account_name) > 64 or not _AWS_IAM_ROLE_RE.fullmatch(account_name):
+                if self.iam_role_name is not None:
+                    raise ValueError(
+                        f"iam_role_name {account_name!r} is invalid "
+                        "(1-64 ASCII alphanumeric characters or _+=,.@-)."
+                    )
+                raise ValueError(
+                    f"Derived AWS IAM role name {account_name!r} is invalid "
+                    "(1-64 ASCII alphanumeric characters or _+=,.@-). "
                     "Set iam_role_name explicitly or adjust connector_name."
+                )
+
+            repository_path = _image_repository_path(self.image_name)
+            if not _valid_repository_path(repository_path, _AWS_ECR_COMPONENT_RE, 2, 256):
+                raise ValueError(
+                    f"Derived AWS ECR repository path {repository_path!r} is invalid "
+                    "(2-256 ASCII lowercase repository-path characters with valid separators and slash-delimited components). "
+                    "Adjust ecr_repo or connector_name."
                 )
 
         return self
 
     @classmethod
-    def from_yaml(cls, path: Path) -> "DeploymentConfig":
+    def from_yaml(cls, path: Path) -> DeploymentConfig:
         """Load and validate a DeploymentConfig from a YAML file."""
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)

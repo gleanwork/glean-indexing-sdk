@@ -77,6 +77,20 @@ class DeploymentConfig(BaseModel):
         default=None, description="AWS IAM role name for IRSA. Defaults to <connector_name>-role."
     )
 
+    @field_validator("account_id", mode="before")
+    @classmethod
+    def normalize_account_id(cls, v: object) -> object:
+        """Normalize YAML integers and enforce the AWS 12-digit account-ID contract."""
+        import re
+
+        if v is None:
+            return v
+        if isinstance(v, int) and not isinstance(v, bool):
+            v = str(v)
+        if not isinstance(v, str) or re.fullmatch(r"[0-9]{12}", v) is None:
+            raise ValueError("account_id must be exactly 12 decimal digits")
+        return v
+
     @field_validator("connector_name")
     @classmethod
     def validate_connector_name(cls, v: str) -> str:

@@ -616,6 +616,32 @@ def test_logs_no_jobs_shows_error(runner, tmp_path, gcp_deployment_yaml):
 # ---------------------------------------------------------------------------
 
 
+def test_invalid_aws_account_id_reports_config_field_and_expected_format(runner, tmp_path):
+    config_path = tmp_path / "custom-deployment.yaml"
+    config_path.write_text(
+        """
+connector_name: my_connector
+connector_class: MyConnector
+connector_module: connector
+cloud: aws
+region: us-east-1
+cluster_name: my-cluster
+account_id: 123
+ecr_repo: 123.dkr.ecr.us-east-1.amazonaws.com/connectors
+"""
+    )
+
+    with patch("subprocess.run") as mock_run:
+        result = runner.invoke(deploy, ["status", "--config", str(config_path)])
+
+    assert result.exit_code != 0
+    assert str(config_path) in result.output
+    assert "account_id" in result.output
+    assert "exactly 12 decimal digits" in result.output
+    assert "errors.pydantic.dev" not in result.output
+    mock_run.assert_not_called()
+
+
 def test_status_shows_cronjob_and_jobs(runner, tmp_path, gcp_deployment_yaml):
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)

@@ -164,8 +164,9 @@ def test(
     # GLEAN_SERVER_URL could reach production with nothing to catch it. Confirm
     # once, showing exactly where the upload would land, before it happens --
     # but only when live will actually run, not when a batch is about to skip it.
+    confirmed_live_target = None
     if LIVE in plan and (not batch or not missing_credentials()):
-        _confirm_live_run(cli_ctx)
+        confirmed_live_target = _confirm_live_run(cli_ctx)
 
     resolved_mode = IndexingMode(mode or cli_ctx.project_config.get("indexing_mode") or "full")
     connector_class = load_connector(cli_ctx.project_dir, cli_ctx.project_config, reference)
@@ -188,7 +189,15 @@ def test(
             docs=DOCS,
         )
 
-    phases = _run_plan(connector, config, clients, plan, resolved_mode, batch=batch)
+    phases = _run_plan(
+        connector,
+        config,
+        clients,
+        plan,
+        resolved_mode,
+        batch=batch,
+        confirmed_live_target=confirmed_live_target,
+    )
     data = {
         "connector": connector_class.__name__,
         "mode": resolved_mode.value,
@@ -219,7 +228,7 @@ def _no_clients_detail(connector_name: str) -> str:
     )
 
 
-def _confirm_live_run(cli_ctx: Any) -> None:
+def _confirm_live_run(cli_ctx: Any) -> str:
     """Require confirmation before the live phase can upload real documents.
 
     Mirrors the `_confirm` pattern in `deploy.py`: --yes skips the prompt for
@@ -227,15 +236,16 @@ def _confirm_live_run(cli_ctx: Any) -> None:
     land before it happens, which is the only guard against a misconfigured
     GLEAN_SERVER_URL reaching production.
     """
-    if cli_ctx.assume_yes:
-        return
     target = os.getenv(SERVER_URL_VAR) or os.getenv(LEGACY_INSTANCE_VAR) or "<unset>"
+    if cli_ctx.assume_yes:
+        return target
     click.confirm(
         f"The live phase uploads real documents to Glean at {target!r} with no "
         "automated cleanup. Make sure this is a dedicated test instance, not "
         "production. Continue?",
         abort=True,
     )
+    return target
 
 
 def _skip_reason(phase: str, clients: dict[str, Any], connector_name: str) -> Optional[str]:
@@ -262,6 +272,7 @@ def _run_plan(
     mode: Any,
     *,
     batch: bool,
+    confirmed_live_target: Optional[str],
 ) -> list[dict[str, Any]]:
     """Run each phase in order, stopping at the first real failure.
 
@@ -276,7 +287,14 @@ def _run_plan(
             continue
 
         try:
-            summary = _run_phase(connector, config, clients, phase, mode)
+            summary = _run_phase(
+                connector,
+                config,
+                clients,
+                phase,
+                mode,
+                confirmed_live_target=confirmed_live_target,
+            )
         except ValidationFailedError as exc:
             if not batch:
                 raise
@@ -362,7 +380,13 @@ def _is_async(connector: Any) -> bool:
 
 
 def _run_phase(
-    connector: Any, config: Any, clients: dict[str, Any], phase: str, mode: Any
+    connector: Any,
+    config: Any,
+    clients: dict[str, Any],
+    phase: str,
+    mode: Any,
+    *,
+    confirmed_live_target: Optional[str],
 ) -> dict[str, Any]:
     """Run one phase and summarize what it produced."""
     from glean.indexing.testing.harness import TestHarness
@@ -389,6 +413,7 @@ def _run_phase(
     call_kwargs: dict[str, Any] = {"mode": mode}
     if phase == LIVE:
         call_kwargs["confirm"] = True
+        call_kwargs["confirmed_target"] = confirmed_live_target
 
     call = getattr(harness, method)
     try:

@@ -97,7 +97,7 @@ Run only when source credentials and `GLEAN_INDEXING_API_TOKEN` plus `GLEAN_SERV
 glean-idx test --phase live
 ```
 
-This prompts for confirmation (showing the resolved target) unless `--yes` is passed.
+This prompts for confirmation (showing the resolved target) unless `--yes` is passed. The CLI carries that target into the harness, which refuses to upload if the configured target changes before live execution.
 
 or, to assert on the result:
 

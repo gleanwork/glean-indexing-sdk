@@ -14,7 +14,10 @@ import pytest
 
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_data_client import BaseDataClient
-from glean.indexing.exceptions import LiveEndToEndNotConfirmedError
+from glean.indexing.exceptions import (
+    LiveEndToEndNotConfirmedError,
+    LiveEndToEndTargetChangedError,
+)
 from glean.indexing.models import IndexingMode
 from glean.indexing.testing import StaticDataClient, mock_glean_client
 from glean.indexing.testing.harness import IndexingWaitResult, TestConfig, TestHarness
@@ -70,6 +73,19 @@ class TestRunEndToEnd:
 
         with pytest.raises(LiveEndToEndNotConfirmedError, match="prod-be.glean.com"):
             harness.run_end_to_end()
+
+    def test_refuses_target_changed_after_confirmation(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setenv("GLEAN_SERVER_URL", "https://changed-be.glean.com")
+        connector = DatasourceFake(name="ds", data_client=StaticDataClient(_DOCS))
+        harness = TestHarness(connector=connector, config=TestConfig(cache_dir=str(tmp_path)))
+
+        with patch.object(connector, "index_data") as mock_index:
+            with pytest.raises(LiveEndToEndTargetChangedError, match="changed"):
+                harness.run_end_to_end(
+                    confirm=True,
+                    confirmed_target="https://confirmed-be.glean.com",
+                )
+            mock_index.assert_not_called()
 
     def test_calls_index_data(self, tmp_path: Path):
         """run_end_to_end should call connector.index_data() (mocked)."""

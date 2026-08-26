@@ -1,7 +1,16 @@
 """Unit tests for deployment artifact generator."""
 
-import pytest
+import os
+import runpy
+import sys
+from types import ModuleType, SimpleNamespace
+from typing import cast
 
+import pytest
+import yaml
+
+from glean.api_client.models import CustomDatasourceConfig
+from glean.indexing.connectors import BaseDataClient, BaseDatasourceConnector
 from glean.indexing.deployment import generate_artifacts
 from glean.indexing.deployment.config import DeploymentConfig
 from glean.indexing.deployment.generator import list_generated_files
@@ -144,6 +153,149 @@ def test_aws_run_py_has_reference_link():
         "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html"
         in artifacts["run.py"]
     )
+
+
+@pytest.mark.parametrize("cloud", ["aws", "gcp"])
+def test_generated_runner_uses_factory_for_connector_with_required_arguments(
+    cloud, tmp_path, monkeypatch
+):
+    """Both cloud entrypoints use the same factory after provider secret loading."""
+    calls = {}
+    module_name = f"{cloud}_factory_connector"
+    connector_module = ModuleType(module_name)
+
+    class WikiDataClient(BaseDataClient[dict[str, str]]):
+        def __init__(self, api_token):
+            self.api_token = api_token
+
+        def get_source_data(self, since=None, **kwargs):
+            return []
+
+    class CompanyWikiConnector(BaseDatasourceConnector[dict[str, str]]):
+        configuration = CustomDatasourceConfig(name="my_salesforce", display_name="Salesforce")
+
+        def transform(self, data):
+            return []
+
+        def index_data(self, mode, options=None):
+            calls.update(
+                connector=self.name,
+                api_token=cast(WikiDataClient, self.data_client).api_token,
+                mode=mode.value,
+            )
+
+    def create_connector():
+        calls["factory_called"] = True
+        return CompanyWikiConnector("my_salesforce", WikiDataClient(os.environ["SOURCE_API_TOKEN"]))
+
+    setattr(connector_module, "CompanyWikiConnector", CompanyWikiConnector)
+    setattr(connector_module, "create_connector", create_connector)
+    monkeypatch.setitem(sys.modules, module_name, connector_module)
+
+    if cloud == "aws":
+
+        class FakePaginator:
+            def paginate(self, **_kwargs):
+                return [
+                    {
+                        "SecretList": [
+                            {"Name": "CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_SOURCE_API_TOKEN"}
+                        ]
+                    }
+                ]
+
+        class FakeSecretsManager:
+            def get_paginator(self, _name):
+                return FakePaginator()
+
+            def get_secret_value(self, *, SecretId):
+                assert SecretId.endswith("SOURCE_API_TOKEN")
+                return {"SecretString": "loaded-before-construction"}
+
+        boto3 = ModuleType("boto3")
+        setattr(boto3, "client", lambda *_args, **_kwargs: FakeSecretsManager())
+        monkeypatch.setitem(sys.modules, "boto3", boto3)
+        config = AWS_CONFIG
+        provider_env = {"AWS_REGION": "us-east-1"}
+    else:
+
+        class FakeSecretManagerClient:
+            def list_secrets(self, *, request):
+                assert request["parent"] == "projects/my-project"
+                return [
+                    SimpleNamespace(
+                        name=(
+                            "projects/my-project/secrets/"
+                            "CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_SOURCE_API_TOKEN"
+                        )
+                    )
+                ]
+
+            def access_secret_version(self, *, request):
+                assert request["name"].endswith("SOURCE_API_TOKEN/versions/latest")
+                return SimpleNamespace(payload=SimpleNamespace(data=b"loaded-before-construction"))
+
+        google = ModuleType("google")
+        google.__path__ = []
+        google_cloud = ModuleType("google.cloud")
+        google_cloud.__path__ = []
+        secretmanager = ModuleType("google.cloud.secretmanager")
+        setattr(secretmanager, "SecretManagerServiceClient", FakeSecretManagerClient)
+        setattr(google_cloud, "secretmanager", secretmanager)
+        setattr(google, "cloud", google_cloud)
+        monkeypatch.setitem(sys.modules, "google", google)
+        monkeypatch.setitem(sys.modules, "google.cloud", google_cloud)
+        monkeypatch.setitem(sys.modules, "google.cloud.secretmanager", secretmanager)
+        config = GCP_CONFIG
+        provider_env = {"GOOGLE_CLOUD_PROJECT": "my-project"}
+
+    config = config.model_copy(
+        update={"connector_module": module_name, "connector_class": "CompanyWikiConnector"}
+    )
+    run_path = tmp_path / "run.py"
+    run_path.write_text(generate_artifacts(config)["run.py"])
+    environment = {
+        "DATASOURCE_NAME": "my_salesforce",
+        "CLOUD_PLATFORM": cloud,
+        "INDEXING_MODE": "FULL",
+        "CONNECTOR_CLASS": "CompanyWikiConnector",
+        "CONNECTOR_MODULE": module_name,
+        "CONNECTOR_FACTORY": "create_connector",
+        **provider_env,
+    }
+    for key, value in environment.items():
+        monkeypatch.setenv(key, value)
+
+    runpy.run_path(str(run_path), run_name="__main__")
+
+    assert calls == {
+        "factory_called": True,
+        "connector": "my_salesforce",
+        "api_token": "loaded-before-construction",
+        "mode": "full",
+    }
+
+
+def test_factory_identifier_is_quoted_in_generated_yaml():
+    config = AWS_CONFIG.model_copy(update={"connector_factory": "null"})
+
+    generated = generate_artifacts(config)["glean_deployment.yaml"]
+
+    assert yaml.safe_load(generated)["connector_factory"] == "null"
+
+
+@pytest.mark.parametrize("base_config", [AWS_CONFIG, GCP_CONFIG])
+def test_factory_is_rendered_into_deployment_control_plane(base_config):
+    config = base_config.model_copy(update={"connector_factory": "create_connector"})
+
+    artifacts = generate_artifacts(config)
+
+    assert yaml.safe_load(artifacts["glean_deployment.yaml"])["connector_factory"] == (
+        "create_connector"
+    )
+    assert "CONNECTOR_FACTORY=create_connector" in artifacts[".env.example"]
+    assert 'name  = "CONNECTOR_FACTORY"' in artifacts["terraform/main.tf"]
+    assert 'value = "create_connector"' in artifacts["terraform/main.tf"]
 
 
 # ---------------------------------------------------------------------------

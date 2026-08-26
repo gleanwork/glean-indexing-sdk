@@ -131,6 +131,10 @@ except KeyError:
     print(f"ERROR: Unknown INDEXING_MODE '{indexing_mode}'. Valid values: FULL, INCREMENTAL.", file=sys.stderr)
     sys.exit(1)
 
-connector = connector_cls()
+create_fn = getattr(module, "create_connector", None)
+if create_fn is not None:
+    connector = create_fn()
+else:
+    connector = connector_cls()
 connector.index_data(mode=mode)
 print("Connector run complete.")

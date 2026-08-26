@@ -246,3 +246,34 @@ def test_list_generated_files_aws():
 def test_list_generated_files_invalid_cloud_raises():
     with pytest.raises(ValueError, match="Unsupported cloud target"):
         list_generated_files("azure")
+
+
+# ---------------------------------------------------------------------------
+# run.py construction contract (#155)
+# ---------------------------------------------------------------------------
+
+
+def test_gcp_run_py_has_create_connector_factory_lookup():
+    artifacts = generate_artifacts(GCP_CONFIG)
+    run_py = artifacts["run.py"]
+    assert "create_connector" in run_py
+    assert 'getattr(module, "create_connector", None)' in run_py
+
+
+def test_gcp_run_py_has_connector_cls_fallback():
+    artifacts = generate_artifacts(GCP_CONFIG)
+    run_py = artifacts["run.py"]
+    assert "connector_cls()" in run_py
+
+
+def test_aws_run_py_has_create_connector_factory_lookup():
+    artifacts = generate_artifacts(AWS_CONFIG)
+    run_py = artifacts["run.py"]
+    assert "create_connector" in run_py
+    assert 'getattr(module, "create_connector", None)' in run_py
+
+
+def test_aws_run_py_has_connector_cls_fallback():
+    artifacts = generate_artifacts(AWS_CONFIG)
+    run_py = artifacts["run.py"]
+    assert "connector_cls()" in run_py

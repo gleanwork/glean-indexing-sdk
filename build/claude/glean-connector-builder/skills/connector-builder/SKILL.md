@@ -75,7 +75,7 @@ The command exits `0` when the artifacts are complete and confirmed, and `5` whe
 they are not, listing every problem it found. Use `--output json` to read the
 findings as a list.
 
-8. Implement the data client and connector using the `connector-auth`, `connector-pull`, `connector-push`, `connector-observability`, and `connector-deployment` skills as applicable. Post-validation code generation is handled by the agent following the skills, not by the local validator.
+8. Implement the data client and connector using the `connector-auth`, `connector-pull`, `connector-push`, `connector-observability`, and `connector-deployment` skills as applicable. When deployment is in scope, add a module-level zero-argument `create_connector()` factory that builds the configured connector from environment-backed source credentials; keep the connector constructor dependency-injectable for tests. Post-validation code generation is handled by the agent following the skills, not by the local validator.
 9. Evaluate with compile checks and an end-to-end full-crawl smoke run. Add unit tests only after that path works and the behavior is stable enough for regression coverage.
 10. Before calling the connector complete or starting deployment, re-read the plan and source investigation, compare the tested implementation and configuration with every confirmed production requirement, resolve all test-to-production differences, update the plan with the result, and rerun the relevant validation. Stop and ask for the required decision, credential setup, implementation, or configuration when a production-readiness gap cannot yet be resolved.
 

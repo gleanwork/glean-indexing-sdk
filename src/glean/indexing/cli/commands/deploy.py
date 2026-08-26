@@ -71,12 +71,14 @@ def deploy() -> None:
 @click.option("--connector-class", default="MyConnector", show_default=True)
 @click.option("--connector-module", default="connector", show_default=True)
 @click.option("--output-dir", default=".", show_default=True, type=click.Path(file_okay=False))
+@click.option("--force", is_flag=True, default=False, help="Overwrite existing generated files.")
 def init(
     cloud: str,
     connector_name: str | None,
     connector_class: str,
     connector_module: str,
     output_dir: str,
+    force: bool,
 ) -> None:
     """Generate deployment artifacts (Dockerfile, Terraform, run.py, .env.example)."""
     out = Path(output_dir).resolve()
@@ -114,7 +116,10 @@ def init(
         raise click.ClickException(f"Could not build initial config: {exc}") from exc
 
     click.echo(f"Generating {cloud.upper()} deployment artifacts in {out}/")
-    generate_artifacts(config, output_dir=out)
+    try:
+        generate_artifacts(config, output_dir=out, force=force)
+    except FileExistsError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     for f in list_generated_files(cloud):
         click.echo(f"  created  {f}")

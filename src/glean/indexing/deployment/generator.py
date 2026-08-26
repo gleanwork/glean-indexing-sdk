@@ -47,12 +47,14 @@ def _render_template(env: Environment, template_path: str, context: dict[str, An
     return env.get_template(template_path).render(**context)
 
 
-def generate_artifacts(config: DeploymentConfig, output_dir: Path | None = None) -> dict[str, str]:
+def generate_artifacts(config: DeploymentConfig, output_dir: Path | None = None, force: bool = False) -> dict[str, str]:
     """Render all deployment artifacts for the given config.
 
     Returns a dict mapping relative output path to rendered content.
     If ``output_dir`` is given, also writes the files to disk.
     Output is deterministic — same config always produces identical files.
+
+    Raises ``FileExistsError`` if any destination file already exists and ``force`` is False.
     """
     env = _make_env()
     context = {"config": config}
@@ -65,12 +67,40 @@ def generate_artifacts(config: DeploymentConfig, output_dir: Path | None = None)
         rendered[output_path] = _render_template(env, template_path, context)
 
     if output_dir is not None:
+        if not force:
+            conflicts = [rel for rel in rendered if (output_dir / rel).exists()]
+            if conflicts:
+                names = "\n  ".join(conflicts)
+                raise FileExistsError(
+                    f"Destination already contains generated files:\n  {names}\n"
+                    "Re-run with --force to overwrite."
+                )
         for rel_path, content in rendered.items():
             dest = output_dir / rel_path
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(content, encoding="utf-8", newline="\n")
 
+        _merge_gitignore(output_dir)
+
     return rendered
+
+
+_GITIGNORE_ENTRIES = [".env", ".env.*", ".terraform/", "*.tfstate*", "*.tfvars"]
+
+
+def _merge_gitignore(output_dir: Path) -> None:
+    """Append any missing glean-deploy entries to .gitignore without replacing user content."""
+    gitignore = output_dir / ".gitignore"
+    existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+    existing_lines = {line.strip() for line in existing.splitlines()}
+    missing = [e for e in _GITIGNORE_ENTRIES if e not in existing_lines]
+    if missing:
+        separator = "\n" if existing and not existing.endswith("\n") else ""
+        gitignore.write_text(
+            existing + separator + "\n".join(missing) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
 
 
 def list_generated_files(cloud: str) -> list[str]:

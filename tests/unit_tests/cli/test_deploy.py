@@ -101,6 +101,21 @@ def test_init_with_connector_name(runner, tmp_path):
         assert "my_jira" in yaml_content
 
 
+def test_init_fails_on_existing_files(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        runner.invoke(deploy, ["init", "--cloud", "gcp"])
+        result = runner.invoke(deploy, ["init", "--cloud", "gcp"])
+        assert result.exit_code != 0
+        assert "Re-run with --force" in result.output
+
+
+def test_init_force_overwrites_existing_files(runner, tmp_path):
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        runner.invoke(deploy, ["init", "--cloud", "gcp"])
+        result = runner.invoke(deploy, ["init", "--cloud", "gcp", "--force"])
+        assert result.exit_code == 0
+
+
 # ---------------------------------------------------------------------------
 # secrets upload
 # ---------------------------------------------------------------------------

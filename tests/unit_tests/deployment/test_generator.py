@@ -246,3 +246,53 @@ def test_list_generated_files_aws():
 def test_list_generated_files_invalid_cloud_raises():
     with pytest.raises(ValueError, match="Unsupported cloud target"):
         list_generated_files("azure")
+
+
+# ---------------------------------------------------------------------------
+# Overwrite safety and .gitignore (#161)
+# ---------------------------------------------------------------------------
+
+
+def test_generate_artifacts_raises_on_conflict(tmp_path):
+    generate_artifacts(GCP_CONFIG, output_dir=tmp_path)
+    with pytest.raises(FileExistsError, match="Re-run with --force"):
+        generate_artifacts(GCP_CONFIG, output_dir=tmp_path)
+
+
+def test_generate_artifacts_conflict_lists_files(tmp_path):
+    generate_artifacts(GCP_CONFIG, output_dir=tmp_path)
+    with pytest.raises(FileExistsError) as exc_info:
+        generate_artifacts(GCP_CONFIG, output_dir=tmp_path)
+    assert "Dockerfile" in str(exc_info.value)
+
+
+def test_generate_artifacts_force_overwrites(tmp_path):
+    generate_artifacts(GCP_CONFIG, output_dir=tmp_path)
+    generate_artifacts(GCP_CONFIG, output_dir=tmp_path, force=True)
+    assert (tmp_path / "Dockerfile").exists()
+
+
+def test_generate_artifacts_creates_gitignore(tmp_path):
+    generate_artifacts(GCP_CONFIG, output_dir=tmp_path)
+    gitignore = tmp_path / ".gitignore"
+    assert gitignore.exists()
+    content = gitignore.read_text()
+    assert ".env" in content
+    assert ".terraform/" in content
+    assert "*.tfstate*" in content
+
+
+def test_generate_artifacts_merges_gitignore(tmp_path):
+    existing = "# my rules\n*.pyc\n"
+    (tmp_path / ".gitignore").write_text(existing)
+    generate_artifacts(GCP_CONFIG, output_dir=tmp_path)
+    content = (tmp_path / ".gitignore").read_text()
+    assert "*.pyc" in content
+    assert ".env" in content
+
+
+def test_generate_artifacts_does_not_duplicate_gitignore_entries(tmp_path):
+    generate_artifacts(GCP_CONFIG, output_dir=tmp_path)
+    generate_artifacts(GCP_CONFIG, output_dir=tmp_path, force=True)
+    content = (tmp_path / ".gitignore").read_text()
+    assert content.count(".env\n") == 1

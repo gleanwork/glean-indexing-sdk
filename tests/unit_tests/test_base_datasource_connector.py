@@ -1,16 +1,30 @@
 """Tests for BaseDatasourceConnector."""
 
-from typing import List, Sequence
-from unittest.mock import Mock, call as mock_call, patch
+from threading import Event, Lock, Thread
+from typing import List, Optional, Sequence
+from unittest.mock import Mock, patch
+from unittest.mock import call as mock_call
 
-from glean.api_client.models import ContentDefinition, DocumentDefinition
+import pytest
+
+from glean.api_client.models import (
+    ContentDefinition,
+    DatasourceBulkMembershipDefinition,
+    DatasourceGroupDefinition,
+    DatasourceUserDefinition,
+    DocumentDefinition,
+)
 from glean.indexing.common.batch_processor import DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
 from glean.indexing.connectors import BaseDataClient, BaseDatasourceConnector
+from glean.indexing.exceptions import InconsistentDataError
 from glean.indexing.models import (
+    DEFAULT_UPLOAD_MAX_WORKERS,
     ConnectorOptions,
     CustomDatasourceConfig,
     DatasourceIdentityDefinitions,
 )
+from glean.indexing.push import PushUploader
+from glean.indexing.testing import mock_glean_client
 
 
 class MockDataClient(BaseDataClient[dict]):
@@ -45,6 +59,14 @@ class TestDatasourceConnector(BaseDatasourceConnector[dict]):
             )
             documents.append(document)
         return documents
+
+
+class BatchBytesOverrideConnector(TestDatasourceConnector):
+    """Connector with a custom document byte-limit policy."""
+
+    @staticmethod
+    def _resolve_max_batch_bytes(options: Optional[ConnectorOptions]) -> Optional[int]:
+        return 1024
 
 
 class TestBaseDatasourceConnector:
@@ -103,9 +125,9 @@ class TestBaseDatasourceConnector:
         result = connector.get_data()
         assert result == test_data
 
-    @patch("glean.indexing.connectors.base_datasource_connector.PushUploader")
-    def test_identity_uploads_receive_observability(self, mock_uploader):
-        """Test that identity uploaders use the connector's observability instance."""
+    @patch("glean.indexing.connectors.base_connector.PushUploader")
+    def test_identity_uploads_share_observable_uploader(self, mock_uploader):
+        """All entity paths share one uploader with the connector's observability instance."""
         data_client = MockDataClient([])
         connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
         users = [object()]
@@ -122,18 +144,180 @@ class TestBaseDatasourceConnector:
 
         expected_uploader_call = mock_call(
             datasource="test_connector",
+            timeout_ms=None,
             observability=connector.observability,
+            upload_max_workers=DEFAULT_UPLOAD_MAX_WORKERS,
         )
-        assert mock_uploader.call_args_list == [expected_uploader_call] * 3
+        assert mock_uploader.call_args_list == [expected_uploader_call]
         mock_uploader.return_value.bulk_index_users.assert_called_once_with(
-            users=users, batch_size=connector.batch_size
+            users=users,
+            batch_size=connector.batch_size,
+            force_restart_upload=None,
+            disable_stale_data_deletion_check=None,
         )
         mock_uploader.return_value.bulk_index_groups.assert_called_once_with(
-            groups=groups, batch_size=connector.batch_size
+            groups=groups,
+            batch_size=connector.batch_size,
+            force_restart_upload=None,
+            disable_stale_data_deletion_check=None,
         )
         mock_uploader.return_value.bulk_index_memberships.assert_called_once_with(
-            memberships=memberships, batch_size=connector.batch_size
+            memberships=memberships,
+            batch_size=connector.batch_size,
+            force_restart_upload=None,
         )
+
+    def test_memberships_upload_when_groups_are_empty(self):
+        """Memberships are an independent identity payload, not a child of groups."""
+        connector = TestDatasourceConnector(name="test_connector", data_client=MockDataClient([]))
+        membership = DatasourceBulkMembershipDefinition(member_user_id="user@example.com")
+        identities = DatasourceIdentityDefinitions(
+            users=[],
+            groups=[],
+            memberships=[membership],
+        )
+
+        with patch.object(connector, "get_identities", return_value=identities):
+            with mock_glean_client() as client:
+                connector.index_data()
+
+        client.assert_memberships_posted(count=1, datasource="test_connector")
+        assert client.memberships_posted == [membership]
+
+    def test_invalid_identity_payload_makes_no_api_calls(self):
+        """The complete identity payload is validated before the first mutation."""
+        connector = TestDatasourceConnector(name="test_connector", data_client=MockDataClient([]))
+        identities = DatasourceIdentityDefinitions(
+            users=[DatasourceUserDefinition(email="user@example.com", name="User")],
+            groups=[DatasourceGroupDefinition(name="engineering")],
+        )
+
+        with patch.object(connector, "get_identities", return_value=identities):
+            with mock_glean_client() as client:
+                with pytest.raises(InconsistentDataError, match="no memberships"):
+                    connector.index_data()
+
+        client.indexing.permissions.bulk_index_users.assert_not_called()
+        client.indexing.permissions.bulk_index_groups.assert_not_called()
+        client.indexing.permissions.bulk_index_memberships.assert_not_called()
+        client.indexing.documents.bulk_index.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("entity_type", "stale_deletion_parameter"),
+        [
+            ("documents", "disable_stale_document_deletion_check"),
+            ("users", "disable_stale_data_deletion_check"),
+            ("groups", "disable_stale_data_deletion_check"),
+            ("memberships", None),
+        ],
+    )
+    def test_bulk_upload_option_matrix(self, entity_type, stale_deletion_parameter):
+        """Each endpoint receives every ConnectorOption supported by that endpoint."""
+        data = []
+        identities = DatasourceIdentityDefinitions(users=[])
+        if entity_type == "documents":
+            data = [
+                {
+                    "id": "1",
+                    "title": "Doc",
+                    "content": "Content",
+                    "url": "https://test.example.com/1",
+                }
+            ]
+        elif entity_type == "users":
+            identities = DatasourceIdentityDefinitions(
+                users=[DatasourceUserDefinition(email="user@example.com", name="User")]
+            )
+        elif entity_type == "groups":
+            identities = DatasourceIdentityDefinitions(
+                users=[],
+                groups=[DatasourceGroupDefinition(name="engineering")],
+                memberships=[DatasourceBulkMembershipDefinition(member_user_id="user@example.com")],
+            )
+        else:
+            identities = DatasourceIdentityDefinitions(
+                users=[],
+                groups=[],
+                memberships=[DatasourceBulkMembershipDefinition(member_user_id="user@example.com")],
+            )
+
+        connector = TestDatasourceConnector(name="test_connector", data_client=MockDataClient(data))
+        options = ConnectorOptions(
+            upload_timeout_ms=120_000,
+            upload_max_workers=1,
+            force_restart=True,
+            disable_stale_deletion_check=True,
+        )
+
+        with patch.object(connector, "get_identities", return_value=identities):
+            with mock_glean_client() as client:
+                connector.index_data(options=options)
+
+        calls = {
+            "documents": client.indexing.documents.bulk_index,
+            "users": client.indexing.permissions.bulk_index_users,
+            "groups": client.indexing.permissions.bulk_index_groups,
+            "memberships": client.indexing.permissions.bulk_index_memberships,
+        }
+        call_kwargs = calls[entity_type].call_args.kwargs
+        assert call_kwargs["timeout_ms"] == 120_000
+        assert call_kwargs["force_restart_upload"] is True
+        if stale_deletion_parameter:
+            assert call_kwargs[stale_deletion_parameter] is True
+        else:
+            assert "disable_stale_document_deletion_check" not in call_kwargs
+            assert "disable_stale_data_deletion_check" not in call_kwargs
+
+    def test_document_upload_max_workers_limits_concurrency(self):
+        """The public worker option controls PushUploader's middle-page concurrency."""
+        data = [
+            {
+                "id": str(index),
+                "title": f"Doc {index}",
+                "content": "Content",
+                "url": f"https://test.example.com/{index}",
+            }
+            for index in range(4)
+        ]
+        connector = TestDatasourceConnector(name="test_connector", data_client=MockDataClient(data))
+        connector.batch_size = 1
+        first_middle_started = Event()
+        second_middle_started = Event()
+        release_first_middle = Event()
+        middle_call_lock = Lock()
+        middle_call_count = 0
+        errors = []
+
+        def upload_batch(*args, **kwargs):
+            nonlocal middle_call_count
+            if kwargs["is_first_page"] or kwargs["is_last_page"]:
+                return
+            with middle_call_lock:
+                middle_call_count += 1
+                call_number = middle_call_count
+            if call_number == 1:
+                first_middle_started.set()
+                assert release_first_middle.wait(timeout=2)
+            else:
+                second_middle_started.set()
+
+        def index_data():
+            try:
+                connector.index_data(options=ConnectorOptions(upload_max_workers=1))
+            except BaseException as error:
+                errors.append(error)
+
+        with patch.object(PushUploader, "bulk_index_single_batch_upload", side_effect=upload_batch):
+            thread = Thread(target=index_data)
+            thread.start()
+            assert first_middle_started.wait(timeout=2)
+            assert not second_middle_started.wait(timeout=0.1)
+            release_first_middle.set()
+            thread.join(timeout=2)
+
+        assert not thread.is_alive()
+        assert errors == []
+        assert second_middle_started.is_set()
 
     def test_transform(self):
         """Test data transformation."""
@@ -332,7 +516,7 @@ class TestBaseDatasourceConnector:
         call_kwargs = mock_client.indexing.documents.bulk_index.call_args[1]
         assert call_kwargs.get("timeout_ms") is None
 
-    @patch("glean.indexing.connectors.base_datasource_connector.PushUploader")
+    @patch("glean.indexing.connectors.base_connector.PushUploader")
     def test_document_batch_size_bytes_forwarded_as_max_batch_bytes(self, mock_uploader):
         """Test that ConnectorOptions.document_batch_size_bytes reaches the uploader."""
         test_data = [
@@ -346,7 +530,22 @@ class TestBaseDatasourceConnector:
         call_kwargs = mock_uploader.return_value.bulk_index_documents.call_args[1]
         assert call_kwargs["max_batch_bytes"] == 2048
 
-    @patch("glean.indexing.connectors.base_datasource_connector.PushUploader")
+    @patch("glean.indexing.connectors.base_connector.PushUploader")
+    def test_document_batch_size_bytes_uses_connector_override(self, mock_uploader):
+        """Centralized endpoint options preserve the connector's byte-limit override."""
+        test_data = [
+            {"id": "1", "title": "Doc", "content": "Content", "url": "https://test.example.com/1"},
+        ]
+        connector = BatchBytesOverrideConnector(
+            name="test_connector", data_client=MockDataClient(test_data)
+        )
+
+        connector.index_data(options=ConnectorOptions(document_batch_size_bytes=2048))
+
+        call_kwargs = mock_uploader.return_value.bulk_index_documents.call_args[1]
+        assert call_kwargs["max_batch_bytes"] == 1024
+
+    @patch("glean.indexing.connectors.base_connector.PushUploader")
     def test_document_batch_size_bytes_defaults_without_options(self, mock_uploader):
         """Test that omitting options still applies the uploader's default byte limit."""
         test_data = [

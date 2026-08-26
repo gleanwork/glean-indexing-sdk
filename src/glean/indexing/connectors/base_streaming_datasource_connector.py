@@ -10,13 +10,7 @@ from glean.api_client.models import DocumentDefinition
 from glean.indexing.common import DocumentBatchProcessor
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
-from glean.indexing.models import (
-    DEFAULT_UPLOAD_MAX_WORKERS,
-    ConnectorOptions,
-    IndexingMode,
-    TSourceData,
-)
-from glean.indexing.push import PushUploader
+from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
 
 logger = logging.getLogger(__name__)
 
@@ -124,14 +118,7 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
             if self._force_restart:
                 logger.info("Force restarting upload - discarding any previous upload progress")
 
-            PushUploader(
-                datasource=self.name,
-                timeout_ms=options.upload_timeout_ms if options else None,
-                observability=self._observability,
-                upload_max_workers=options.upload_max_workers
-                if options
-                else DEFAULT_UPLOAD_MAX_WORKERS,
-            ).bulk_index_document_batches(
+            self._create_uploader(options).bulk_index_document_batches(
                 transformed_batches(),
                 upload_id=upload_id,
                 force_restart_upload=True if self._force_restart else None,

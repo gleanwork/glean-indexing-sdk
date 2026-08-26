@@ -97,6 +97,39 @@ class DeploymentConfig(BaseModel):
                 raise ValueError("ecr_repo is required when cloud=aws")
         return self
 
+    @model_validator(mode="after")
+    def validate_resource_names(self) -> "DeploymentConfig":
+        """Validate that derived Kubernetes, GCP, and AWS resource names satisfy provider constraints."""
+        import re
+
+        k8s = self.k8s_name
+        sa = self.effective_service_account
+
+        if not re.match(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", k8s):
+            raise ValueError(
+                f"Derived Kubernetes name {k8s!r} violates RFC 1123 label constraints "
+                "(1-63 chars, lowercase alphanumeric and hyphens, start and end with alphanumeric). "
+                "Adjust connector_name."
+            )
+
+        if self.cloud == "gcp":
+            if not re.match(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$", sa):
+                raise ValueError(
+                    f"Derived GCP service account name {sa!r} is invalid "
+                    "(6-30 chars, starts with a lowercase letter, ends with alphanumeric). "
+                    "Set service_account_name explicitly or adjust connector_name."
+                )
+
+        elif self.cloud == "aws":
+            if len(sa) > 64 or not re.match(r"^[\w+=,.@/-]+$", sa):
+                raise ValueError(
+                    f"Derived AWS IAM role name {sa!r} is invalid "
+                    "(1-64 chars, alphanumeric and +=,.@_/-). "
+                    "Set iam_role_name explicitly or adjust connector_name."
+                )
+
+        return self
+
     @classmethod
     def from_yaml(cls, path: Path) -> "DeploymentConfig":
         """Load and validate a DeploymentConfig from a YAML file."""

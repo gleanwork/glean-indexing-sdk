@@ -119,6 +119,42 @@ def test_connector_name_with_underscore_valid():
 
 
 # ---------------------------------------------------------------------------
+# Resource name validation (#162)
+# ---------------------------------------------------------------------------
+
+
+def test_gcp_short_connector_name_raises():
+    with pytest.raises(ValidationError, match="GCP service account"):
+        DeploymentConfig(**{**GCP_KWARGS, "connector_name": "hr"})
+
+
+def test_gcp_trailing_hyphen_k8s_name_raises():
+    with pytest.raises(ValidationError, match="Kubernetes"):
+        DeploymentConfig(**{**GCP_KWARGS, "connector_name": "demo-"})
+
+
+def test_gcp_long_connector_name_raises():
+    long_name = "a" * 30
+    with pytest.raises(ValidationError, match="GCP service account"):
+        DeploymentConfig(**{**GCP_KWARGS, "connector_name": long_name})
+
+
+def test_gcp_explicit_service_account_overrides_validation():
+    config = DeploymentConfig(**{**GCP_KWARGS, "connector_name": "hr", "service_account_name": "my-valid-sa"})
+    assert config.effective_service_account == "my-valid-sa"
+
+
+def test_aws_short_connector_name_passes_iam():
+    config = DeploymentConfig(**{**AWS_KWARGS, "connector_name": "hr"})
+    assert config.effective_service_account == "hr-role"
+
+
+def test_aws_explicit_iam_role_overrides_validation():
+    config = DeploymentConfig(**{**AWS_KWARGS, "connector_name": "hr", "iam_role_name": "my-custom-role"})
+    assert config.effective_service_account == "my-custom-role"
+
+
+# ---------------------------------------------------------------------------
 # Properties
 # ---------------------------------------------------------------------------
 

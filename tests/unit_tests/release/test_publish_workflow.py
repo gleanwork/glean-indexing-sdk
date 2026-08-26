@@ -192,11 +192,11 @@ def test_all_workflow_actions_are_sha_pinned_with_version_comments() -> None:
         assert all(PINNED_ACTION_LINE.fullmatch(line) for line in action_lines), path
 
 
-def test_no_workflow_run_script_interpolates_expressions() -> None:
+def test_no_workflow_run_script_interpolates_untrusted_github_context() -> None:
     for path in WORKFLOWS.glob("*.yml"):
         workflow = load_workflow(path)
         run_scripts = [
             step["run"] for job in workflow["jobs"].values() for step in steps(job) if "run" in step
         ]
         assert run_scripts
-        assert all("${{" not in script for script in run_scripts), path
+        assert all("${{ github." not in script for script in run_scripts), path

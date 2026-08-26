@@ -74,16 +74,119 @@ venv = ".venv"
 venvPath = "."
 
 [tool.ruff]
-line-length = 160
+# Retain the formatter width already applied across the repository. The
+# separately configured E501 ceiling preserves the 160-column code-style limit
+# without a repository-wide reformat in this config-only fix.
+line-length = 100
 exclude = ["docs/"]
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W", "N", "D", "UP", "ANN", "T201"]
-ignore = ["ANN101", "ANN102", "D203", "D213"]
+# This is the enforced baseline, not an aspirational selection hidden by broad
+# ignores. ANN is intentionally deferred; Pyright basic mode is the typing gate.
+select = [
+    "E",
+    "F",
+    "I",
+    "W",
+    "N",
+    "T201",
+    # Stable Google-style docstring rules with no package-source debt.
+    "D101",
+    "D103",
+    "D106",
+    "D201",
+    "D202",
+    "D205",
+    "D206",
+    "D207",
+    "D208",
+    "D209",
+    "D210",
+    "D211",
+    "D214",
+    "D300",
+    "D402",
+    "D403",
+    "D405",
+    "D410",
+    "D411",
+    "D412",
+    "D414",
+    "D415",
+    "D416",
+    "D417",
+    "D418",
+    "D419",
+    # Stable pyupgrade rules with no package-source debt.
+    "UP001",
+    "UP003",
+    "UP004",
+    "UP005",
+    "UP008",
+    "UP009",
+    "UP010",
+    "UP011",
+    "UP012",
+    "UP013",
+    "UP014",
+    "UP017",
+    "UP018",
+    "UP019",
+    "UP020",
+    "UP021",
+    "UP022",
+    "UP023",
+    "UP024",
+    "UP025",
+    "UP026",
+    "UP029",
+    "UP030",
+    "UP031",
+    "UP032",
+    "UP033",
+    "UP034",
+    "UP036",
+    "UP039",
+    "UP040",
+    "UP041",
+    "UP043",
+    "UP044",
+]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["ANN", "D", "W291", "W292", "W293", "UP007"]
+# Tests do not require docstrings on every class or function.
+"tests/**/*.py" = ["D101", "D103"]
+# Documentation snippets stay concise while package source enforces these rules.
+"snippets/async_streaming/run_connector.py" = ["D103"]
+"snippets/non_streaming/complete.py" = ["D101"]
+# These existing multiline docstrings are test descriptions or fixture inputs.
+"tests/unit_tests/cli/test_deploy.py" = ["D205", "D209"]
+"tests/unit_tests/cli/test_preconditions.py" = ["D205", "D209"]
+"tests/unit_tests/cli/test_project.py" = ["D205", "D209"]
+"tests/unit_tests/test_async_streaming.py" = ["D205", "D209"]
+"tests/unit_tests/test_base_datasource_connector.py" = ["D205", "D209"]
+"tests/unit_tests/test_base_streaming_datasource_connector.py" = ["D205", "D209"]
+# Test doubles retain external API names and sentinel-style exception names.
+"tests/unit_tests/deployment/test_generator.py" = ["N803"]
+"tests/unit_tests/deployment/test_secrets.py" = ["N818"]
+"tests/unit_tests/testing/harness/test_harness_phase2.py" = ["N806"]
+"tests/unit_tests/testing/harness/test_harness_phase3.py" = ["N818"]
+# These command-line scripts intentionally write their results to stdout.
+"scripts/check_publish_provenance.py" = ["T201"]
+"scripts/find_previous_release_tag.py" = ["T201"]
+"scripts/smoke_deployment_container_user.py" = ["D103", "T201"]
+# Preserve the existing public import order; I001 remains active elsewhere.
+"src/glean/indexing/__init__.py" = ["I001"]
+"src/glean/indexing/cli/project.py" = ["I001"]
+"src/glean/indexing/connectors/__init__.py" = ["I001"]
+"src/glean/indexing/recipes/pull/__init__.py" = ["I001"]
+"src/glean/indexing/testing/__init__.py" = ["I001"]
+"src/glean/indexing/testing/harness/__init__.py" = ["I001"]
+"tests/unit_tests/snippets/test_async_streaming_snippet.py" = ["I001"]
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 160
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

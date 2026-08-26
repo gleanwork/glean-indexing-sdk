@@ -1,1 +1,1 @@
-"""Test package for glean-connector-sdk.""" 
+"""Test package for glean-connector-sdk."""

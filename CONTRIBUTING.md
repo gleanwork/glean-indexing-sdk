@@ -42,8 +42,9 @@ We use the following workflow for development:
 
 We follow standard Python code styles:
 
-- Use [Ruff](https://github.com/astral-sh/ruff) for linting and formatting
-- Use [Pyright](https://github.com/microsoft/pyright) for type checking
+- Use [Ruff](https://github.com/astral-sh/ruff) for linting and formatting. `pyproject.toml` is the single authoritative Ruff configuration; it retains the existing 100-column formatter width and enforces the repository's 160-column lint ceiling. Do not add a separate `.ruff.toml` or `ruff.toml`.
+- Ruff enforces `E`, `F`, `I`, `W`, `N`, and `T201`, plus the explicit debt-free `D` and `UP` rules listed in `pyproject.toml`. Test-only exceptions are scoped there; broader docstring and modernization families are deferred rather than selected and globally ignored.
+- Use [Pyright](https://github.com/microsoft/pyright) in basic mode as the typing gate. Ruff's `ANN` family is deferred until existing annotation debt can be addressed intentionally.
 - Follow [type hints](https://docs.python.org/3/library/typing.html) in all code
 
 ## Testing

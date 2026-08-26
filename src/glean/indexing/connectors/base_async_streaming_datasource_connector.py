@@ -2,11 +2,13 @@
 
 import asyncio
 import logging
+import time
 import uuid
 from abc import ABC
 from typing import AsyncGenerator, List, Optional, Sequence
 
 from glean.api_client.models import DocumentDefinition
+
 from glean.indexing.common import DocumentBatchProcessor
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
@@ -98,33 +100,60 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
             mode: The indexing mode to use (FULL or INCREMENTAL).
             options: Optional connector options for controlling indexing behavior.
         """
-        logger.info(
-            f"Starting {mode.name.lower()} async streaming indexing for datasource '{self.name}'"
-        )
-
-        since = None
-        if mode == IndexingMode.INCREMENTAL:
-            since = self._get_last_crawl_timestamp()
-            logger.info(f"Incremental crawl since: {since}")
-
-        upload_id = self.generate_upload_id()
-        self._force_restart = options.force_restart if options else False
-        batch_count = 0
-        max_batch_bytes = self._resolve_max_batch_bytes(options)
-        upload_max_workers = options.upload_max_workers if options else DEFAULT_UPLOAD_MAX_WORKERS
-        uploader = self._create_uploader(options)
+        self._observability.start_execution()
+        items_fetched = 0
+        documents_transformed = 0
+        data_fetch_duration = 0.0
+        data_transform_duration = 0.0
 
         try:
+            logger.info(
+                f"Starting {mode.name.lower()} async streaming indexing for "
+                f"datasource '{self.name}'"
+            )
+
+            since = None
+            if mode == IndexingMode.INCREMENTAL:
+                since = self._get_last_crawl_timestamp()
+                logger.info(f"Incremental crawl since: {since}")
+
+            upload_id = self.generate_upload_id()
+            self._force_restart = options.force_restart if options else False
+            batch_count = 0
+            max_batch_bytes = self._resolve_max_batch_bytes(options)
+            upload_max_workers = (
+                options.upload_max_workers if options else DEFAULT_UPLOAD_MAX_WORKERS
+            )
+            uploader = self._create_uploader(options)
 
             async def transformed_batches() -> AsyncGenerator[Sequence[DocumentDefinition], None]:
                 nonlocal batch_count
+                nonlocal data_fetch_duration
+                nonlocal data_transform_duration
+                nonlocal documents_transformed
+                nonlocal items_fetched
+
                 batch: List[TSourceData] = []
-                async for item in self.get_data_async(since=since):
+                data_iterator = self.get_data_async(since=since).__aiter__()
+                while True:
+                    fetch_started = time.perf_counter()
+                    try:
+                        item = await data_iterator.__anext__()
+                    except StopAsyncIteration:
+                        break
+                    finally:
+                        data_fetch_duration += time.perf_counter() - fetch_started
+                    items_fetched += 1
                     batch.append(item)
                     if len(batch) < self.batch_size:
                         continue
                     logger.info(f"Processing batch {batch_count} with {len(batch)} items")
-                    transformed_batch = self.transform(batch)
+                    transform_started = time.perf_counter()
+                    try:
+                        transformed_batch = self.transform(batch)
+                    finally:
+                        data_transform_duration += time.perf_counter() - transform_started
+                    documents_transformed += len(transformed_batch)
                     logger.info(
                         f"Transformed batch {batch_count}: {len(transformed_batch)} documents"
                     )
@@ -138,7 +167,12 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
                     batch = []
                 if batch:
                     logger.info(f"Processing batch {batch_count} with {len(batch)} items")
-                    transformed_batch = self.transform(batch)
+                    transform_started = time.perf_counter()
+                    try:
+                        transformed_batch = self.transform(batch)
+                    finally:
+                        data_transform_duration += time.perf_counter() - transform_started
+                    documents_transformed += len(transformed_batch)
                     logger.info(
                         f"Transformed batch {batch_count}: {len(transformed_batch)} documents"
                     )
@@ -241,13 +275,21 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
                         else None,
                     )
 
+            self._observability.record_metric("documents_indexed", documents_transformed)
             logger.info(
                 f"Async streaming indexing completed successfully. Processed {batch_count} batches."
             )
 
         except Exception as e:
             logger.exception(f"Error during async streaming indexing: {e}")
+            self._observability.increment_counter("indexing_errors")
             raise
+        finally:
+            self._observability.record_metric("items_fetched", items_fetched)
+            self._observability.record_metric("documents_transformed", documents_transformed)
+            self._observability.record_metric("data_fetch_duration", data_fetch_duration)
+            self._observability.record_metric("data_transform_duration", data_transform_duration)
+            self._observability.end_execution()
 
     def get_data(self, since: Optional[str] = None) -> Sequence[TSourceData]:
         """

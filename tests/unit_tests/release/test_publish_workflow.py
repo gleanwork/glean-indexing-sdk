@@ -76,7 +76,10 @@ def test_uncredentialed_build_binds_and_transfers_one_verified_bundle() -> None:
     assert 'event: "push"' in gate["with"]["script"]
     assert 'run.conclusion === "success"' in gate["with"]["script"]
     assert "setTimeout" in gate["with"]["script"]
-    assert step_named(build, "Build wheel and source distribution once")["run"] == "uv build"
+    assert step_named(build, "Build wheel and source distribution once")["run"].splitlines() == [
+        "uv build",
+        "rm -f dist/.gitignore",
+    ]
     assert_exact_provenance_command(
         step_named(build, "Verify tag, commit, versions, and artifacts")["run"],
         "--write-manifest release-provenance.json",
@@ -87,7 +90,7 @@ def test_uncredentialed_build_binds_and_transfers_one_verified_bundle() -> None:
     assert transfer["with"]["if-no-files-found"] == "error"
     assert (
         sum(
-            step.get("run") == "uv build"
+            "uv build" in step.get("run", "").splitlines()
             for job in workflow["jobs"].values()
             for step in steps(job)
         )

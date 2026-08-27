@@ -201,20 +201,7 @@ def test_generated_runner_uses_factory_for_connector_with_required_arguments(
 
     if cloud == "aws":
 
-        class FakePaginator:
-            def paginate(self, **_kwargs):
-                return [
-                    {
-                        "SecretList": [
-                            {"Name": "CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_SOURCE_API_TOKEN"}
-                        ]
-                    }
-                ]
-
         class FakeSecretsManager:
-            def get_paginator(self, _name):
-                return FakePaginator()
-
             def get_secret_value(self, *, SecretId):
                 assert SecretId.endswith("SOURCE_API_TOKEN")
                 return {"SecretString": "loaded-before-construction"}
@@ -227,17 +214,6 @@ def test_generated_runner_uses_factory_for_connector_with_required_arguments(
     else:
 
         class FakeSecretManagerClient:
-            def list_secrets(self, *, request):
-                assert request["parent"] == "projects/my-project"
-                return [
-                    SimpleNamespace(
-                        name=(
-                            "projects/my-project/secrets/"
-                            "CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_SOURCE_API_TOKEN"
-                        )
-                    )
-                ]
-
             def access_secret_version(self, *, request):
                 assert request["name"].endswith("SOURCE_API_TOKEN/versions/latest")
                 return SimpleNamespace(payload=SimpleNamespace(data=b"loaded-before-construction"))
@@ -265,6 +241,7 @@ def test_generated_runner_uses_factory_for_connector_with_required_arguments(
         "DATASOURCE_NAME": "my_salesforce",
         "CLOUD_PLATFORM": cloud,
         "INDEXING_MODE": "FULL",
+        "SECRET_KEYS_JSON": '["SOURCE_API_TOKEN"]',
         "CONNECTOR_CLASS": "CompanyWikiConnector",
         "CONNECTOR_MODULE": module_name,
         "CONNECTOR_FACTORY": "create_connector",
@@ -281,6 +258,89 @@ def test_generated_runner_uses_factory_for_connector_with_required_arguments(
         "api_token": "loaded-before-construction",
         "mode": "full",
     }
+
+
+@pytest.mark.parametrize("cloud", ["aws", "gcp"])
+@pytest.mark.parametrize("secret_keys_json", ['{"API_KEY": true}', '["BAD.KEY"]', "not-json"])
+def test_generated_runner_rejects_malformed_secret_key_list(
+    cloud, secret_keys_json, tmp_path, monkeypatch
+):
+    config = AWS_CONFIG if cloud == "aws" else GCP_CONFIG
+    run_path = tmp_path / "run.py"
+    run_path.write_text(generate_artifacts(config)["run.py"])
+    environment = {
+        "DATASOURCE_NAME": "my_salesforce",
+        "CLOUD_PLATFORM": cloud,
+        "INDEXING_MODE": "FULL",
+        "SECRET_KEYS_JSON": secret_keys_json,
+        "CONNECTOR_CLASS": "UnusedConnector",
+        "CONNECTOR_MODULE": "unused_connector",
+        "AWS_REGION" if cloud == "aws" else "GOOGLE_CLOUD_PROJECT": (
+            "us-east-1" if cloud == "aws" else "my-project"
+        ),
+    }
+    for key, value in environment.items():
+        monkeypatch.setenv(key, value)
+
+    with pytest.raises(SystemExit) as excinfo:
+        runpy.run_path(str(run_path), run_name="__main__")
+
+    assert excinfo.value.code == 1
+
+
+@pytest.mark.parametrize("cloud", ["aws", "gcp"])
+def test_generated_runner_exits_nonzero_when_declared_secret_load_fails(
+    cloud, tmp_path, monkeypatch
+):
+    if cloud == "aws":
+
+        class FailingSecretsManager:
+            def get_secret_value(self, *, SecretId):
+                raise RuntimeError(f"missing {SecretId}")
+
+        boto3 = ModuleType("boto3")
+        setattr(boto3, "client", lambda *_args, **_kwargs: FailingSecretsManager())
+        monkeypatch.setitem(sys.modules, "boto3", boto3)
+        config = AWS_CONFIG
+        provider_env = {"AWS_REGION": "us-east-1"}
+    else:
+
+        class FailingSecretManagerClient:
+            def access_secret_version(self, *, request):
+                raise RuntimeError(f"missing {request['name']}")
+
+        google = ModuleType("google")
+        google.__path__ = []
+        google_cloud = ModuleType("google.cloud")
+        google_cloud.__path__ = []
+        secretmanager = ModuleType("google.cloud.secretmanager")
+        setattr(secretmanager, "SecretManagerServiceClient", FailingSecretManagerClient)
+        setattr(google_cloud, "secretmanager", secretmanager)
+        setattr(google, "cloud", google_cloud)
+        monkeypatch.setitem(sys.modules, "google", google)
+        monkeypatch.setitem(sys.modules, "google.cloud", google_cloud)
+        monkeypatch.setitem(sys.modules, "google.cloud.secretmanager", secretmanager)
+        config = GCP_CONFIG
+        provider_env = {"GOOGLE_CLOUD_PROJECT": "my-project"}
+
+    run_path = tmp_path / "run.py"
+    run_path.write_text(generate_artifacts(config)["run.py"])
+    environment = {
+        "DATASOURCE_NAME": "my_salesforce",
+        "CLOUD_PLATFORM": cloud,
+        "INDEXING_MODE": "FULL",
+        "SECRET_KEYS_JSON": '["SOURCE_API_TOKEN"]',
+        "CONNECTOR_CLASS": "UnusedConnector",
+        "CONNECTOR_MODULE": "unused_connector",
+        **provider_env,
+    }
+    for key, value in environment.items():
+        monkeypatch.setenv(key, value)
+
+    with pytest.raises(SystemExit) as excinfo:
+        runpy.run_path(str(run_path), run_name="__main__")
+
+    assert excinfo.value.code == 1
 
 
 def test_factory_identifier_is_quoted_in_generated_yaml():
@@ -464,24 +524,70 @@ def test_list_generated_files_invalid_cloud_raises():
 
 
 # ---------------------------------------------------------------------------
-# GCP secretAccessor IAM condition (#105)
+# Exact secret access from the deploy-time key manifest
 # ---------------------------------------------------------------------------
 
 
-def test_gcp_terraform_secret_accessor_has_iam_condition():
-    artifacts = generate_artifacts(GCP_CONFIG)
-    tf = artifacts["terraform/main.tf"]
-    assert "condition" in tf
-    assert "resource.name.startsWith" in tf
+@pytest.mark.parametrize("config", [AWS_CONFIG, GCP_CONFIG])
+def test_terraform_accepts_secret_keys_json_and_passes_it_to_cronjob(config):
+    artifacts = generate_artifacts(config)
+
+    assert 'variable "secret_keys_json"' in artifacts["terraform/variables.tf"]
+    assert "jsondecode(var.secret_keys_json)" in artifacts["terraform/main.tf"]
+    assert 'name  = "SECRET_KEYS_JSON"' in artifacts["terraform/main.tf"]
+    assert "value = var.secret_keys_json" in artifacts["terraform/main.tf"]
 
 
-def test_gcp_terraform_secret_accessor_condition_uses_secret_prefix():
-    artifacts = generate_artifacts(GCP_CONFIG)
-    tf = artifacts["terraform/main.tf"]
+def test_gcp_terraform_grants_accessor_on_each_exact_derived_secret():
+    tf = generate_artifacts(GCP_CONFIG)["terraform/main.tf"]
+
+    assert 'resource "google_secret_manager_secret_iam_member" "secret_accessor"' in tf
+    assert "for_each  = local.secret_names" in tf
+    assert "secret_id = each.value" in tf
     assert GCP_CONFIG.secret_prefix in tf
+    assert "roles/secretmanager.secretAccessor" in tf
+    assert 'google_project_iam_member" "secret_accessor' not in tf
+    assert "resource.name.startsWith" not in tf
+    assert "secretmanager.viewer" not in tf
 
 
-def test_aws_terraform_has_no_iam_condition():
-    artifacts = generate_artifacts(AWS_CONFIG)
-    tf = artifacts["terraform/main.tf"]
-    assert "condition {" not in tf
+def test_aws_terraform_resolves_exact_secret_arns_for_get_only():
+    tf = generate_artifacts(AWS_CONFIG)["terraform/main.tf"]
+
+    assert 'data "aws_secretsmanager_secret" "connector"' in tf
+    assert "for_each = local.secret_names" in tf
+    assert "name     = each.value" in tf
+    assert "Resource = [for secret in data.aws_secretsmanager_secret.connector : secret.arn]" in tf
+    assert 'Action   = ["secretsmanager:GetSecretValue"]' in tf
+    assert "count = length(local.secret_names) == 0 ? 0 : 1" in tf
+    assert "ListSecrets" not in tf
+    assert "DescribeSecret" not in tf
+    assert f"{AWS_CONFIG.secret_prefix}*" not in tf
+
+
+def test_exact_secret_derivation_does_not_grant_connector_prefix_collision():
+    tf = generate_artifacts(GCP_CONFIG)["terraform/main.tf"]
+    colliding_connector_prefix = f"{GCP_CONFIG.secret_prefix.removesuffix('_')}_EXTRA_"
+
+    assert colliding_connector_prefix not in tf
+    assert "startsWith" not in tf
+    assert "secret_id = each.value" in tf
+
+
+@pytest.mark.parametrize("config", [AWS_CONFIG, GCP_CONFIG])
+def test_runner_uses_keys_json_for_direct_access_without_enumeration(config):
+    run_py = generate_artifacts(config)["run.py"]
+
+    assert "SECRET_KEYS_JSON" in run_py
+    assert ".glean_secret_keys" not in run_py
+    assert "list_secrets" not in run_py
+    assert "get_paginator" not in run_py
+    if config.cloud == "gcp":
+        assert "access_secret_version" in run_py
+    else:
+        assert "get_secret_value" in run_py
+
+
+@pytest.mark.parametrize("config", [AWS_CONFIG, GCP_CONFIG])
+def test_dockerignore_excludes_local_secret_manifest(config):
+    assert ".glean_secret_keys" in generate_artifacts(config)[".dockerignore"].splitlines()

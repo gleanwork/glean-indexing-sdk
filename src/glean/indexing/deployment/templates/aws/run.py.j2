@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
+import re
 import sys
 
 from glean.indexing.deployment.bootstrap import (
@@ -32,6 +34,7 @@ REQUIRED_ENV_VARS = [
     "CLOUD_PLATFORM",
     "INDEXING_MODE",
     "AWS_REGION",
+    "SECRET_KEYS_JSON",
     "CONNECTOR_CLASS",
     "CONNECTOR_MODULE",
 ]
@@ -52,6 +55,22 @@ indexing_mode = os.environ["INDEXING_MODE"]
 connector_class_name = os.environ["CONNECTOR_CLASS"]
 connector_module_path = os.environ["CONNECTOR_MODULE"]
 connector_factory_name = os.getenv("CONNECTOR_FACTORY")
+
+try:
+    _secret_keys = json.loads(os.environ["SECRET_KEYS_JSON"])
+except json.JSONDecodeError as _exc:
+    print(f"ERROR: SECRET_KEYS_JSON is not valid JSON: {_exc}", file=sys.stderr)
+    sys.exit(1)
+
+_env_key_pattern = re.compile(r"[A-Za-z_][A-Za-z0-9_]*", re.ASCII)
+if not isinstance(_secret_keys, list) or not all(
+    isinstance(_key, str) and _env_key_pattern.fullmatch(_key) for _key in _secret_keys
+):
+    print(
+        "ERROR: SECRET_KEYS_JSON must be a JSON array of valid environment variable names.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 # ---------------------------------------------------------------------------
 # 2. Configure structured logging (JSON output, captured by CloudWatch Logs).
@@ -85,21 +104,16 @@ except ImportError:
 sm_client = boto3.client("secretsmanager", region_name=aws_region)
 prefix = f"CUSTOM_DATASOURCE_PLATFORM_{connector_name.upper()}_"
 
-# List all secrets with the connector prefix.
-paginator = sm_client.get_paginator("list_secrets")
 secrets_loaded = 0
-for page in paginator.paginate(Filters=[{"Key": "name", "Values": [prefix]}]):
-    for secret_meta in page.get("SecretList", []):
-        secret_name = secret_meta["Name"]
-        if not secret_name.startswith(prefix):
-            continue
-
-        # Derive the env var name: strip the prefix to get the key part.
-        env_key = secret_name[len(prefix):]
-
-        response = sm_client.get_secret_value(SecretId=secret_name)
-        os.environ[env_key] = response["SecretString"]
+for _key in _secret_keys:
+    _secret_name = f"{prefix}{_key}"
+    try:
+        _response = sm_client.get_secret_value(SecretId=_secret_name)
+        os.environ[_key] = _response["SecretString"]
         secrets_loaded += 1
+    except Exception as _exc:
+        print(f"ERROR: Could not load declared secret {_key!r}: {_exc}", file=sys.stderr)
+        sys.exit(1)
 
 print(f"Loaded {secrets_loaded} secret(s) from AWS Secrets Manager.")
 

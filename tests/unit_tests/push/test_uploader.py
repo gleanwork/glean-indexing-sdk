@@ -197,6 +197,50 @@ def test_bulk_index_documents_calls_generated_client():
     )
 
 
+def test_bulk_index_documents_empty_replaces_with_one_empty_page():
+    uploader = PushUploader(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        uploader.bulk_index_documents(
+            [],
+            upload_id="upload-1",
+            force_restart_upload=True,
+            disable_stale_document_deletion_check=True,
+        )
+
+    client.indexing.documents.bulk_index.assert_called_once_with(
+        datasource="test_datasource",
+        documents=[],
+        upload_id="upload-1",
+        is_first_page=True,
+        is_last_page=True,
+        force_restart_upload=True,
+        disable_stale_document_deletion_check=True,
+    )
+
+
+def test_bulk_index_document_batches_empty_replaces_with_one_empty_page():
+    uploader = PushUploader(datasource="test_datasource")
+
+    with mock_glean_client() as client:
+        uploader.bulk_index_document_batches(
+            iter(()),
+            upload_id="upload-1",
+            force_restart_upload=True,
+            disable_stale_document_deletion_check=True,
+        )
+
+    client.indexing.documents.bulk_index.assert_called_once_with(
+        datasource="test_datasource",
+        documents=[],
+        upload_id="upload-1",
+        is_first_page=True,
+        is_last_page=True,
+        force_restart_upload=True,
+        disable_stale_document_deletion_check=True,
+    )
+
+
 def test_bulk_index_documents_uploads_middle_pages_concurrently():
     uploader = PushUploader(datasource="test_datasource", upload_max_workers=2)
     documents = [_document(f"doc-{index}") for index in range(5)]

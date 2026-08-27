@@ -331,8 +331,17 @@ class TestNegativeIdentityAssertions:
             harness.run_integration_test()
 
     def test_no_violation_passes(self, tmp_path: Path):
+        from glean.api_client.models import DocumentPermissionsDefinition
+
+        class _RestrictedDatasourceFake(DatasourceFake):
+            def transform(self, data):
+                documents = super().transform(data)
+                for document in documents:
+                    document.permissions = DocumentPermissionsDefinition(allowed_users=[])
+                return documents
+
         real_client = _CountingDataClient(_DOCS)
-        connector = DatasourceFake(name="ds", data_client=real_client)
+        connector = _RestrictedDatasourceFake(name="ds", data_client=real_client)
         config = TestConfig(
             cache_dir=str(tmp_path),
             negative_test_identities=["outsider@corp.com"],
@@ -341,5 +350,5 @@ class TestNegativeIdentityAssertions:
         harness = TestHarness(
             connector=connector, config=config, clients={"data_client": real_client}
         )
-        result = harness.run_integration_test()  # DatasourceFake produces no ACLs → no violation
+        result = harness.run_integration_test()
         result.assert_documents_posted(count=3)

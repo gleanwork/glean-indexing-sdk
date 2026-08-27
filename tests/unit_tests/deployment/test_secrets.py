@@ -213,23 +213,16 @@ def test_complete_secret_name_rejects_over_provider_length(
         backend._secret_name(env_key)
 
 
-@pytest.mark.parametrize("env_key", ["BAD.KEY", "BAD/KEY", "BÁD_KEY", "BAD\nKEY"])
-def test_gcp_secret_name_rejects_invalid_characters(gcp_config, env_key):
-    with pytest.raises(ValueError, match="GCP secret name"):
-        GCPSecretsBackend(gcp_config)._secret_name(env_key)
-
-
 @pytest.mark.parametrize(
-    "env_key", ["KEY_name", "KEY+name", "KEY=name", "KEY.name", "KEY@name", "KEY-name", "KEY/name"]
+    "env_key", ["9BAD_KEY", "BAD.KEY", "BAD/KEY", "BAD-KEY", "BÁD_KEY", "BAD\nKEY"]
 )
-def test_aws_secret_name_preserves_provider_punctuation(aws_config, env_key):
-    assert AWSSecretsBackend(aws_config)._secret_name(env_key).endswith(env_key)
-
-
-@pytest.mark.parametrize("env_key", ["BAD,KEY", "BÁD_KEY", "BAD\nKEY"])
-def test_aws_secret_name_rejects_invalid_characters(aws_config, env_key):
-    with pytest.raises(ValueError, match="AWS secret name"):
-        AWSSecretsBackend(aws_config)._secret_name(env_key)
+@pytest.mark.parametrize("backend_type", [GCPSecretsBackend, AWSSecretsBackend])
+def test_secret_name_rejects_malformed_environment_keys(
+    gcp_config, aws_config, backend_type, env_key
+):
+    config = gcp_config if backend_type is GCPSecretsBackend else aws_config
+    with pytest.raises(ValueError, match="Environment variable key"):
+        backend_type(config)._secret_name(env_key)
 
 
 # ---------------------------------------------------------------------------
@@ -286,9 +279,10 @@ def test_gcp_upload_creates_new_secrets(gcp_config, env_file):
         backend = secrets_mod.GCPSecretsBackend(gcp_config)
         result = backend.upload(env_file)
 
-    assert len(result) == 2
-    for v in result.values():
-        assert v == "created"
+    assert result == {
+        f"{gcp_config.secret_prefix}API_KEY": "created",
+        f"{gcp_config.secret_prefix}OAUTH_TOKEN": "created",
+    }
 
 
 def test_gcp_upload_returns_updated_for_existing_secrets(gcp_config, env_file):
@@ -325,9 +319,10 @@ def test_gcp_upload_returns_updated_for_existing_secrets(gcp_config, env_file):
         backend = secrets_mod.GCPSecretsBackend(gcp_config)
         result = backend.upload(env_file)
 
-    assert len(result) == 2
-    for v in result.values():
-        assert v == "updated"
+    assert result == {
+        f"{gcp_config.secret_prefix}API_KEY": "updated",
+        f"{gcp_config.secret_prefix}OAUTH_TOKEN": "updated",
+    }
 
 
 def test_gcp_upload_empty_env_returns_early(gcp_config, tmp_path):
@@ -356,7 +351,7 @@ def test_gcp_upload_validates_all_names_before_creating_client(gcp_config, tmp_p
                 "google.api_core.exceptions": MagicMock(),
             },
         ),
-        pytest.raises(ValueError, match="GCP secret name"),
+        pytest.raises(ValueError, match="Environment variable key"),
     ):
         GCPSecretsBackend(gcp_config).upload(env_file)
 
@@ -421,9 +416,10 @@ def test_aws_upload_creates_new_secret(aws_config, env_file):
         backend = secrets_mod.AWSSecretsBackend(aws_config)
         result = backend.upload(env_file)
 
-    assert len(result) == 2
-    for v in result.values():
-        assert v == "created"
+    assert result == {
+        f"{aws_config.secret_prefix}API_KEY": "created",
+        f"{aws_config.secret_prefix}OAUTH_TOKEN": "created",
+    }
 
 
 def test_aws_upload_empty_env_returns_early(aws_config, tmp_path):

@@ -6,9 +6,10 @@ terraform/
 *.tfstate
 *.tfstate.backup
 
-# Credentials — never bake secrets into images.
+# Credentials and local secret metadata — never bake them into images.
 .env
 .env.*
+.glean_secret_keys
 
 # Python cache
 __pycache__/

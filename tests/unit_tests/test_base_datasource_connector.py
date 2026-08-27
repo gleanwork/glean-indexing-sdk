@@ -22,6 +22,7 @@ from glean.indexing.models import (
     ConnectorOptions,
     CustomDatasourceConfig,
     DatasourceIdentityDefinitions,
+    IndexingMode,
 )
 from glean.indexing.push import PushUploader
 from glean.indexing.testing import mock_glean_client
@@ -267,6 +268,62 @@ class TestBaseDatasourceConnector:
         else:
             assert "disable_stale_document_deletion_check" not in call_kwargs
             assert "disable_stale_data_deletion_check" not in call_kwargs
+
+    def test_incremental_upload_uses_additive_index_without_bulk_only_options(self):
+        """Incremental crawls add/update documents without triggering replacement semantics."""
+        data = [
+            {
+                "id": "1",
+                "title": "Doc",
+                "content": "Content",
+                "url": "https://test.example.com/1",
+            }
+        ]
+        connector = TestDatasourceConnector(name="test_connector", data_client=MockDataClient(data))
+        options = ConnectorOptions(
+            upload_timeout_ms=120_000,
+            force_restart=True,
+            disable_stale_deletion_check=True,
+        )
+
+        with mock_glean_client() as client:
+            connector.index_data(mode=IndexingMode.INCREMENTAL, options=options)
+
+        client.indexing.documents.index.assert_called_once()
+        call_kwargs = client.indexing.documents.index.call_args.kwargs
+        assert call_kwargs["documents"][0].id == "1"
+        assert call_kwargs["timeout_ms"] == 120_000
+        assert "force_restart_upload" not in call_kwargs
+        assert "disable_stale_document_deletion_check" not in call_kwargs
+        client.indexing.documents.bulk_index.assert_not_called()
+
+    def test_empty_incremental_upload_makes_no_document_call(self):
+        connector = TestDatasourceConnector(
+            name="test_connector",
+            data_client=MockDataClient([]),
+        )
+
+        with mock_glean_client() as client:
+            connector.index_data(mode=IndexingMode.INCREMENTAL)
+
+        client.indexing.documents.index.assert_not_called()
+        client.indexing.documents.bulk_index.assert_not_called()
+
+    def test_empty_full_upload_reconciles_with_one_empty_bulk_page(self):
+        connector = TestDatasourceConnector(
+            name="test_connector",
+            data_client=MockDataClient([]),
+        )
+
+        with mock_glean_client() as client:
+            connector.index_data(mode=IndexingMode.FULL)
+
+        client.indexing.documents.bulk_index.assert_called_once()
+        call_kwargs = client.indexing.documents.bulk_index.call_args.kwargs
+        assert call_kwargs["documents"] == []
+        assert call_kwargs["is_first_page"] is True
+        assert call_kwargs["is_last_page"] is True
+        client.indexing.documents.index.assert_not_called()
 
     def test_document_upload_max_workers_limits_concurrency(self):
         """The public worker option controls PushUploader's middle-page concurrency."""

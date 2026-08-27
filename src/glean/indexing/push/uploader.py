@@ -196,9 +196,6 @@ class PushUploader:
         rather than papering over it.
         """
         document_list = list(documents)
-        if not document_list:
-            return
-
         batches = list(
             DocumentBatchProcessor(
                 document_list, batch_size=batch_size, max_batch_bytes=max_batch_bytes
@@ -207,7 +204,7 @@ class PushUploader:
         self.bulk_index_document_batches(
             batches,
             upload_id=upload_id,
-            batch_count=len(batches),
+            batch_count=max(len(batches), 1),
             force_restart_upload=force_restart_upload,
             disable_stale_document_deletion_check=disable_stale_document_deletion_check,
         )
@@ -230,10 +227,10 @@ class PushUploader:
         batch_iterator = iter(batches)
         first_batch = next(batch_iterator, None)
         if first_batch is None:
-            return
+            first_batch = []
 
         upload_id = self._upload_id(upload_id)
-        observability_batch_count = batch_count if batch_count is not None else 1
+        observability_batch_count = max(batch_count, 1) if batch_count is not None else 1
         second_batch = next(batch_iterator, None)
         if second_batch is None:
             self.bulk_index_single_batch_upload(

@@ -194,7 +194,11 @@ class BaseDatasourceConnector(BaseConnector[TSourceData, DocumentDefinition], AB
             self._observability.record_metric("documents_transformed", len(documents))
 
             self._observability.start_timer("data_upload")
-            if documents:
+            if mode == IndexingMode.INCREMENTAL:
+                if documents:
+                    logger.info(f"Indexing {len(documents)} documents additively")
+                    uploader.index_documents(documents=documents)
+            else:
                 logger.info(f"Indexing {len(documents)} documents")
                 force_restart = options.force_restart if options else False
                 if force_restart:

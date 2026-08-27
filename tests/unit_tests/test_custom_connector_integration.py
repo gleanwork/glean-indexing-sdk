@@ -69,7 +69,11 @@ def test_custom_datasource_connector_empty_data():
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
 
-        assert bulk_index.call_count == 0
+        bulk_index.assert_called_once()
+        _, kwargs = bulk_index.call_args
+        assert kwargs["documents"] == []
+        assert kwargs["is_first_page"] is True
+        assert kwargs["is_last_page"] is True
 
 
 def test_custom_datasource_connector_api_error():

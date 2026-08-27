@@ -26,17 +26,23 @@ def _doc(
     allowed_users: list | None = None,
     allowed_groups: list | None = None,
     allowed_group_intersections: list | None = None,
+    allow_anonymous_access: bool | None = None,
+    allow_all_datasource_users_access: bool | None = None,
 ) -> DocumentDefinition:
     perms = None
     if (
         allowed_users is not None
         or allowed_groups is not None
         or allowed_group_intersections is not None
+        or allow_anonymous_access is not None
+        or allow_all_datasource_users_access is not None
     ):
         perms = DocumentPermissionsDefinition(
             allowed_users=allowed_users,
             allowed_groups=allowed_groups,
             allowed_group_intersections=allowed_group_intersections,
+            allow_anonymous_access=allow_anonymous_access,
+            allow_all_datasource_users_access=allow_all_datasource_users_access,
         )
     return DocumentDefinition(
         id=doc_id,
@@ -160,6 +166,59 @@ class TestAssertNegativeIdentitiesAbsent:
         assert "bad1" in msg
         assert "bad2" in msg
 
-    def test_document_without_permissions_skipped(self):
+    def test_document_without_permissions_raises_with_document_id(self):
         doc = _doc("no-perms")
-        assert_negative_identities_absent([doc], ["any@corp.com"])  # should not raise
+
+        with pytest.raises(AssertionError) as exc_info:
+            assert_negative_identities_absent([doc], ["any@corp.com"])
+
+        message = str(exc_info.value)
+        assert "no-perms" in message
+        assert "permissions=None" in message
+        assert "absence cannot be established" in message
+
+    def test_anonymous_access_raises_with_document_id_and_flag(self):
+        doc = _doc("public-doc", allow_anonymous_access=True)
+
+        with pytest.raises(AssertionError) as exc_info:
+            assert_negative_identities_absent([doc], ["denied@corp.com"])
+
+        message = str(exc_info.value)
+        assert "public-doc" in message
+        assert "allow_anonymous_access=True" in message
+
+    def test_all_datasource_users_access_raises_with_document_id_and_flag(self):
+        doc = _doc("datasource-wide-doc", allow_all_datasource_users_access=True)
+
+        with pytest.raises(AssertionError) as exc_info:
+            assert_negative_identities_absent([doc], ["denied@corp.com"])
+
+        message = str(exc_info.value)
+        assert "datasource-wide-doc" in message
+        assert "allow_all_datasource_users_access=True" in message
+
+    def test_false_and_none_broad_access_flags_pass(self):
+        docs = [
+            _doc("anonymous-false", allow_anonymous_access=False),
+            _doc("datasource-users-false", allow_all_datasource_users_access=False),
+            _doc("flags-none", allowed_users=[]),
+        ]
+
+        assert_negative_identities_absent(docs, ["denied@corp.com"])
+
+    def test_literal_and_broad_access_violations_across_documents_are_aggregated(self):
+        docs = [
+            _doc("literal-doc", allowed_users=[_user(email="denied@corp.com")]),
+            _doc("no-permissions-doc"),
+            _doc("anonymous-doc", allow_anonymous_access=True),
+            _doc("datasource-users-doc", allow_all_datasource_users_access=True),
+        ]
+
+        with pytest.raises(AssertionError) as exc_info:
+            assert_negative_identities_absent(docs, ["denied@corp.com"])
+
+        message = str(exc_info.value)
+        assert "'denied@corp.com' in docs ['literal-doc']" in message
+        assert "'no-permissions-doc' (permissions=None" in message
+        assert "'anonymous-doc' (allow_anonymous_access=True" in message
+        assert "'datasource-users-doc' (allow_all_datasource_users_access=True" in message

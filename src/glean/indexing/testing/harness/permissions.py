@@ -11,7 +11,7 @@ ways:
 
 2. **Negative permission assertions (Phase 2)**: verify that identities listed
    in :attr:`~glean.indexing.testing.harness.config.TestConfig.negative_test_identities`
-   are *absent* from every document's ACL.
+   cannot access any document through literal ACL entries or broad-access settings.
 
 Identities collected
 --------------------
@@ -90,35 +90,52 @@ def assert_negative_identities_absent(
     """Assert that none of the *negative_test_identities* appear in any document's ACL.
 
     A "negative identity" is one that must NOT have access to any crawled
-    document.  The check covers all three ACL fields on each document:
+    document. The check covers all three literal ACL fields on each document:
 
     - ``allowedUsers`` (email preferred over ``datasource_user_id``)
     - ``allowedGroups`` (list of group name strings)
     - ``allowedGroupIntersections[*].requiredGroups``
 
-    If any negative identity is found an :class:`AssertionError` is raised
-    with a descriptive message listing the violating identities and the
-    document IDs where they appear.
+    The check also fails conservatively for documents without a ``permissions``
+    block and documents with ``allowAnonymousAccess`` or
+    ``allowAllDatasourceUsersAccess`` enabled. In those cases, absence of access
+    for the configured identities cannot be established.
+
+    All literal and broad-access violations are aggregated into one descriptive
+    :class:`AssertionError` that identifies the affected documents.
 
     Args:
         documents: Transformed documents to inspect.
-        negative_test_identities: Identities that must be absent from all ACLs.
+        negative_test_identities: Identities that must not have access to any document.
 
     Raises:
-        AssertionError: If any negative identity appears in any document's ACL.
+        AssertionError: If a negative identity appears in a literal ACL, or if
+            missing or broad permissions prevent proving that it has no access.
     """
     if not negative_test_identities:
         return
 
     negative_set = set(negative_test_identities)
     violations: dict[str, list[str]] = {}  # identity → list of document IDs
+    broad_access_violations: list[str] = []
 
     for doc in documents:
         perms = doc.permissions
-        if perms is None:
-            continue
-
         doc_id = doc.id or "<unknown>"
+        if perms is None:
+            broad_access_violations.append(
+                f"{doc_id!r} (permissions=None; absence cannot be established)"
+            )
+            continue
+        if perms.allow_anonymous_access is True:
+            broad_access_violations.append(
+                f"{doc_id!r} (allow_anonymous_access=True; broad access may include negative identities)"
+            )
+        if perms.allow_all_datasource_users_access is True:
+            broad_access_violations.append(
+                f"{doc_id!r} (allow_all_datasource_users_access=True; broad access may include negative identities)"
+            )
+
         present_in_doc: Set[str] = set()
 
         for user_ref in perms.allowed_users or []:
@@ -138,11 +155,19 @@ def assert_negative_identities_absent(
         for identity in present_in_doc:
             violations.setdefault(identity, []).append(doc_id)
 
+    messages: list[str] = []
     if violations:
         details = "; ".join(
             f"{identity!r} in docs {doc_ids}" for identity, doc_ids in sorted(violations.items())
         )
-        raise AssertionError(
+        messages.append(
             f"Identities listed in negative_test_identities appear in document permission "
             f"payloads: {details}"
         )
+    if broad_access_violations:
+        messages.append(
+            "Negative identity absence cannot be established for documents: "
+            + "; ".join(broad_access_violations)
+        )
+    if messages:
+        raise AssertionError("\n".join(messages))

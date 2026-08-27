@@ -1,42 +1,53 @@
-from typing import List, Sequence
+from datetime import datetime
+from typing import Sequence
 
-from glean.api_client.models.userreferencedefinition import UserReferenceDefinition
+from glean.api_client.models import DocumentPermissionsDefinition
 from glean.indexing.connectors import BaseStreamingDatasourceConnector
-from glean.indexing.models import ContentDefinition, CustomDatasourceConfig, DocumentDefinition
+from glean.indexing.models import (
+    ContentDefinition,
+    CustomDatasourceConfig,
+    DocumentDefinition,
+    UserReferenceDefinition,
+)
 
 from .article_data import ArticleData
+from .article_data_client import LargeKnowledgeBaseClient
 
 
 class KnowledgeBaseConnector(BaseStreamingDatasourceConnector[ArticleData]):
-    configuration: CustomDatasourceConfig = CustomDatasourceConfig(
+    """Transforms streamed articles into Glean documents."""
+
+    configuration = CustomDatasourceConfig(
         name="knowledge_base",
         display_name="Knowledge Base",
         url_regex=r"https://kb\.company\.com/.*",
-        trust_url_regex_for_view_activity=True,
+        is_user_referenced_by_email=True,
     )
 
-    def __init__(self, name: str, data_client):
+    def __init__(self, name: str, data_client: LargeKnowledgeBaseClient) -> None:
         super().__init__(name, data_client)
         self.batch_size = 50
 
-    def transform(self, data: Sequence[ArticleData]) -> List[DocumentDefinition]:
-        documents = []
-        for article in data:
-            documents.append(
-                DocumentDefinition(
-                    id=article["id"],
-                    title=article["title"],
-                    datasource=self.name,
-                    view_url=article["url"],
-                    body=ContentDefinition(mime_type="text/html", text_content=article["content"]),
-                    author=UserReferenceDefinition(email=article["author"]),
-                    updated_at=self._parse_timestamp(article["updated_at"]),
-                )
+    def transform(self, data: Sequence[ArticleData]) -> Sequence[DocumentDefinition]:
+        return [
+            DocumentDefinition(
+                id=article["id"],
+                title=article["title"],
+                datasource=self.name,
+                view_url=article["url"],
+                body=ContentDefinition(
+                    mime_type="text/html",
+                    text_content=article["content"],
+                ),
+                author=UserReferenceDefinition(email=article["author"]),
+                permissions=DocumentPermissionsDefinition(
+                    allowed_users=[
+                        UserReferenceDefinition(email=email) for email in article["allowed_users"]
+                    ]
+                ),
+                updated_at=int(
+                    datetime.fromisoformat(article["updated_at"].replace("Z", "+00:00")).timestamp()
+                ),
             )
-        return documents
-
-    def _parse_timestamp(self, timestamp_str: str) -> int:
-        from datetime import datetime
-
-        dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-        return int(dt.timestamp())
+            for article in data
+        ]

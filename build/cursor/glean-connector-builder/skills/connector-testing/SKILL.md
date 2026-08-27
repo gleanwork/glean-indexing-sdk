@@ -12,6 +12,7 @@ Use this skill after implementing or changing a connector. Exercise the connecto
 - Never run files under the repository's `tests/` directory while using this skill. Those tests validate the SDK implementation and belong to SDK-maintainer CI, not the connector-building workflow.
 - Use only public utilities exported by `glean.indexing.testing`, including `TestHarness`, `TestConfig`, static data clients, `MockGleanClient`, and `run_connector`.
 - Before validation, ask for confirmation once for the whole testing step and state which phases will run. Do not ask again for each phase in the same batch.
+- Before the live end-to-end phase specifically, state the resolved `GLEAN_SERVER_URL` / `GLEAN_INSTANCE` target and confirm with the user before proceeding. Live uploads can finalize replacement state and stale-delete documents omitted by a bounded crawl, so use only a disposable datasource. Only call `run_end_to_end(confirm=True, allow_destructive=True)` / `run_end_to_end_async(confirm=True, allow_destructive=True)` after both conditions are satisfied.
 - Use the existing task context, including the connector-local `.env` file if identified, to determine whether source and Glean credentials are present.
 - If connector code changes after a run, ask whether to run the connector validation again.
 - Never print secrets, commit `.env`, or include recorded source data.
@@ -84,19 +85,29 @@ Use `run_integration_test_async()` for async streaming connectors.
 
 ### 3. Live end-to-end
 
+> **Production safety:** this phase uploads real documents to whichever Glean
+> instance `GLEAN_SERVER_URL` (or `GLEAN_INSTANCE`) resolves to, and there is
+> **no automated cleanup**. Before running it, state the resolved target and
+> confirm with the user before proceeding. See **Cleaning up after a live
+> run** below for how to remove what it uploads.
+
+The built-in live phase is document-only. It rejects people connectors and datasource connectors that override `get_identities()`, because the document cleanup command cannot restore replaced employee, user, group, or membership data. Validate those outputs with mock/integration tests or a purpose-built live smoke test with explicit identity cleanup.
+
 Run only when source credentials and `GLEAN_INDEXING_API_TOKEN` plus `GLEAN_SERVER_URL` or `GLEAN_INSTANCE` are available:
 
 ```bash
-glean-idx test --phase live
+glean-idx test --phase live --allow-destructive-live
 ```
+
+This prompts for confirmation (showing the resolved target) unless `--yes` is passed. `--yes` only skips the prompt; it does not replace the required `--allow-destructive-live` acknowledgement. The CLI carries the confirmed target into the harness, which refuses to upload if the configured target changes before live execution.
 
 or, to assert on the result:
 
 ```python
-harness.run_end_to_end()
+harness.run_end_to_end(confirm=True, allow_destructive=True)
 ```
 
-Use `run_end_to_end_async()` for async streaming connectors. This phase uses the real bounded source client and real Glean APIs.
+`confirm=True` confirms the target. The separate `allow_destructive=True` acknowledges replacement finalization and possible stale deletion; without it the harness raises `UnsafeLiveEndToEndRunError`. Use `run_end_to_end_async()` for async streaming connectors. This phase uses the current bounded source client and real Glean APIs; it never reads or writes integration fixtures.
 
 After upload, the harness waits for normal indexing, requests `processalldocuments` once when needed, ignores a rate-limit response from that request, and polls status for a bounded period. If the result is `PENDING`, tell the user:
 
@@ -111,6 +122,10 @@ If live credentials are unavailable, explicitly report that the live phase was s
 For checking document status during testing, use `glean-idx document status --datasource <datasource> --document <object-type> <document-id> --poll`; omit `--poll` for an ad-hoc single check. Repeat `--document <object-type> <document-id>` to check multiple documents.
 
 When a document uploaded but never became searchable, `glean-idx document events --datasource <datasource> --object-type <type> --id <id>` shows its lifecycle, and `glean-idx datasource status --datasource <datasource>` compares uploaded against indexed counts.
+
+## Cleaning up after a live run
+
+A live end-to-end run has no automated cleanup. On success, the harness logs a `glean-idx document delete --datasource <name> --document <object-type> <id> ...` command naming every document it just uploaded -- run that command (or `PushUploader.delete_document(...)` from Python) to remove them. Do this whenever the live phase ran against anything other than a disposable test datasource.
 
 ## Run Report
 

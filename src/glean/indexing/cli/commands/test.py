@@ -9,6 +9,7 @@ made the middle phases go unused.
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -18,6 +19,8 @@ from glean.indexing.cli.errors import CliError, ValidationFailedError
 from glean.indexing.cli.main import context, global_options
 from glean.indexing.cli.output import emit
 from glean.indexing.cli.preconditions import (
+    LEGACY_INSTANCE_VAR,
+    SERVER_URL_VAR,
     check_credentials,
     missing_credentials,
     project_option,
@@ -74,8 +77,8 @@ ALL = "all"
     "--connector",
     "reference",
     default=None,
-    metavar="MODULE:CLASS",
-    help="Connector to test. Defaults to the project file's connector.",
+    metavar="MODULE:CLASS_OR_FACTORY",
+    help="Connector class or zero-argument factory. Defaults to the project file.",
 )
 @click.option(
     "--mode",
@@ -97,9 +100,14 @@ ALL = "all"
 )
 @click.option(
     "--max-items",
-    type=int,
+    type=click.IntRange(min=1),
     default=None,
     help="Cap items fetched per data client. Applies to every client.",
+)
+@click.option(
+    "--allow-destructive-live",
+    is_flag=True,
+    help="live: allow replacement finalization and stale document deletion.",
 )
 @project_option
 @global_options
@@ -113,6 +121,7 @@ def test(
     config_path: Optional[Path],
     refresh_cache: bool,
     max_items: Optional[int],
+    allow_destructive_live: bool,
     project_dir: Optional[Path],
     output: Optional[str],
     assume_yes: bool,
@@ -127,8 +136,11 @@ def test(
     --phase integration   the source is real and Glean is mocked. The first run
                           records source calls to a local cache and later runs
                           replay them, which is what makes results repeatable.
-    --phase live          both are real. This uploads to Glean, and a full
-                          crawl removes documents the run does not produce.
+    --phase live          both are real. Requires --allow-destructive-live and
+                          prompts for target confirmation (unless --yes). The
+                          crawl can finalize replacement state and remove
+                          documents it does not produce, so use a disposable
+                          datasource.
     --phase all           every phase in order, stopping at the first failure.
                           A phase that cannot run is skipped and reported, not
                           treated as a failure.
@@ -137,7 +149,11 @@ def test(
     at mock and move down. Only live contacts Glean, so only live needs
     credentials.
     """
-    from glean.indexing.cli.project import instantiate_connector, load_connector
+    from glean.indexing.cli.project import (
+        instantiate_connector,
+        load_connector,
+        load_connector_factory,
+    )
     from glean.indexing.models import IndexingMode
 
     cli_ctx = context(ctx, output=output, assume_yes=assume_yes, project_dir=project_dir)
@@ -153,9 +169,34 @@ def test(
     if LIVE in plan and not batch:
         check_credentials()
 
-    resolved_mode = IndexingMode(mode or cli_ctx.project_config.get("indexing_mode") or "full")
+    live_will_run = LIVE in plan and (not batch or not missing_credentials())
+    if allow_destructive_live and LIVE not in plan:
+        raise ValidationFailedError(
+            "--allow-destructive-live only applies to --phase live or --phase all",
+            docs=DOCS,
+        )
+    if live_will_run and not allow_destructive_live:
+        raise ValidationFailedError(
+            "the live phase can finalize replacement state and stale-delete documents",
+            hint=["rerun against a disposable datasource with --allow-destructive-live"],
+            docs=DOCS,
+        )
+
+    # Live uploads real documents with no automated cleanup, so a misconfigured
+    # GLEAN_SERVER_URL could reach production with nothing to catch it. Confirm
+    # once, showing exactly where the upload would land, before it happens --
+    # but only when live will actually run, not when a batch is about to skip it.
+    confirmed_live_target = None
+    if LIVE in plan and (not batch or not missing_credentials()):
+        confirmed_live_target = _confirm_live_run(cli_ctx)
+
+    configured_mode = mode or cli_ctx.project_config.get("indexing_mode") or "full"
+    resolved_mode = IndexingMode(str(configured_mode).lower())
     connector_class = load_connector(cli_ctx.project_dir, cli_ctx.project_config, reference)
-    connector = instantiate_connector(connector_class)
+    connector_factory = load_connector_factory(
+        cli_ctx.project_dir, cli_ctx.project_config, reference
+    )
+    connector = instantiate_connector(connector_class, connector_factory)
 
     # Clients are discovered first because --max-items has to name them: the
     # harness looks each one up by attribute name.
@@ -174,7 +215,16 @@ def test(
             docs=DOCS,
         )
 
-    phases = _run_plan(connector, config, clients, plan, resolved_mode, batch=batch)
+    phases = _run_plan(
+        connector,
+        config,
+        clients,
+        plan,
+        resolved_mode,
+        batch=batch,
+        allow_destructive_live=allow_destructive_live,
+        confirmed_live_target=confirmed_live_target,
+    )
     data = {
         "connector": connector_class.__name__,
         "mode": resolved_mode.value,
@@ -205,6 +255,26 @@ def _no_clients_detail(connector_name: str) -> str:
     )
 
 
+def _confirm_live_run(cli_ctx: Any) -> str:
+    """Require confirmation before the live phase can upload real documents.
+
+    Mirrors the `_confirm` pattern in `deploy.py`: --yes skips the prompt for
+    unattended use; otherwise the operator sees exactly where the upload would
+    land before it happens, which is the only guard against a misconfigured
+    GLEAN_SERVER_URL reaching production.
+    """
+    target = os.getenv(SERVER_URL_VAR) or os.getenv(LEGACY_INSTANCE_VAR) or "<unset>"
+    if cli_ctx.assume_yes:
+        return target
+    click.confirm(
+        f"The live phase uploads real documents to Glean at {target!r} with no "
+        "automated cleanup. Make sure this is a dedicated test instance, not "
+        "production. Continue?",
+        abort=True,
+    )
+    return target
+
+
 def _skip_reason(phase: str, clients: dict[str, Any], connector_name: str) -> Optional[str]:
     """Why a batch should step over this phase instead of stopping.
 
@@ -229,6 +299,8 @@ def _run_plan(
     mode: Any,
     *,
     batch: bool,
+    allow_destructive_live: bool,
+    confirmed_live_target: Optional[str],
 ) -> list[dict[str, Any]]:
     """Run each phase in order, stopping at the first real failure.
 
@@ -243,7 +315,15 @@ def _run_plan(
             continue
 
         try:
-            summary = _run_phase(connector, config, clients, phase, mode)
+            summary = _run_phase(
+                connector,
+                config,
+                clients,
+                phase,
+                mode,
+                allow_destructive_live=allow_destructive_live,
+                confirmed_live_target=confirmed_live_target,
+            )
         except ValidationFailedError as exc:
             if not batch:
                 raise
@@ -329,7 +409,14 @@ def _is_async(connector: Any) -> bool:
 
 
 def _run_phase(
-    connector: Any, config: Any, clients: dict[str, Any], phase: str, mode: Any
+    connector: Any,
+    config: Any,
+    clients: dict[str, Any],
+    phase: str,
+    mode: Any,
+    *,
+    allow_destructive_live: bool,
+    confirmed_live_target: Optional[str],
 ) -> dict[str, Any]:
     """Run one phase and summarize what it produced."""
     from glean.indexing.testing.harness import TestHarness
@@ -350,9 +437,18 @@ def _run_phase(
     if _is_async(connector):
         method += "_async"
 
+    # The CLI already confirmed the live upload (or --yes skipped the prompt),
+    # so the harness's own confirm gate would otherwise refuse a run the
+    # operator has already agreed to.
+    call_kwargs: dict[str, Any] = {"mode": mode}
+    if phase == LIVE:
+        call_kwargs["confirm"] = True
+        call_kwargs["allow_destructive"] = allow_destructive_live
+        call_kwargs["confirmed_target"] = confirmed_live_target
+
     call = getattr(harness, method)
     try:
-        outcome = asyncio.run(call(mode=mode)) if _is_async(connector) else call(mode=mode)
+        outcome = asyncio.run(call(**call_kwargs)) if _is_async(connector) else call(**call_kwargs)
     except CliError:
         raise
     except Exception as exc:  # noqa: BLE001 - reported with its type and message

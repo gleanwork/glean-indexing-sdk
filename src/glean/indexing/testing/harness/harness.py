@@ -15,7 +15,10 @@ Phase 2 (integration — real source, mock Glean, local cache):
 
 Phase 3 (end-to-end — real source, real Glean):
     Calls ``connector.index_data()`` without any mock patching.  Requires
-    ``GLEAN_SERVER_URL`` / ``GLEAN_INDEXING_API_TOKEN`` environment variables.
+    ``GLEAN_SERVER_URL`` / ``GLEAN_INDEXING_API_TOKEN`` environment variables,
+    and uploads real documents with no automated cleanup. It never reads or
+    writes Phase 2 integration fixtures. Pass ``confirm=True`` only after
+    verifying the target is a dedicated test instance, not production.
     Per-client ``max_items`` from ``TestConfig`` are applied before the run.
 """
 
@@ -23,16 +26,26 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from contextlib import contextmanager
+from itertools import islice
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional, Union
+from typing import Any, AsyncGenerator, Dict, Generator, Optional, Sequence, Union
 
 from glean.indexing.connectors.base_async_streaming_data_client import BaseAsyncStreamingDataClient
 from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
+from glean.indexing.connectors.base_datasource_connector import BaseDatasourceConnector
+from glean.indexing.connectors.base_people_connector import BasePeopleConnector
 from glean.indexing.connectors.base_streaming_data_client import BaseStreamingDataClient
+from glean.indexing.exceptions import (
+    LiveEndToEndNotConfirmedError,
+    LiveEndToEndTargetChangedError,
+    UnsafeLiveEndToEndRunError,
+    UnsafeLiveIdentityTestError,
+)
 from glean.indexing.models import ConnectorOptions, IndexingMode
-from glean.indexing.push.status import IndexingWaitResult
+from glean.indexing.push.status import IndexingWaitResult, document_status_requests
 from glean.indexing.testing.harness.cache.manifest import CacheManifest
 from glean.indexing.testing.harness.cache.recording_client import (
     RecordingAsyncStreamingClientWrapper,
@@ -64,6 +77,50 @@ AnyDataClient = Union[
 _MANIFEST_FILENAME = "manifest.json"
 
 
+class _LiveDataClient(BaseDataClient[Any]):
+    """Apply a live-run limit without reading or writing integration fixtures."""
+
+    def __init__(self, inner: BaseDataClient[Any], max_items: Optional[int]) -> None:
+        self._inner = inner
+        self._max_items = max_items
+
+    def get_source_data(self, **kwargs: Any) -> Sequence[Any]:
+        items = list(self._inner.get_source_data(**kwargs))
+        return items if self._max_items is None else items[: self._max_items]
+
+
+class _LiveStreamingDataClient(BaseStreamingDataClient[Any]):
+    """Streaming live-run limit that reads directly from the source client."""
+
+    def __init__(self, inner: BaseStreamingDataClient[Any], max_items: Optional[int]) -> None:
+        self._inner = inner
+        self._max_items = max_items
+
+    def get_source_data(self, **kwargs: Any) -> Generator[Any, None, None]:
+        items = self._inner.get_source_data(**kwargs)
+        yield from items if self._max_items is None else islice(items, self._max_items)
+
+
+class _LiveAsyncStreamingDataClient(BaseAsyncStreamingDataClient[Any]):
+    """Async live-run limit that reads directly from the source client."""
+
+    def __init__(self, inner: BaseAsyncStreamingDataClient[Any], max_items: Optional[int]) -> None:
+        self._inner = inner
+        self._max_items = max_items
+
+    async def get_source_data(self, **kwargs: Any) -> AsyncGenerator[Any, None]:
+        items = self._inner.get_source_data(**kwargs)
+        if self._max_items is None:
+            async for item in items:
+                yield item
+            return
+        for _ in range(self._max_items):
+            try:
+                yield await anext(items)
+            except StopAsyncIteration:
+                return
+
+
 def _sdk_version() -> str:
     try:
         from importlib.metadata import version
@@ -71,6 +128,51 @@ def _sdk_version() -> str:
         return version("glean-indexing-sdk")
     except Exception:
         return "unknown"
+
+
+def _resolve_glean_target() -> str:
+    """Best-effort display string for the configured Glean target.
+
+    Read directly from the environment rather than via
+    :func:`~glean.indexing.common.glean_client.api_client` so the target can
+    be surfaced in the confirmation guard even when it (or the API token) is
+    unset -- that is itself the misconfiguration this guard exists to catch.
+    """
+    return (
+        os.getenv("GLEAN_SERVER_URL") or os.getenv("GLEAN_INSTANCE") or "<GLEAN_SERVER_URL not set>"
+    )
+
+
+def _ensure_live_identity_cleanup_supported(connector: BaseConnector) -> None:
+    """Reject live mutations the harness cannot reverse after the run."""
+    if isinstance(connector, BasePeopleConnector):
+        raise UnsafeLiveIdentityTestError("people connectors")
+    if (
+        isinstance(connector, BaseDatasourceConnector)
+        and type(connector).get_identities is not BaseDatasourceConnector.get_identities
+    ):
+        raise UnsafeLiveIdentityTestError("datasource identity crawls")
+
+
+def _log_cleanup_instructions(datasource: str, documents: Sequence[Any]) -> None:
+    """Log a copy-pasteable command to remove every document this run uploaded.
+
+    Live end-to-end runs have no automated cleanup, so the operator's only
+    path back to a clean datasource is deleting what was just uploaded.
+    """
+    requests = document_status_requests(documents)
+    if not requests:
+        return
+    document_flags = " ".join(f"--document {req.object_type} {req.doc_id}" for req in requests)
+    logger.warning(
+        "Live end-to-end run uploaded %d document(s) to datasource %r. These are "
+        "NOT cleaned up automatically. To remove them: "
+        "glean-idx document delete --datasource %s %s",
+        len(requests),
+        datasource,
+        datasource,
+        document_flags,
+    )
 
 
 def _should_use_cache(
@@ -92,6 +194,15 @@ def _should_use_cache(
     except Exception:
         return False
     return not manifest.is_stale(_sdk_version())
+
+
+def _wrap_live_client(client: AnyDataClient, max_items: Optional[int]) -> AnyDataClient:
+    """Limit a real source client without consulting integration fixtures."""
+    if isinstance(client, BaseAsyncStreamingDataClient):
+        return _LiveAsyncStreamingDataClient(client, max_items)
+    if isinstance(client, BaseStreamingDataClient):
+        return _LiveStreamingDataClient(client, max_items)
+    return _LiveDataClient(client, max_items)
 
 
 def _wrap_client(
@@ -160,6 +271,8 @@ def _patched_clients(
     connector: BaseConnector,
     clients: Dict[str, AnyDataClient],
     config: TestConfig,
+    *,
+    use_integration_fixtures: bool = True,
 ) -> Generator[None, None, None]:
     """Context manager that monkey-patches connector client attributes.
 
@@ -186,14 +299,18 @@ def _patched_clients(
             client_cfg = config.clients.get(attr_name, ClientConfig())
             max_items = client_cfg.max_items
 
-            wrapped = _wrap_client(
-                attr_name,
-                client,
-                cache_dir=cache_dir,
-                connector_name=connector_name,
-                use_cache=config.use_cache,
-                refresh_cache=config.refresh_cache,
-                max_items=max_items,
+            wrapped = (
+                _wrap_client(
+                    attr_name,
+                    client,
+                    cache_dir=cache_dir,
+                    connector_name=connector_name,
+                    use_cache=config.use_cache,
+                    refresh_cache=config.refresh_cache,
+                    max_items=max_items,
+                )
+                if use_integration_fixtures
+                else _wrap_live_client(client, max_items)
             )
             setattr(connector, attr_name, wrapped)
 
@@ -374,13 +491,19 @@ class TestHarness:
         *,
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
+        confirm: bool = False,
+        allow_destructive: bool = False,
+        confirmed_target: Optional[str] = None,
     ) -> IndexingWaitResult | None:
         """Run the connector against the real source and real Glean.
 
         The Glean API is **not** mocked — this exercises the full indexing
-        path.  Connector clients registered via the ``clients`` constructor
-        argument are temporarily wrapped to enforce per-client ``max_items``
-        limits; clients not passed in ``clients`` are left untouched.
+        path and uploads real documents with **no automated cleanup**.
+        Connector clients registered via the ``clients`` constructor argument
+        are temporarily wrapped to enforce per-client ``max_items`` limits while
+        still calling the current source. Live runs do not read or write the
+        integration phase's recorded fixtures. Clients not passed in ``clients``
+        are left untouched.
 
         The Glean client is configured from environment variables:
 
@@ -389,29 +512,69 @@ class TestHarness:
 
         The :attr:`~TestConfig.run_id_prefix` from config is logged but not
         used to namespace the datasource (the connector's own datasource name
-        is used as-is).  To avoid polluting production data, point
-        ``GLEAN_SERVER_URL`` at a dedicated test instance.
+        is used as-is).
+
+        **Production safety:** this method refuses to run unless ``confirm``
+        is ``True``, since a misconfigured ``GLEAN_SERVER_URL`` would upload
+        test data to a real instance with nothing to catch the mistake and no
+        automated way to remove it afterward. Before passing ``confirm=True``,
+        verify the resolved target is a dedicated test instance, not
+        production. On success, the identifiers of every uploaded document are
+        logged together with the ``glean-idx document delete`` command that
+        removes them, since that is the only cleanup path available.
 
         Args:
             mode: Indexing mode forwarded to ``connector.index_data``.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
+            confirm: Must be explicitly set to ``True`` to confirm the target.
+            allow_destructive: Must be explicitly set to ``True`` to acknowledge
+                replacement finalization and stale deletion.
+            confirmed_target: Target displayed when confirmation was obtained.
+                The run is rejected if the current target differs.
 
         Returns:
             The document indexing outcome, or ``None`` when no documents were uploaded.
 
         Raises:
+            ~glean.indexing.exceptions.LiveEndToEndNotConfirmedError: If
+                ``confirm`` is not ``True``.
+            ~glean.indexing.exceptions.LiveEndToEndTargetChangedError: If the
+                configured target differs from ``confirmed_target``.
             ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
                 ``GLEAN_INDEXING_API_TOKEN`` or the server URL is missing from
                 the environment.
         """
+        target = _resolve_glean_target()
+        if confirm is not True:
+            raise LiveEndToEndNotConfirmedError(target)
+        if allow_destructive is not True:
+            raise UnsafeLiveEndToEndRunError(target)
+        if confirmed_target is not None and target != confirmed_target:
+            raise LiveEndToEndTargetChangedError(confirmed_target, target)
+        _ensure_live_identity_cleanup_supported(self._connector)
+
+        logger.warning(
+            "Running LIVE end-to-end test for connector %r against %s. This "
+            "uploads real documents with no automated cleanup -- make sure "
+            "this is a dedicated test instance, not production.",
+            self._connector.name,  # type: ignore[attr-defined]
+            target,
+        )
         logger.info(
             "Starting end-to-end run (run_id_prefix=%r, mode=%s)",
             self._config.run_id_prefix,
             mode.name,
         )
         with capture_document_uploads() as uploaded_documents:
-            with _patched_clients(self._connector, self._clients, self._config):
+            with _patched_clients(
+                self._connector,
+                self._clients,
+                self._config,
+                use_integration_fixtures=False,
+            ):
                 self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+
+        _log_cleanup_instructions(self._connector.name, uploaded_documents)  # type: ignore[attr-defined]
 
         return wait_for_documents_to_index(
             self._connector.name,  # type: ignore[attr-defined]
@@ -423,6 +586,9 @@ class TestHarness:
         *,
         mode: IndexingMode = IndexingMode.FULL,
         options: Optional[ConnectorOptions] = None,
+        confirm: bool = False,
+        allow_destructive: bool = False,
+        confirmed_target: Optional[str] = None,
     ) -> IndexingWaitResult | None:
         """Async variant of :meth:`run_end_to_end`.
 
@@ -432,16 +598,26 @@ class TestHarness:
 
         Like the sync variant, connector clients registered via ``clients``
         are temporarily wrapped to enforce ``max_items``; the Glean API itself
-        is not mocked.
+        is not mocked, real documents are uploaded with no automated cleanup,
+        and this method refuses to run unless ``confirm=True``.
 
         Args:
             mode: Indexing mode forwarded to the connector.
             options: Optional :class:`~glean.indexing.models.ConnectorOptions`.
+            confirm: Must be explicitly set to ``True`` to confirm the target.
+            allow_destructive: Must be explicitly set to ``True`` to acknowledge
+                replacement finalization and stale deletion.
+            confirmed_target: Target displayed when confirmation was obtained.
+                The run is rejected if the current target differs.
 
         Returns:
             The document indexing outcome, or ``None`` when no documents were uploaded.
 
         Raises:
+            ~glean.indexing.exceptions.LiveEndToEndNotConfirmedError: If
+                ``confirm`` is not ``True``.
+            ~glean.indexing.exceptions.LiveEndToEndTargetChangedError: If the
+                configured target differs from ``confirmed_target``.
             ~glean.indexing.exceptions.MissingEnvironmentVariableError: If
                 environment variables for the Glean client are missing.
         """
@@ -449,17 +625,40 @@ class TestHarness:
             BaseAsyncStreamingDatasourceConnector,
         )
 
+        target = _resolve_glean_target()
+        if confirm is not True:
+            raise LiveEndToEndNotConfirmedError(target)
+        if allow_destructive is not True:
+            raise UnsafeLiveEndToEndRunError(target)
+        if confirmed_target is not None and target != confirmed_target:
+            raise LiveEndToEndTargetChangedError(confirmed_target, target)
+        _ensure_live_identity_cleanup_supported(self._connector)
+
+        logger.warning(
+            "Running LIVE end-to-end test for connector %r against %s. This "
+            "uploads real documents with no automated cleanup -- make sure "
+            "this is a dedicated test instance, not production.",
+            self._connector.name,  # type: ignore[attr-defined]
+            target,
+        )
         logger.info(
             "Starting async end-to-end run (run_id_prefix=%r, mode=%s)",
             self._config.run_id_prefix,
             mode.name,
         )
         with capture_document_uploads() as uploaded_documents:
-            with _patched_clients(self._connector, self._clients, self._config):
+            with _patched_clients(
+                self._connector,
+                self._clients,
+                self._config,
+                use_integration_fixtures=False,
+            ):
                 if isinstance(self._connector, BaseAsyncStreamingDatasourceConnector):
                     await self._connector.index_data_async(mode=mode, options=options)
                 else:
                     self._connector.index_data(mode=mode, options=options)  # type: ignore[attr-defined]
+
+        _log_cleanup_instructions(self._connector.name, uploaded_documents)  # type: ignore[attr-defined]
 
         return await asyncio.to_thread(
             wait_for_documents_to_index,

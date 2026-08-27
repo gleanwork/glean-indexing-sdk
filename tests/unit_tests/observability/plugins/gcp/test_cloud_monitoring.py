@@ -6,9 +6,13 @@ pytest.importorskip("google.cloud.monitoring_v3")
 
 from unittest.mock import MagicMock, patch  # noqa: E402
 
+from google.api import metric_pb2  # noqa: E402
+
+from glean.indexing.observability import MetricType  # noqa: E402
 from glean.indexing.observability.plugins.gcp import CloudMonitoringProvider  # noqa: E402
 
 
+@pytest.mark.cloud_integration
 class TestCloudMonitoringProvider:
     """Tests for CloudMonitoringProvider."""
 
@@ -27,9 +31,9 @@ class TestCloudMonitoringProvider:
         mock_client_class.assert_called_once()
 
     @patch("google.cloud.monitoring_v3.MetricServiceClient")
-    @patch("google.cloud.monitoring_v3.MonitoredResource")
-    @patch("google.cloud.monitoring_v3.TimeSeries")
-    @patch("google.cloud.monitoring_v3.Point")
+    @patch("google.api.monitored_resource_pb2.MonitoredResource")
+    @patch("google.cloud.monitoring_v3.types.TimeSeries")
+    @patch("google.cloud.monitoring_v3.types.Point")
     def test_emit_metric(
         self, mock_point_class, mock_series_class, mock_resource_class, mock_client_class
     ):
@@ -98,6 +102,34 @@ class TestCloudMonitoringProvider:
         provider.flush()
 
         mock_client.create_time_series.assert_not_called()
+
+    @patch("google.cloud.monitoring_v3.MetricServiceClient")
+    def test_counter_uses_supported_monitoring_types(self, mock_client_class):
+        """Test counters construct a cumulative INT64 point with public SDK types."""
+        provider = CloudMonitoringProvider(project_id="test-project")
+        provider.emit_metric("requests", 3.0, metric_type=MetricType.COUNTER)
+
+        series = provider.buffer[0]
+        point = series.points[0]
+        assert series.metric_kind == metric_pb2.MetricDescriptor.MetricKind.CUMULATIVE
+        assert series.value_type == metric_pb2.MetricDescriptor.ValueType.INT64
+        assert point.value.int64_value == 3
+        assert point.interval.start_time is not None
+        assert point.interval.end_time is not None
+
+    @patch("google.cloud.monitoring_v3.MetricServiceClient")
+    def test_histogram_uses_supported_monitoring_types(self, mock_client_class):
+        """Test histograms construct a distribution point with public SDK types."""
+        provider = CloudMonitoringProvider(project_id="test-project")
+        provider.emit_metric("latency", 42.5, metric_type=MetricType.HISTOGRAM)
+
+        series = provider.buffer[0]
+        distribution = series.points[0].value.distribution_value
+        assert series.metric_kind == metric_pb2.MetricDescriptor.MetricKind.GAUGE
+        assert series.value_type == metric_pb2.MetricDescriptor.ValueType.DISTRIBUTION
+        assert distribution.count == 1
+        assert distribution.mean == 42.5
+        assert list(distribution.bucket_counts) == [1]
 
     @patch("google.cloud.monitoring_v3.MetricServiceClient")
     def test_custom_namespace_in_metric_type(self, mock_client_class):

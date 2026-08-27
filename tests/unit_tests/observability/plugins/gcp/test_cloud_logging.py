@@ -4,17 +4,18 @@ import logging
 
 import pytest
 
-pytest.importorskip("google.cloud.logging")
+pytest.importorskip("google.cloud.logging_v2")
 
 from unittest.mock import MagicMock, patch  # noqa: E402
 
 from glean.indexing.observability.plugins.gcp import CloudLoggingProvider  # noqa: E402
 
 
+@pytest.mark.cloud_integration
 class TestCloudLoggingProvider:
     """Tests for CloudLoggingProvider."""
 
-    @patch("google.cloud.logging.Client")
+    @patch("google.cloud.logging_v2.Client")
     def test_initialization(self, mock_client_class):
         """Test provider initialization."""
         mock_client = MagicMock()
@@ -33,9 +34,9 @@ class TestCloudLoggingProvider:
         assert provider.resource_labels == {"zone": "us-central1-a"}
         mock_client_class.assert_called_once_with(project="test-project")
 
-    @patch("google.cloud.logging.Client")
-    @patch("google.cloud.logging.resource.Resource")
-    @patch("google.cloud.logging.handlers.CloudLoggingHandler")
+    @patch("google.cloud.logging_v2.Client")
+    @patch("google.cloud.logging_v2.resource.Resource")
+    @patch("google.cloud.logging_v2.handlers.CloudLoggingHandler")
     def test_setup_handler_creates_cloud_logging_handler(
         self, mock_handler_class, mock_resource_class, mock_client_class
     ):
@@ -66,8 +67,8 @@ class TestCloudLoggingProvider:
         )
         assert handler == mock_handler
 
-    @patch("google.cloud.logging.Client")
-    @patch("google.cloud.logging.handlers.CloudLoggingHandler")
+    @patch("google.cloud.logging_v2.Client")
+    @patch("google.cloud.logging_v2.handlers.CloudLoggingHandler")
     def test_setup_handler_sets_log_level(self, mock_handler_class, mock_client_class):
         """Test that setup_handler sets the correct log level."""
         mock_client = MagicMock()
@@ -80,8 +81,8 @@ class TestCloudLoggingProvider:
 
         mock_handler.setLevel.assert_called_once_with(logging.DEBUG)
 
-    @patch("google.cloud.logging.Client")
-    @patch("google.cloud.logging.handlers.CloudLoggingHandler")
+    @patch("google.cloud.logging_v2.Client")
+    @patch("google.cloud.logging_v2.handlers.CloudLoggingHandler")
     def test_setup_handler_default_log_level(self, mock_handler_class, mock_client_class):
         """Test that default log level is INFO."""
         mock_client = MagicMock()
@@ -94,14 +95,14 @@ class TestCloudLoggingProvider:
 
         mock_handler.setLevel.assert_called_once_with(logging.INFO)
 
-    @patch("google.cloud.logging.Client")
+    @patch("google.cloud.logging_v2.Client")
     def test_flush_is_noop(self, mock_client_class):
         """Test that flush is a no-op."""
         provider = CloudLoggingProvider(project_id="test-project")
         provider.flush()
 
-    @patch("google.cloud.logging.Client")
-    @patch("google.cloud.logging.handlers.CloudLoggingHandler")
+    @patch("google.cloud.logging_v2.Client")
+    @patch("google.cloud.logging_v2.handlers.CloudLoggingHandler")
     def test_multiple_handlers_can_be_created(self, mock_handler_class, mock_client_class):
         """Test that multiple handlers can be created from same provider."""
         mock_client = MagicMock()
@@ -116,14 +117,14 @@ class TestCloudLoggingProvider:
         assert handler1 != handler2
         assert mock_handler_class.call_count == 2
 
-    @patch("google.cloud.logging.Client")
+    @patch("google.cloud.logging_v2.Client")
     def test_default_log_name(self, mock_client_class):
         """Test default log name is glean-connector."""
         provider = CloudLoggingProvider(project_id="test-project")
 
         assert provider.log_name == "glean-connector"
 
-    @patch("google.cloud.logging.Client")
+    @patch("google.cloud.logging_v2.Client")
     def test_default_resource_type(self, mock_client_class):
         """Test default resource type is global."""
         provider = CloudLoggingProvider(project_id="test-project")

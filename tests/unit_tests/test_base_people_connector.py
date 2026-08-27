@@ -1,3 +1,4 @@
+from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from glean.api_client.models import EmployeeInfoDefinition
 from glean.indexing.connectors.base_people_connector import BasePeopleConnector
 from glean.indexing.models import ConnectorOptions
+from glean.indexing.observability import InMemoryMetricsProvider
 from tests.unit_tests.common.mock_clients import MockPeopleClient
 
 
@@ -60,14 +62,59 @@ def test_index_data_batches_and_uploads():
         assert len(kwargs["employees"]) == 5
 
 
+@patch("glean.indexing.connectors.base_connector.PushUploader")
+def test_employee_upload_receives_all_supported_options(mock_uploader):
+    client = MagicMock()
+    client.get_source_data.return_value = MockPeopleClient().get_all_people()
+    connector = DummyPeopleConnector("test_people", client)
+    options = ConnectorOptions(
+        force_restart=True,
+        disable_stale_deletion_check=True,
+        upload_timeout_ms=120_000,
+        upload_max_workers=3,
+    )
+
+    connector.index_data(options=options)
+
+    mock_uploader.assert_called_once_with(
+        datasource="test_people",
+        timeout_ms=120_000,
+        observability=connector.observability,
+        upload_max_workers=3,
+    )
+    mock_uploader.return_value.bulk_index_employees.assert_called_once_with(
+        employees=connector.transform(client.get_source_data.return_value),
+        batch_size=connector.batch_size,
+        force_restart_upload=True,
+        disable_stale_data_deletion_check=True,
+    )
+
+
 def test_index_data_empty():
     client = MagicMock()
     client.get_source_data.return_value = []
     connector = DummyPeopleConnector("test_people", client)
-    with patch("glean.indexing.push.uploader.api_client") as api_client:
+    with (
+        TestCase().assertLogs(
+            "glean.indexing.observability.observability", level="INFO"
+        ) as captured,
+        patch("glean.indexing.push.uploader.api_client") as api_client,
+    ):
         bulk_index = api_client().__enter__().indexing.people.bulk_index
         connector.index_data()
-        assert bulk_index.call_count == 0
+
+    assert bulk_index.call_count == 0
+    operations = [getattr(record, "operation", None) for record in captured.records]
+    assert operations.count("crawl_started") == 1
+    assert operations.count("crawl_completed") == 1
+    assert (
+        connector.observability.get_metrics_summary().items()
+        >= {
+            "people_fetched": 0,
+            "employees_transformed": 0,
+            "employees_indexed": 0,
+        }.items()
+    )
 
 
 def test_index_data_error_handling():
@@ -79,6 +126,76 @@ def test_index_data_error_handling():
         bulk_index.side_effect = Exception("upload failed")
         with pytest.raises(Exception):
             connector.index_data()
+
+
+def test_index_data_emits_success_lifecycle_and_uploader_metrics():
+    client = MagicMock()
+    client.get_source_data.return_value = MockPeopleClient().get_all_people()
+    connector = DummyPeopleConnector("test_people", client)
+    connector.batch_size = 2
+    metrics = InMemoryMetricsProvider()
+    connector.observability.metrics_provider = metrics
+
+    with (
+        TestCase().assertLogs(
+            "glean.indexing.observability.observability", level="INFO"
+        ) as captured,
+        patch("glean.indexing.push.uploader.api_client") as api_client,
+    ):
+        connector.index_data(
+            options=ConnectorOptions(upload_timeout_ms=120_000, upload_max_workers=2)
+        )
+
+    operations = [getattr(record, "operation", None) for record in captured.records]
+    assert operations.count("crawl_started") == 1
+    assert operations.count("crawl_completed") == 1
+    assert operations.count("batch_upload_started") == 3
+    assert "crawl_failed" not in operations
+    assert (
+        connector.observability.get_metrics_summary().items()
+        >= {
+            "people_fetched": 5,
+            "employees_transformed": 5,
+            "employees_indexed": 5,
+        }.items()
+    )
+    emitted_metric_names = {metric["name"] for metric in metrics.get_metric_history()}
+    assert {
+        "api_request_count",
+        "upload_batch_size",
+        "connector_execution_duration_ms",
+    } <= emitted_metric_names
+    for call in api_client().__enter__().indexing.people.bulk_index.call_args_list:
+        assert call.kwargs["timeout_ms"] == 120_000
+
+
+def test_index_data_emits_failure_lifecycle_and_metrics():
+    client = MagicMock()
+    client.get_source_data.return_value = MockPeopleClient().get_all_people()
+    connector = DummyPeopleConnector("test_people", client)
+    metrics = InMemoryMetricsProvider()
+    connector.observability.metrics_provider = metrics
+
+    with (
+        TestCase().assertLogs(
+            "glean.indexing.observability.observability", level="INFO"
+        ) as captured,
+        patch("glean.indexing.push.uploader.api_client") as api_client,
+    ):
+        api_client().__enter__().indexing.people.bulk_index.side_effect = RuntimeError(
+            "upload failed"
+        )
+        with pytest.raises(RuntimeError, match="upload failed"):
+            connector.index_data()
+
+    operations = [getattr(record, "operation", None) for record in captured.records]
+    assert operations.count("crawl_started") == 1
+    assert operations.count("crawl_failed") == 1
+    assert "crawl_completed" not in operations
+    assert connector.observability.get_metrics_summary()["indexing_errors"] == 1
+    assert "connector_execution_duration_ms" in {
+        metric["name"] for metric in metrics.get_metric_history()
+    }
 
 
 def test_force_restart_upload():

@@ -9,7 +9,8 @@ Exit codes are stable and documented so callers can react without parsing text.
 from __future__ import annotations
 
 import sys
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import click
 
@@ -47,11 +48,11 @@ class CliError(click.ClickException):
         self,
         message: str,
         *,
-        detail: Optional[str] = None,
-        hint: Optional[Sequence[str]] = None,
-        searched: Optional[Sequence[str]] = None,
-        docs: Optional[str] = None,
-        data: Optional[dict[str, Any]] = None,
+        detail: str | None = None,
+        hint: Sequence[str] | None = None,
+        searched: Sequence[str] | None = None,
+        docs: str | None = None,
+        data: dict[str, Any] | None = None,
     ) -> None:
         """Build an error carrying its own remediation."""
         super().__init__(message)
@@ -132,6 +133,19 @@ class ValidationFailedError(CliError):
 
     code = "validation_failed"
     exit_code = EXIT_VALIDATION
+
+
+class ConfirmationRequiredError(CliError):
+    """A mutating command needs explicit consent in non-interactive mode."""
+
+    code = "confirmation_required"
+    exit_code = EXIT_PRECONDITION
+
+
+class DeploymentError(CliError):
+    """A local or cloud deployment operation failed."""
+
+    code = "deployment_error"
 
 
 class ConnectorRunError(CliError):

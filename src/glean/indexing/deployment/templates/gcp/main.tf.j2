@@ -35,6 +35,13 @@ data "google_container_cluster" "main" {
   location = var.region
 }
 
+# Resolve project number for IAM condition expressions.
+# GCP IAM condition resource names use the numeric project number, not the project ID.
+# Reference: https://cloud.google.com/resource-manager/docs/creating-managing-projects
+data "google_project" "main" {
+  project_id = var.project_id
+}
+
 provider "kubernetes" {
   # For private-only GKE clusters (enablePublicEndpoint: false) set cluster_endpoint in
   # glean_deployment.yaml to the GKE DNS endpoint (*.gke.goog); Terraform will use that instead
@@ -87,12 +94,17 @@ resource "google_service_account_iam_member" "workload_identity" {
   member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.namespace}/{{ config.k8s_name }}-ksa]"
 }
 
-# Allow accessing secret values at runtime.
+# Allow accessing secret values at runtime, scoped to this connector's secrets only.
 # Reference: https://cloud.google.com/secret-manager/docs/access-control
 resource "google_project_iam_member" "secret_accessor" {
   project = var.project_id
   role    = "roles/secretmanager.secretAccessor"
   member  = "serviceAccount:${google_service_account.connector.email}"
+  condition {
+    title       = "connector_secrets_only"
+    description = "Restrict secret accessor to secrets for this connector only."
+    expression  = "resource.name.startsWith(\"projects/${data.google_project.main.number}/secrets/{{ config.secret_prefix }}\")"
+  }
 }
 
 resource "kubernetes_service_account_v1" "connector" {
@@ -172,6 +184,12 @@ resource "kubernetes_cron_job_v1" "connector" {
                 name  = "CONNECTOR_MODULE"
                 value = "{{ config.connector_module }}"
               }
+{% if config.connector_factory %}
+              env {
+                name  = "CONNECTOR_FACTORY"
+                value = "{{ config.connector_factory }}"
+              }
+{% endif %}
 
               resources {
                 requests = {
@@ -184,10 +202,13 @@ resource "kubernetes_cron_job_v1" "connector" {
                 }
               }
 
-              # No privileged mode, no extra capabilities.
+              # No privileged mode, no extra capabilities. Keep these numeric
+              # IDs in sync with the generated Dockerfile.
               security_context {
                 allow_privilege_escalation = false
                 run_as_non_root            = true
+                run_as_user                = 1000
+                run_as_group               = 1000
               }
             }
           }

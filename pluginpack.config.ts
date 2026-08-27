@@ -21,7 +21,8 @@ import pkg from "./package.json" with { type: "json" };
 
 // Fields the host reads off the marketplace entry. Without `version` it falls
 // back to the git commit SHA, which would make every skill edit register as a
-// new plugin version.
+// new plugin version. `mise run release` synchronizes `pkg.version` with the
+// SDK version; feature PRs keep the current version — see CONTRIBUTING.md.
 const ENTRY_METADATA = {
   version: pkg.version,
   author: { name: "Glean" },

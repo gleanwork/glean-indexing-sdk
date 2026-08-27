@@ -16,11 +16,17 @@
   "scripts": {
     "build:plugins": "pluginpack build",
     "clean:plugins": "pluginpack clean",
+    "check:plugin-release": "node scripts/check-plugin-release.mjs",
+    "check:release-ready": "node scripts/check-release-readiness.mjs",
+    "check:plugin-version-policy": "node scripts/check-plugin-version-policy.mjs",
+    "release:plugin": "release-it",
+    "version:plugin": "node scripts/plugin-version.mjs",
     "validate:plugins": "pluginpack validate --target claude --dir . && pluginpack validate --target cursor --dir . && pluginpack validate --target codex --dir .",
     "diff:plugins": "pluginpack diff --target claude --against . && pluginpack diff --target cursor --against . && pluginpack diff --target codex --against .",
     "test:plugins": "npm run build:plugins && npm run validate:plugins"
   },
   "devDependencies": {
-    "@gleanwork/pluginpack": "^0.10.0"
+    "@gleanwork/pluginpack": "^0.10.0",
+    "release-it": "^21.0.2"
   }
 }

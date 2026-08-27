@@ -1,4 +1,6 @@
 import threading
+import time
+from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -6,6 +8,7 @@ import pytest
 from glean.api_client.models import DocumentDefinition
 from glean.indexing.connectors import BaseStreamingDataClient, BaseStreamingDatasourceConnector
 from glean.indexing.models import ConnectorOptions
+from glean.indexing.observability import InMemoryMetricsProvider
 from glean.indexing.push import PushUploader
 
 
@@ -86,10 +89,27 @@ def test_index_data_empty():
             yield from []
 
     connector = DummyStreamingConnector("test_stream", EmptyClient())
-    with patch("glean.indexing.push.uploader.api_client") as api_client:
+    with (
+        TestCase().assertLogs(
+            "glean.indexing.observability.observability", level="INFO"
+        ) as captured,
+        patch("glean.indexing.push.uploader.api_client") as api_client,
+    ):
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
-        assert bulk_index.call_count == 0
+
+    assert bulk_index.call_count == 0
+    operations = [getattr(record, "operation", None) for record in captured.records]
+    assert operations.count("crawl_started") == 1
+    assert operations.count("crawl_completed") == 1
+    assert (
+        connector.observability.get_metrics_summary().items()
+        >= {
+            "items_fetched": 0,
+            "documents_transformed": 0,
+            "documents_indexed": 0,
+        }.items()
+    )
 
 
 def test_streaming_fetch_overlaps_middle_page_uploads():
@@ -132,6 +152,148 @@ def test_index_data_error_handling():
         bulk_index.side_effect = Exception("upload failed")
         with pytest.raises(Exception):
             connector.index_data()
+
+
+def test_index_data_emits_success_lifecycle_and_metrics():
+    connector = DummyStreamingConnector("test_stream", DummyStreamingDataClient())
+    connector.batch_size = 2
+    metrics = InMemoryMetricsProvider()
+    connector.observability.metrics_provider = metrics
+
+    with (
+        TestCase().assertLogs(
+            "glean.indexing.observability.observability", level="INFO"
+        ) as captured,
+        patch("glean.indexing.push.uploader.api_client"),
+    ):
+        connector.index_data()
+
+    operations = [getattr(record, "operation", None) for record in captured.records]
+    assert operations.count("crawl_started") == 1
+    assert operations.count("crawl_completed") == 1
+    assert "crawl_failed" not in operations
+    summary = connector.observability.get_metrics_summary()
+    assert (
+        summary.items()
+        >= {
+            "items_fetched": 5,
+            "documents_transformed": 5,
+            "documents_indexed": 5,
+        }.items()
+    )
+    assert {"data_fetch_duration", "data_transform_duration"} <= summary.keys()
+    assert "data_upload_duration" not in summary
+    emitted_metric_names = {metric["name"] for metric in metrics.get_metric_history()}
+    assert {
+        "api_request_count",
+        "api_request_latency_ms",
+        "connector_execution_duration_ms",
+    } <= emitted_metric_names
+
+
+def test_slow_streaming_fetch_is_not_reported_as_upload_duration():
+    class SlowClient(DummyStreamingDataClient):
+        def get_source_data(self, **kwargs):
+            for item in super().get_source_data(**kwargs):
+                time.sleep(0.01)
+                yield item
+
+    connector = DummyStreamingConnector("test_stream", SlowClient())
+    metrics = InMemoryMetricsProvider()
+    connector.observability.metrics_provider = metrics
+
+    with patch("glean.indexing.push.uploader.api_client"):
+        connector.index_data()
+
+    summary = connector.observability.get_metrics_summary()
+    assert summary["data_fetch_duration"] >= 0.04
+    assert "data_upload_duration" not in summary
+    assert any(
+        metric["name"] == "api_request_latency_ms"
+        and metric["labels"]["endpoint"] == "documents.bulk_index"
+        for metric in metrics.get_metric_history()
+    )
+
+
+def test_streaming_fetch_failure_records_partial_counts_and_duration():
+    class FailingClient(DummyStreamingDataClient):
+        def get_source_data(self, **kwargs):
+            for index, item in enumerate(super().get_source_data(**kwargs)):
+                time.sleep(0.01)
+                yield item
+                if index == 2:
+                    time.sleep(0.01)
+                    raise RuntimeError("fetch failed")
+
+    connector = DummyStreamingConnector("test_stream", FailingClient())
+    connector.batch_size = 2
+
+    with (
+        patch("glean.indexing.push.uploader.api_client"),
+        pytest.raises(RuntimeError, match="fetch failed"),
+    ):
+        connector.index_data()
+
+    summary = connector.observability.get_metrics_summary()
+    assert summary["items_fetched"] == 3
+    assert summary["documents_transformed"] == 2
+    assert summary["data_fetch_duration"] >= 0.035
+    assert summary["data_transform_duration"] >= 0
+
+
+def test_streaming_transform_failure_records_completed_counts_and_failed_call_duration():
+    class FailingTransformConnector(DummyStreamingConnector):
+        def __init__(self, name, data_client):
+            super().__init__(name, data_client)
+            self.transform_calls = 0
+
+        def transform(self, data):
+            self.transform_calls += 1
+            time.sleep(0.01)
+            if self.transform_calls == 2:
+                raise RuntimeError("transform failed")
+            return super().transform(data)
+
+    connector = FailingTransformConnector("test_stream", DummyStreamingDataClient())
+    connector.batch_size = 2
+
+    with (
+        patch("glean.indexing.push.uploader.api_client"),
+        pytest.raises(RuntimeError, match="transform failed"),
+    ):
+        connector.index_data()
+
+    summary = connector.observability.get_metrics_summary()
+    assert summary["items_fetched"] == 4
+    assert summary["documents_transformed"] == 2
+    assert summary["data_transform_duration"] >= 0.018
+
+
+def test_index_data_emits_failure_lifecycle_and_metrics():
+    connector = DummyStreamingConnector("test_stream", DummyStreamingDataClient())
+    metrics = InMemoryMetricsProvider()
+    connector.observability.metrics_provider = metrics
+
+    with (
+        TestCase().assertLogs(
+            "glean.indexing.observability.observability", level="INFO"
+        ) as captured,
+        patch("glean.indexing.push.uploader.api_client") as api_client,
+    ):
+        api_client().__enter__().indexing.documents.bulk_index.side_effect = RuntimeError(
+            "upload failed"
+        )
+        with pytest.raises(RuntimeError, match="upload failed"):
+            connector.index_data()
+
+    operations = [getattr(record, "operation", None) for record in captured.records]
+    assert operations.count("crawl_started") == 1
+    assert operations.count("crawl_failed") == 1
+    assert "crawl_completed" not in operations
+    assert connector.observability.get_metrics_summary()["indexing_errors"] == 1
+    assert "connector_execution_duration_ms" in {
+        metric["name"] for metric in metrics.get_metric_history()
+    }
 
 
 def test_force_restart_upload():
@@ -229,3 +391,44 @@ def test_upload_timeout_ms_defaults_to_none():
         connector.index_data()
 
         assert bulk_index.call_args[1].get("timeout_ms") is None
+
+
+def test_document_batch_size_bytes_splits_oversized_batch():
+    """Regression test: document_batch_size_bytes must split streamed documents that
+    would otherwise fit in a single count-based batch."""
+
+    class LargeContentClient(BaseStreamingDataClient[dict]):
+        def get_source_data(self, **kwargs):
+            for i in range(2):
+                yield {
+                    "id": f"doc-{i}",
+                    "title": f"Document {i}",
+                    "content": "x" * 200,
+                    "url": f"https://example.com/{i}",
+                    "created_at": 1672531200,
+                    "updated_at": 1672617600,
+                    "author": {"id": "user@example.com"},
+                    "type": "document",
+                    "tags": ["example"],
+                    "datasource": "test_datasource",
+                }
+
+    connector = DummyStreamingConnector("test_stream", LargeContentClient())
+    # Count-based batch size alone would fit both documents in a single upload.
+    connector.batch_size = 10
+
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
+        bulk_index = api_client().__enter__().indexing.documents.bulk_index
+        connector.index_data(options=ConnectorOptions(document_batch_size_bytes=100))
+
+        assert bulk_index.call_count == 2
+
+        first_call_kwargs = bulk_index.call_args_list[0][1]
+        assert len(first_call_kwargs["documents"]) == 1
+        assert first_call_kwargs["is_first_page"] is True
+        assert first_call_kwargs["is_last_page"] is False
+
+        last_call_kwargs = bulk_index.call_args_list[1][1]
+        assert len(last_call_kwargs["documents"]) == 1
+        assert last_call_kwargs["is_first_page"] is False
+        assert last_call_kwargs["is_last_page"] is True

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/release-it/schema/release-it.json",
+  "git": {
+    "requireBranch": "main",
+    "commit": false,
+    "tag": false,
+    "push": false
+  },
+  "github": {
+    "release": false
+  },
+  "npm": {
+    "publish": false
+  },
+  "hooks": {
+    "before:init": "test -n \"$SDK_RELEASE_VERSION\" && npm run check:plugin-release && npm run diff:plugins && npm run validate:plugins",
+    "after:bump": "npm run test:plugins && npm run diff:plugins && npm run check:plugin-release -- \"$SDK_RELEASE_VERSION\""
+  }
+}

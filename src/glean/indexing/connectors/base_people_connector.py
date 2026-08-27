@@ -9,7 +9,6 @@ from glean.indexing.connectors.base_connector import BaseConnector
 from glean.indexing.connectors.base_data_client import BaseDataClient
 from glean.indexing.models import ConnectorOptions, IndexingMode, TSourceData
 from glean.indexing.observability.observability import ConnectorObservability
-from glean.indexing.push import PushUploader
 
 logger = logging.getLogger(__name__)
 
@@ -98,16 +97,10 @@ class BasePeopleConnector(BaseConnector[TSourceData, EmployeeInfoDefinition], AB
                 if force_restart:
                     logger.info("Force restarting upload - discarding any previous upload progress")
 
-                PushUploader(
-                    datasource=self.name,
-                    timeout_ms=options.upload_timeout_ms if options else None,
-                ).bulk_index_employees(
+                self._create_uploader(options).bulk_index_employees(
                     employees=employees,
                     batch_size=self.batch_size,
-                    force_restart_upload=True if force_restart else None,
-                    disable_stale_data_deletion_check=True
-                    if (options and options.disable_stale_deletion_check)
-                    else None,
+                    **self._bulk_upload_options(options, "employees"),
                 )
             self._observability.end_timer("data_upload")
 

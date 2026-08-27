@@ -32,6 +32,7 @@ run = "uv run pytest --cov=glean --cov-report=term --cov-report=html -v tests/"
 [tasks.lint]
 description = "Run all linters"
 run = [
+  "mise run lint:ruff:config",
   "mise run lint:ruff",
   "mise run lint:format:check",
   "mise run lint:pyright",
@@ -86,6 +87,10 @@ run = [
 [tasks."lint:fix:ruff"]
 description = "Run Ruff autofixer"
 run = "uv run ruff check . --fix --exclude .venv/ --exclude **/site-packages/"
+
+[tasks."lint:ruff:config"]
+description = "Verify CI resolves the authoritative Ruff policy"
+run = "uv run python scripts/check_ruff_config.py"
 
 [tasks."lint:ruff"]
 description = "Run Ruff linter"
@@ -150,34 +155,74 @@ description = "Build the package"
 run = "uv run python -m build"
 
 [tasks.release]
-description = "Bump version and create a new tag (use DRY_RUN=true for preview, PRERELEASE=alpha|beta|rc to stay on prerelease track)"
+description = "Release the SDK and agent plugin in lockstep (use DRY_RUN=true for preview, PRERELEASE=alpha|beta|rc to stay on prerelease track)"
 run = [
   """bash -lc '
+set -euo pipefail
+
 PRERELEASE_FLAG=""
-if [ -n "$PRERELEASE" ]; then
+if [ -n "${PRERELEASE:-}" ]; then
   PRERELEASE_FLAG="--prerelease $PRERELEASE"
 fi
 
-if [ "$DRY_RUN" = "true" ]; then
+# Both release tools operate only through this task. Verify the checkout and
+# committed plugin output before either version is changed.
+npm run check:release-ready
+npm ci
+npm run check:plugin-release
+npm run diff:plugins
+npm run validate:plugins
+
+NEXT_VERSION=$(uv run python -m commitizen bump --get-next $PRERELEASE_FLAG)
+PLUGIN_VERSION=$(npm run --silent version:plugin -- "$NEXT_VERSION")
+
+if [ "${DRY_RUN:-}" = "true" ]; then
   uv run python -m commitizen bump --dry-run $PRERELEASE_FLAG
   uv run python -m commitizen changelog --dry-run
+  SDK_RELEASE_VERSION="$PLUGIN_VERSION" npm run release:plugin -- "$PLUGIN_VERSION" --dry-run --ci
 else
-  # Bump version (includes changelog update via update_changelog_on_bump)
+  START_HEAD=$(git rev-parse HEAD)
+  TAG="v$NEXT_VERSION"
+  if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+    echo "Release tag $TAG already exists." >&2
+    exit 1
+  fi
+
+  RELEASE_STARTED=true
+  rollback_release() {
+    status=$?
+    trap - EXIT
+    if [ "$RELEASE_STARTED" = "true" ]; then
+      git tag -d "$TAG" >/dev/null 2>&1 || true
+      git reset --hard "$START_HEAD" >/dev/null
+      echo "Release failed; restored $START_HEAD and removed $TAG." >&2
+    fi
+    exit "$status"
+  }
+  trap rollback_release EXIT
+
+  # Commitizen owns the changelog, release commit, and single vX.Y.Z tag.
   uv run python -m commitizen bump --yes $PRERELEASE_FLAG
+  SDK_VERSION=$(uv run --no-sync python -m commitizen version --project)
+  if [ "$SDK_VERSION" != "$NEXT_VERSION" ]; then
+    echo "Commitizen produced $SDK_VERSION; expected $NEXT_VERSION." >&2
+    exit 1
+  fi
 
-  # Get the tag that was just created
-  TAG=$(git describe --tags --abbrev=0)
+  # release-it owns only the npm-semver plugin version and artifact rebuild.
+  SDK_RELEASE_VERSION="$PLUGIN_VERSION" npm run release:plugin -- "$PLUGIN_VERSION" --ci
+  npm run check:plugin-release -- "$PLUGIN_VERSION"
 
-  # Regenerate uv.lock with new version
+  # Include both ecosystems in the existing release commit, then recreate its
+  # tag as annotated so `git push --follow-tags` publishes it.
   uv lock
-
-  # Amend the commit to include uv.lock
-  git add uv.lock
+  git add -u
   git commit --amend --no-edit
-
-  # Update the tag to point to the amended commit
   git tag -d "$TAG"
-  git tag "$TAG"
+  git tag -a "$TAG" -m "Release $TAG"
+
+  RELEASE_STARTED=false
+  trap - EXIT
 fi
 '""",
 ]

@@ -36,6 +36,10 @@ class ConnectorOptions:
             starts a new upload. Sets force_restart_upload=True on the first batch.
         disable_stale_deletion_check: If True, forces synchronous deletion of
             stale documents after the upload completes. Applied only to the last batch.
+            Maps to `PushUploader`'s `disable_stale_document_deletion_check` or
+            `disable_stale_data_deletion_check` depending on entity type — the
+            underlying Glean API names this parameter differently for documents
+            vs. user/group/employee data.
         upload_timeout_ms: Per-call timeout (in milliseconds) for bulk upload
             requests. Overrides the SDK-level default for bulk_index calls only.
             Use this when uploading large batches that may exceed the default timeout.

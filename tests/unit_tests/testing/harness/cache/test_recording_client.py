@@ -35,9 +35,12 @@ class _FakeDataClient(BaseDataClient[dict]):
 class _FakeStreamingClient(BaseStreamingDataClient[dict]):
     def __init__(self, items: list) -> None:
         self._items = items
+        self.consumed = []
 
     def get_source_data(self, **kwargs: Any) -> Generator[dict, None, None]:
-        yield from self._items
+        for item in self._items:
+            self.consumed.append(item)
+            yield item
 
 
 class _FakeAsyncStreamingClient(BaseAsyncStreamingDataClient[dict]):
@@ -161,8 +164,9 @@ class TestRecordingStreamingClientWrapper:
         assert len(data_path.read_text().splitlines()) == 5
 
     def test_max_items_respected(self, tmp_path: Path):
+        client = _FakeStreamingClient(_ITEMS)
         wrapper = RecordingStreamingClientWrapper(
-            inner=_FakeStreamingClient(_ITEMS),
+            inner=client,
             cache_dir=tmp_path,
             connector_name="conn",
             client_name="stream_client",
@@ -171,6 +175,7 @@ class TestRecordingStreamingClientWrapper:
         )
         result = list(wrapper.get_source_data())
         assert len(result) == 2
+        assert client.consumed == _ITEMS[:2]
 
 
 # ---------------------------------------------------------------------------

@@ -19,8 +19,11 @@
 {% endif %}
 
 connector_name: {{ config.connector_name }}
-connector_class: {{ config.connector_class }}
-connector_module: {{ config.connector_module }}
+connector_class: "{{ config.connector_class }}"
+connector_module: "{{ config.connector_module }}"
+{% if config.connector_factory %}
+connector_factory: "{{ config.connector_factory }}"
+{% endif %}
 
 cloud: {{ config.cloud }}
 region: {{ config.region }}
@@ -39,7 +42,7 @@ artifact_registry_repo: {{ config.artifact_registry_repo }}
 service_account_name: {{ config.service_account_name }}
 {% endif %}
 {% else %}
-account_id: {{ config.account_id }}
+account_id: "{{ config.account_id }}"
 ecr_repo: {{ config.ecr_repo }}
 {% if config.iam_role_name %}
 iam_role_name: {{ config.iam_role_name }}

@@ -202,6 +202,12 @@ resource "kubernetes_cron_job_v1" "connector" {
                 name  = "CONNECTOR_MODULE"
                 value = "{{ config.connector_module }}"
               }
+{% if config.connector_factory %}
+              env {
+                name  = "CONNECTOR_FACTORY"
+                value = "{{ config.connector_factory }}"
+              }
+{% endif %}
 
               resources {
                 requests = {
@@ -214,9 +220,12 @@ resource "kubernetes_cron_job_v1" "connector" {
                 }
               }
 
+              # Keep these numeric IDs in sync with the generated Dockerfile.
               security_context {
                 allow_privilege_escalation = false
                 run_as_non_root            = true
+                run_as_user                = 1000
+                run_as_group               = 1000
               }
             }
           }

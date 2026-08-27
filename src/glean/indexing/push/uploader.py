@@ -187,7 +187,14 @@ class PushUploader:
         force_restart_upload: Optional[bool] = None,
         disable_stale_document_deletion_check: Optional[bool] = None,
     ) -> None:
-        """Replace datasource documents using `/bulkindexdocuments`."""
+        """Replace datasource documents using `/bulkindexdocuments`.
+
+        Note: This takes `disable_stale_document_deletion_check`, not
+        `disable_stale_data_deletion_check` (see `bulk_index_users`). The
+        underlying Glean API names this parameter differently for documents
+        than for user/group/employee data; the SDK mirrors that naming here
+        rather than papering over it.
+        """
         document_list = list(documents)
         if not document_list:
             return
@@ -214,7 +221,12 @@ class PushUploader:
         force_restart_upload: Optional[bool] = None,
         disable_stale_document_deletion_check: Optional[bool] = None,
     ) -> None:
-        """Upload pre-batched documents with ordered boundary pages and parallel middle pages."""
+        """Upload pre-batched documents with ordered boundary pages and parallel middle pages.
+
+        Note: See `bulk_index_documents` for why this parameter is named
+        `disable_stale_document_deletion_check` rather than
+        `disable_stale_data_deletion_check`.
+        """
         batch_iterator = iter(batches)
         first_batch = next(batch_iterator, None)
         if first_batch is None:
@@ -302,7 +314,12 @@ class PushUploader:
         force_restart_upload: Optional[bool] = None,
         disable_stale_document_deletion_check: Optional[bool] = None,
     ) -> None:
-        """Upload one pre-batched `/bulkindexdocuments` page."""
+        """Upload one pre-batched `/bulkindexdocuments` page.
+
+        Note: See `bulk_index_documents` for why this parameter is named
+        `disable_stale_document_deletion_check` rather than
+        `disable_stale_data_deletion_check`.
+        """
         document_list = list(documents)
         if self.observability:
             self.observability.log_batch_upload_started(
@@ -442,7 +459,14 @@ class PushUploader:
         force_restart_upload: Optional[bool] = None,
         disable_stale_data_deletion_check: Optional[bool] = None,
     ) -> None:
-        """Replace datasource users using `/bulkindexusers`."""
+        """Replace datasource users using `/bulkindexusers`.
+
+        Note: This takes `disable_stale_data_deletion_check`, not
+        `disable_stale_document_deletion_check` (see `bulk_index_documents`).
+        The underlying Glean API names this parameter differently for
+        user/group/employee data than for documents; the SDK mirrors that
+        naming here rather than papering over it.
+        """
         batches = self._batches(users, batch_size)
         if not batches:
             return
@@ -530,7 +554,12 @@ class PushUploader:
         force_restart_upload: Optional[bool] = None,
         disable_stale_data_deletion_check: Optional[bool] = None,
     ) -> None:
-        """Replace datasource groups using `/bulkindexgroups`."""
+        """Replace datasource groups using `/bulkindexgroups`.
+
+        Note: See `bulk_index_users` for why this parameter is named
+        `disable_stale_data_deletion_check` rather than
+        `disable_stale_document_deletion_check`.
+        """
         batches = self._batches(groups, batch_size)
         if not batches:
             return
@@ -740,7 +769,12 @@ class PushUploader:
         force_restart_upload: Optional[bool] = None,
         disable_stale_data_deletion_check: Optional[bool] = None,
     ) -> None:
-        """Replace employees using `/bulkindexemployees`."""
+        """Replace employees using `/bulkindexemployees`.
+
+        Note: See `bulk_index_users` for why this parameter is named
+        `disable_stale_data_deletion_check` rather than
+        `disable_stale_document_deletion_check`.
+        """
         batches = self._batches(employees, batch_size)
         if not batches:
             return

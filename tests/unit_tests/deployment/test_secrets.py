@@ -135,6 +135,34 @@ def test_redlist_contains_expected_vars():
     assert "INDEXING_MODE" in _REDLIST
     assert "CONNECTOR_CLASS" in _REDLIST
     assert "CONNECTOR_MODULE" in _REDLIST
+    assert "CONNECTOR_FACTORY" in _REDLIST
+
+
+def test_redlist_covers_all_template_deployment_env_vars():
+    """Trip-wire: every static env var name in the Terraform templates must be in _REDLIST.
+
+    If this test fails, a deployment-control env var was added to a template without
+    a corresponding _REDLIST entry, meaning it would be silently uploaded as a secret.
+    """
+    import re
+    from pathlib import Path
+
+    templates_dir = (
+        Path(__file__).parents[3] / "src" / "glean" / "indexing" / "deployment" / "templates"
+    )
+    # Matches:  name  = "UPPER_CASE_VAR"  (only uppercase — Terraform interpolations like ${...} are excluded)
+    pattern = re.compile(r'name\s+=\s+"([A-Z][A-Z0-9_]+)"')
+
+    template_env_vars: set[str] = set()
+    for tf_template in templates_dir.rglob("*.tf.j2"):
+        for match in pattern.finditer(tf_template.read_text()):
+            template_env_vars.add(match.group(1))
+
+    missing = template_env_vars - _REDLIST
+    assert not missing, (
+        f"Deployment env vars in templates but missing from _REDLIST: {sorted(missing)}. "
+        "Add them to _REDLIST in secrets.py or they will be uploaded as connector secrets."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +180,56 @@ def test_secret_name_aws(aws_config):
     backend = AWSSecretsBackend(aws_config)
     name = backend._secret_name("OAUTH_TOKEN")
     assert name == "CUSTOM_DATASOURCE_PLATFORM_MY_JIRA_OAUTH_TOKEN"
+
+
+@pytest.mark.parametrize(
+    ("config_fixture", "backend_type", "max_length"),
+    [
+        ("gcp_config", GCPSecretsBackend, 255),
+        ("aws_config", AWSSecretsBackend, 512),
+    ],
+)
+def test_complete_secret_name_accepts_provider_length_boundary(
+    request, config_fixture, backend_type, max_length
+):
+    backend = backend_type(request.getfixturevalue(config_fixture))
+    env_key = "A" * (max_length - len(backend._config.secret_prefix))
+    assert len(backend._secret_name(env_key)) == max_length
+
+
+@pytest.mark.parametrize(
+    ("config_fixture", "backend_type", "max_length", "error"),
+    [
+        ("gcp_config", GCPSecretsBackend, 255, "GCP secret name"),
+        ("aws_config", AWSSecretsBackend, 512, "AWS secret name"),
+    ],
+)
+def test_complete_secret_name_rejects_over_provider_length(
+    request, config_fixture, backend_type, max_length, error
+):
+    backend = backend_type(request.getfixturevalue(config_fixture))
+    env_key = "A" * (max_length - len(backend._config.secret_prefix) + 1)
+    with pytest.raises(ValueError, match=error):
+        backend._secret_name(env_key)
+
+
+@pytest.mark.parametrize("env_key", ["BAD.KEY", "BAD/KEY", "BÁD_KEY", "BAD\nKEY"])
+def test_gcp_secret_name_rejects_invalid_characters(gcp_config, env_key):
+    with pytest.raises(ValueError, match="GCP secret name"):
+        GCPSecretsBackend(gcp_config)._secret_name(env_key)
+
+
+@pytest.mark.parametrize(
+    "env_key", ["KEY_name", "KEY+name", "KEY=name", "KEY.name", "KEY@name", "KEY-name", "KEY/name"]
+)
+def test_aws_secret_name_preserves_provider_punctuation(aws_config, env_key):
+    assert AWSSecretsBackend(aws_config)._secret_name(env_key).endswith(env_key)
+
+
+@pytest.mark.parametrize("env_key", ["BAD,KEY", "BÁD_KEY", "BAD\nKEY"])
+def test_aws_secret_name_rejects_invalid_characters(aws_config, env_key):
+    with pytest.raises(ValueError, match="AWS secret name"):
+        AWSSecretsBackend(aws_config)._secret_name(env_key)
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +339,51 @@ def test_gcp_upload_empty_env_returns_early(gcp_config, tmp_path):
     assert result == {}
 
 
+def test_gcp_upload_validates_all_names_before_creating_client(gcp_config, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("VALID_KEY=value\nINVALID.KEY=value\n")
+    mock_sm_module = MagicMock()
+    mock_google_cloud = MagicMock(secretmanager=mock_sm_module)
+
+    with (
+        patch.dict(
+            "sys.modules",
+            {
+                "google": MagicMock(),
+                "google.cloud": mock_google_cloud,
+                "google.cloud.secretmanager": mock_sm_module,
+                "google.api_core": MagicMock(),
+                "google.api_core.exceptions": MagicMock(),
+            },
+        ),
+        pytest.raises(ValueError, match="GCP secret name"),
+    ):
+        GCPSecretsBackend(gcp_config).upload(env_file)
+
+    mock_sm_module.SecretManagerServiceClient.assert_not_called()
+
+
+def test_gcp_list_validates_prefix_before_creating_client(gcp_config):
+    gcp_config.connector_name = "invalid.name"
+    mock_sm_module = MagicMock()
+    mock_google_cloud = MagicMock(secretmanager=mock_sm_module)
+
+    with (
+        patch.dict(
+            "sys.modules",
+            {
+                "google": MagicMock(),
+                "google.cloud": mock_google_cloud,
+                "google.cloud.secretmanager": mock_sm_module,
+            },
+        ),
+        pytest.raises(ValueError, match="GCP secret name"),
+    ):
+        GCPSecretsBackend(gcp_config).list()
+
+    mock_sm_module.SecretManagerServiceClient.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # AWSSecretsBackend.upload
 # ---------------------------------------------------------------------------
@@ -310,3 +433,31 @@ def test_aws_upload_empty_env_returns_early(aws_config, tmp_path):
     backend = AWSSecretsBackend(aws_config)
     result = backend.upload(empty_env)
     assert result == {}
+
+
+def test_aws_upload_validates_all_names_before_creating_client(aws_config, tmp_path):
+    env_file = tmp_path / ".env"
+    overlong_key = "A" * (513 - len(aws_config.secret_prefix))
+    env_file.write_text(f"VALID_KEY=value\n{overlong_key}=value\n")
+    mock_boto3 = MagicMock()
+
+    with (
+        patch.dict("sys.modules", {"boto3": mock_boto3}),
+        pytest.raises(ValueError, match="AWS secret name"),
+    ):
+        AWSSecretsBackend(aws_config).upload(env_file)
+
+    mock_boto3.client.assert_not_called()
+
+
+def test_aws_list_validates_prefix_before_creating_client(aws_config):
+    aws_config.connector_name = "inválid"
+    mock_boto3 = MagicMock()
+
+    with (
+        patch.dict("sys.modules", {"boto3": mock_boto3}),
+        pytest.raises(ValueError, match="AWS secret name"),
+    ):
+        AWSSecretsBackend(aws_config).list()
+
+    mock_boto3.client.assert_not_called()

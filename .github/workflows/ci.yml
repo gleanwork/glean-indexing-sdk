@@ -23,10 +23,10 @@ jobs:
     name: Lint and Type Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
         with:
           cache: true
         env:
@@ -49,23 +49,25 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
         with:
           cache: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set Python version for matrix
-        run: mise use python@${{ matrix.python-version }}
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: mise use "python@$PYTHON_VERSION"
 
       - name: Setup development environment
         run: mise run setup
 
-      - name: Run tests
-        run: mise run test
+      - name: Run tests with coverage
+        run: mise run test:cov
 
       - name: Test package installation
         run: |
@@ -73,14 +75,73 @@ jobs:
           uv run pip install dist/*.whl
           uv run python -c "import glean.indexing; print('Package installed successfully')"
 
+  optional-dependencies:
+    name: Optional dependency (${{ matrix.extra }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - extra: aws
+            tests: tests/unit_tests/observability/plugins/aws
+            type_paths: src/glean/indexing/observability/plugins/aws tests/unit_tests/observability/plugins/aws
+          - extra: gcp
+            tests: tests/unit_tests/observability/plugins/gcp
+            type_paths: src/glean/indexing/observability/plugins/gcp src/glean/indexing/deployment/secrets.py tests/unit_tests/observability/plugins/gcp tests/optional_dependencies/gcp_smoke.py
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up mise
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+        with:
+          cache: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install ${{ matrix.extra }} extra
+        run: uv sync --locked --extra test --extra typing --extra ${{ matrix.extra }}
+
+      - name: Run GCP integration construction smoke test
+        if: matrix.extra == 'gcp'
+        run: uv run python tests/optional_dependencies/gcp_smoke.py
+
+      - name: Run provider tests with no skips
+        run: |
+          uv run pytest ${{ matrix.tests }} -v -ra --junitxml="$RUNNER_TEMP/${{ matrix.extra }}-pytest.xml"
+          uv run python tests/optional_dependencies/assert_no_pytest_skips.py "$RUNNER_TEMP/${{ matrix.extra }}-pytest.xml"
+
+      - name: Type check installed integration
+        run: uv run pyright ${{ matrix.type_paths }}
+
+  deployment-container-user:
+    name: Deployment container user smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up mise
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+        with:
+          cache: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup development environment
+        run: mise run setup
+
+      - name: Build generated images and verify runtime UID/GID
+        run: uv run python scripts/smoke_deployment_container_user.py
+
   plugins:
     name: Agent plugin
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
 
       - name: Set up mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
         with:
           cache: true
         env:
@@ -89,18 +150,25 @@ jobs:
       - name: Install plugin build dependencies
         run: npm ci
 
+      - name: Check lockstep plugin release configuration
+        run: npm run check:plugin-release
+
+      - name: Check feature PR preserves the release-owned version
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run check:plugin-version-policy -- "$BASE_SHA"
+
+      # Check before building: a build overwrites stale committed output and
+      # would make the comparison false-pass.
+      - name: Check committed plugin output is not stale
+        run: npm run diff:plugins
+
       - name: Build plugin artifacts
         run: npm run build:plugins
 
       - name: Validate all three targets
         run: npm run validate:plugins
-
-      # The emitted plugin content and the root marketplace manifests are
-      # committed: each manifest's `source` points at build/, so it has to exist
-      # in a fresh clone — that clone is what installing from GitHub gets. Fail
-      # if someone edited a skill under skills/ without rebuilding.
-      - name: Check committed plugin output is not stale
-        run: npm run diff:plugins
 
       # Schema check only — `plugin validate` passes even when a plugin's
       # `source` points at a path that does not exist (verified with a negative

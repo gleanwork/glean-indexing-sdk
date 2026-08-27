@@ -1,78 +1,186 @@
 # Advanced Usage
 
-## Choosing a Connector Type
+## Choosing a connector type
 
-| Connector | Data Client | Best For |
+| Connector | Data client | Use when |
 |---|---|---|
-| `BaseDatasourceConnector` | `BaseDataClient` | Small-to-medium datasets that fit in memory |
-| `BaseStreamingDatasourceConnector` | `BaseStreamingDataClient` | Large datasets with sync/paginated APIs |
-| `BaseAsyncStreamingDatasourceConnector` | `BaseAsyncStreamingDataClient` | Large datasets with async APIs (aiohttp, httpx async) |
+| `BaseDatasourceConnector` | `BaseDataClient` | The complete document dataset fits comfortably in memory |
+| `BaseStreamingDatasourceConnector` | `BaseStreamingDataClient` | A large or paginated source uses synchronous I/O |
+| `BaseAsyncStreamingDatasourceConnector` | `BaseAsyncStreamingDataClient` | A large source provides genuinely asynchronous I/O |
+| `BasePeopleConnector` | `BaseDataClient` | Indexing employees rather than documents |
 
-### BaseDatasourceConnector
+Streaming and incremental indexing solve different problems. Streaming bounds memory while still
+supporting a complete full crawl. Incremental indexing limits the source records fetched by passing
+a checkpoint through `since`.
 
-**Use when:**
-
-- All data fits comfortably in memory
-- Your API returns all data in one call (or a small number of calls)
-- You're indexing wikis, knowledge bases, documentation sites, or file systems with moderate content
-
-**Avoid when:**
-
-- The dataset is too large to fit in memory
-- Individual documents are very large (> 10MB each)
-- Memory usage is a concern
-
-### BaseStreamingDatasourceConnector
-
-**Use when:**
-
-- Data is too large to load all at once
-- Your source API is paginated
-- You want to process data incrementally to limit memory usage
-- You're in a memory-constrained environment
-
-**Avoid when:**
-
-- Your dataset fits comfortably in memory (use `BaseDatasourceConnector` instead for simplicity)
-
-### BaseAsyncStreamingDatasourceConnector
-
-**Use when:**
-
-- Your data source provides async APIs (e.g., `aiohttp`, `httpx` async client)
-- You want non-blocking I/O during data retrieval
-- You're already working in an async codebase
-- You need to make concurrent requests to your source system
-
-**Avoid when:**
-
-- Your source API only has synchronous clients (use `BaseStreamingDatasourceConnector` instead)
-- You don't need async I/O benefits
-
-## Forced Restart Uploads
-
-All connector types support forced restart uploads via `force_restart=True`:
+For streaming connectors, set `connector.batch_size` to control the maximum number of source
+records transformed at once. In-memory document and people connectors fetch and transform the
+complete dataset before upload batching:
 
 ```python
-connector.index_data(mode=IndexingMode.FULL, force_restart=True)
+connector.batch_size = 250
 ```
 
-Or for async connectors:
+## Indexing modes
+
+`IndexingMode.FULL` is a replacement crawl. Previously indexed documents that are absent from a
+successfully completed upload are deleted as stale. Never allow an incomplete source fetch to
+finish successfully.
+
+`IndexingMode.INCREMENTAL` changes the source fetch by passing a timestamp to the data client:
 
 ```python
-await connector.index_data_async(mode=IndexingMode.FULL, force_restart=True)
+from glean.indexing.models import IndexingMode
+
+connector.index_data(mode=IndexingMode.FULL)
+connector.index_data(mode=IndexingMode.INCREMENTAL)
 ```
 
-### When to Use
+The current connector implementations still use bulk replacement upload APIs after an incremental
+fetch. Do not assume that omitted records are protected from stale deletion; use targeted
+`PushUploader.index_documents()` calls for deletion-free updates.
 
-- Aborting and restarting a failed or interrupted upload
-- Ensuring a clean upload state by discarding partial uploads
-- Recovering from upload errors or inconsistent states
+The SDK does not persist incremental checkpoints. Override `_get_last_crawl_timestamp()` to read the
+last successful checkpoint:
 
-### How It Works
+```python
+class WikiConnector(BaseDatasourceConnector[WikiPage]):
+    def _get_last_crawl_timestamp(self) -> str | None:
+        return checkpoint_store.read("company_wiki")
+```
 
-1. Generates a new `upload_id` to ensure clean separation from previous uploads
-2. Sets `forceRestartUpload=True` on the **first batch only**
-3. Continues with normal batch processing for subsequent batches
+Persist the crawl's start time from an external runner only after `index_data()` succeeds:
 
-This feature is available on `BaseDatasourceConnector`, `BaseStreamingDatasourceConnector`, `BaseAsyncStreamingDatasourceConnector`, and `BasePeopleConnector`.
+```python
+from datetime import datetime, timezone
+
+started_at = datetime.now(timezone.utc).isoformat()
+connector.index_data(mode=IndexingMode.INCREMENTAL)
+checkpoint_store.write("company_wiki", started_at)
+```
+
+Recording the end time can skip source updates that occur while the crawl is running.
+
+> **Empty full crawls:** An empty source iterator makes no upload call, so it does not delete
+> documents from an earlier crawl. However, a non-empty source batch that `transform()` converts to
+> an empty document list can still complete an empty upload and trigger stale deletion.
+
+## Connector options
+
+Pass per-run upload behavior through `ConnectorOptions`:
+
+```python
+from glean.indexing.models import ConnectorOptions, IndexingMode
+
+options = ConnectorOptions(
+    upload_timeout_ms=120_000,
+    upload_max_workers=10,
+)
+
+connector.index_data(mode=IndexingMode.FULL, options=options)
+```
+
+For an async streaming connector:
+
+```python
+await connector.index_data_async(mode=IndexingMode.FULL, options=options)
+```
+
+The connector base classes map options to bulk endpoints as follows:
+
+| Bulk endpoint | `force_restart` | `disable_stale_deletion_check` | `upload_timeout_ms` | `upload_max_workers` | `document_batch_size_bytes` |
+| --- | --- | --- | --- | --- | --- |
+| Documents | Yes | Yes | Yes | Yes | Yes |
+| Datasource users | Yes | Yes | Yes | No | No |
+| Datasource groups | Yes | Yes | Yes | No | No |
+| Datasource memberships | Yes | No | Yes | No | No |
+| Employees | Yes | Yes | Yes | No | No |
+
+Streaming datasource connectors upload only documents, so only the document row applies to them.
+`upload_max_workers` is specific to document uploads; the other endpoints upload their pages
+sequentially.
+
+### Force restart
+
+`force_restart=True` sends `force_restart_upload=True` on the first batch for every bulk endpoint.
+Use it to recover from an incomplete upload session; do not enable it for every crawl.
+
+```python
+connector.index_data(
+    mode=IndexingMode.FULL,
+    options=ConnectorOptions(force_restart=True),
+)
+```
+
+### Stale deletion check
+
+Despite its name, `disable_stale_deletion_check=True` forces synchronous stale-data deletion on the
+last batch:
+
+```python
+connector.index_data(
+    mode=IndexingMode.FULL,
+    options=ConnectorOptions(disable_stale_deletion_check=True),
+)
+```
+
+This bypasses the stale-deletion volume safeguard. Use it only when a large deletion is intentional
+and the completed crawl scope has been verified.
+
+The generated API uses `disable_stale_document_deletion_check` for documents and
+`disable_stale_data_deletion_check` for datasource users, datasource groups, and employees.
+The memberships endpoint does not support a stale-deletion-check option.
+
+### Upload timeout
+
+`upload_timeout_ms` applies to each bulk upload request. Prefer reducing `connector.batch_size`
+before using very large timeouts for oversized payloads.
+
+### Upload concurrency
+
+`upload_max_workers` controls concurrent middle-page document uploads. The first page opens the
+upload session and the last page completes it, so both remain sequential. The default is five
+workers. Datasource identity and employee uploads remain sequential.
+
+### Document byte limit
+
+`document_batch_size_bytes` is a soft maximum for the UTF-8 size of the serialized documents in
+each upload batch. It applies to in-memory, sync streaming, and async streaming datasource
+connectors. The default is 5 MiB; set it to `None` to batch documents only by
+`connector.batch_size`.
+
+```python snippet=advanced/document_batching.py
+from glean.indexing.models import ConnectorOptions
+
+MIB = 1024 * 1024
+
+# The default applies when ConnectorOptions is omitted or used without an override.
+default_batching = ConnectorOptions()
+assert default_batching.document_batch_size_bytes == 5 * MIB
+
+smaller_batches = ConnectorOptions(document_batch_size_bytes=2 * MIB)
+count_only_batches = ConnectorOptions(document_batch_size_bytes=None)
+```
+
+The byte calculation serializes each document with API field aliases, omits fields set to `None`,
+and uses compact JSON before measuring its UTF-8 size. Request-envelope bytes are not included. A
+single document larger than the configured limit is still uploaded in its own batch, so the limit
+cannot make an individual document smaller.
+
+Custom datasource connector bases can override `_resolve_max_batch_bytes()` when they need a
+different policy; that hook applies to both in-memory and streaming document batching.
+
+## Identity data with streaming connectors
+
+`BaseDatasourceConnector` runs `get_identities()` before its content crawl. The sync and async
+streaming connector implementations override that lifecycle and currently upload only documents.
+If streamed documents reference datasource users or groups, index those users, groups, and
+memberships separately.
+
+## Further reference
+
+- [Connector types](https://developers.glean.com/libraries/indexing-sdk/concepts/connector-types)
+- [Indexing modes](https://developers.glean.com/libraries/indexing-sdk/concepts/indexing-modes)
+- [Batching and throughput](https://developers.glean.com/libraries/indexing-sdk/push/batching)
+- [PushUploader](https://developers.glean.com/libraries/indexing-sdk/push/uploader)
+- [Error handling](https://developers.glean.com/libraries/indexing-sdk/push/error-handling)

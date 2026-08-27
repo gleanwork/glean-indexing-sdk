@@ -67,7 +67,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build wheel and source distribution once
-        run: uv build
+        run: |
+          uv build
+          rm -f dist/.gitignore
 
       - name: Verify tag, commit, versions, and artifacts
         run: >-

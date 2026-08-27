@@ -35,11 +35,11 @@ data "google_container_cluster" "main" {
   location = var.region
 }
 
-# Resolve project number for IAM condition expressions.
-# GCP IAM condition resource names use the numeric project number, not the project ID.
-# Reference: https://cloud.google.com/resource-manager/docs/creating-managing-projects
-data "google_project" "main" {
-  project_id = var.project_id
+locals {
+  secret_keys = toset(jsondecode(var.secret_keys_json))
+  secret_names = {
+    for key in local.secret_keys : key => "{{ config.secret_prefix }}${key}"
+  }
 }
 
 provider "kubernetes" {
@@ -86,17 +86,14 @@ resource "google_service_account_iam_member" "workload_identity" {
   member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.namespace}/{{ config.k8s_name }}-ksa]"
 }
 
-# Allow accessing secret values at runtime, scoped to this connector's secrets only.
+# Allow accessing only the exact declared secret values at runtime.
 # Reference: https://cloud.google.com/secret-manager/docs/access-control
-resource "google_project_iam_member" "secret_accessor" {
-  project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.connector.email}"
-  condition {
-    title       = "connector_secrets_only"
-    description = "Restrict secret accessor to secrets for this connector only."
-    expression  = "resource.name.startsWith(\"projects/${data.google_project.main.number}/secrets/{{ config.secret_prefix }}\")"
-  }
+resource "google_secret_manager_secret_iam_member" "secret_accessor" {
+  for_each  = local.secret_names
+  project   = var.project_id
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.connector.email}"
 }
 
 resource "kubernetes_service_account_v1" "connector" {
@@ -167,6 +164,10 @@ resource "kubernetes_cron_job_v1" "connector" {
               env {
                 name  = "GOOGLE_CLOUD_PROJECT"
                 value = var.project_id
+              }
+              env {
+                name  = "SECRET_KEYS_JSON"
+                value = var.secret_keys_json
               }
               env {
                 name  = "CONNECTOR_CLASS"

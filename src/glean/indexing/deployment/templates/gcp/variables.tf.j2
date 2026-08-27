@@ -35,6 +35,12 @@ variable "image" {
   default     = "{{ config.image_name }}:latest"
 }
 
+variable "secret_keys_json" {
+  description = "JSON array of connector secret environment keys."
+  type        = string
+  default     = "[]"
+}
+
 variable "cluster_endpoint" {
   description = <<-EOT
     Override the GKE cluster API endpoint used by the Terraform kubernetes provider.

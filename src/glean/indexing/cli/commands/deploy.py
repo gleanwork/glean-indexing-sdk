@@ -6,6 +6,7 @@ is only the command surface.
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 import subprocess
@@ -21,6 +22,12 @@ from glean.indexing.cli.output import OutputMode, emit
 from glean.indexing.deployment import generate_artifacts
 from glean.indexing.deployment.config import DeploymentConfig
 from glean.indexing.deployment.generator import list_generated_files
+from glean.indexing.deployment.secret_manifest import (
+    env_keys_from_upload_results,
+    manifest_path,
+    read_manifest,
+    write_manifest,
+)
 
 
 def _confirm(ctx: click.Context, prompt: str) -> None:
@@ -272,8 +279,8 @@ def init(
         "Edit glean_deployment.yaml — set cluster_name, region, and registry.",
         *cloud_docs,
         "cp .env.example .env  # fill in connector credentials",
-        "glean-idx deploy secrets upload",
         "glean-idx deploy build --push",
+        "glean-idx deploy secrets upload",
         "glean-idx deploy apply",
     ]
     data = {
@@ -291,8 +298,8 @@ def init(
             "  1. Edit glean_deployment.yaml — set cluster_name, region, and registry.",
             *[f"     {reference}" for reference in cloud_docs],
             "  2. cp .env.example .env  # fill in connector credentials",
-            "  3. glean-idx deploy secrets upload",
-            "  4. glean-idx deploy build --push",
+            "  3. glean-idx deploy build --push",
+            "  4. glean-idx deploy secrets upload",
             "  5. glean-idx deploy apply",
         ]
     )
@@ -428,6 +435,17 @@ def secrets_delete(
         )
     except Exception as exc:
         raise _backend_error("delete", config, exc) from exc
+
+    keys_path = manifest_path(Path(config_path))
+    try:
+        remaining_keys = [
+            existing_key for existing_key in read_manifest(keys_path) if existing_key != key
+        ]
+        write_manifest(keys_path, remaining_keys)
+    except (OSError, ValueError) as exc:
+        raise DeploymentError(
+            f"Secret was deleted, but could not update {keys_path}: {exc}"
+        ) from exc
     emit(
         {"connector": config.connector_name, "deleted": key},
         context(ctx).output,
@@ -470,9 +488,14 @@ def secrets_upload(
     except Exception as exc:
         raise _backend_error("upload", config, exc) from exc
 
-    if results:
-        keys_file = Path(config_path).parent / ".glean_secret_keys"
-        keys_file.write_text("\n".join(results.keys()) + "\n", encoding="utf-8", newline="\n")
+    keys_path = manifest_path(Path(config_path))
+    try:
+        env_keys = env_keys_from_upload_results(results, config.secret_prefix)
+        write_manifest(keys_path, env_keys)
+    except (OSError, ValueError) as exc:
+        raise DeploymentError(
+            f"Secrets were uploaded, but could not update {keys_path}: {exc}"
+        ) from exc
 
     data = {
         "connector": config.connector_name,
@@ -523,6 +546,12 @@ def apply(
             f"Terraform directory not found: {tf_dir}. Run `glean-idx deploy init` first."
         )
 
+    keys_path = manifest_path(Path(config_path))
+    try:
+        secret_keys_json = json.dumps(read_manifest(keys_path))
+    except (OSError, ValueError) as exc:
+        raise DeploymentError(f"Could not read secret key manifest {keys_path}: {exc}") from exc
+
     if config.cloud == "gcp":
         var_flags = [
             f"-var=project_id={config.project_id}",
@@ -530,6 +559,7 @@ def apply(
             f"-var=cluster_name={config.cluster_name}",
             f"-var=namespace={config.namespace}",
             f"-var=image={config.image_name}:latest",
+            f"-var=secret_keys_json={secret_keys_json}",
         ]
         if config.cluster_endpoint:
             var_flags.append(f"-var=cluster_endpoint={config.cluster_endpoint}")
@@ -540,6 +570,7 @@ def apply(
             f"-var=cluster_name={config.cluster_name}",
             f"-var=namespace={config.namespace}",
             f"-var=image={config.image_name}:latest",
+            f"-var=secret_keys_json={secret_keys_json}",
         ]
 
     _run_tool(
@@ -797,45 +828,52 @@ def destroy(
     cleanup: dict[str, object] = {"kept": keep_secrets, "deleted": [], "failed": []}
     text_lines = ["Running terraform destroy...", "Terraform resources destroyed."]
 
-    # Clean up secrets unless --keep-secrets was specified
+    # Clean up only manifest-owned secrets unless --keep-secrets was specified.
     if not keep_secrets:
         from glean.indexing.deployment.secrets import get_secrets_backend
 
         text_lines.extend(["", "Cleaning up secrets from Secret Manager..."])
+        keys_path = manifest_path(Path(config_path))
 
         try:
-            backend = get_secrets_backend(config)
-            secrets = backend.list()
-        except ImportError as exc:
+            secrets = read_manifest(keys_path)
+        except (OSError, ValueError) as exc:
             cleanup["skipped"] = str(exc)
-            click.echo(
-                f"  Warning: secret cleanup skipped (missing cloud SDK dependency): {exc}", err=True
-            )
-        except Exception as exc:  # noqa: BLE001 - best-effort cleanup must not hide successful destroy
-            cleanup["skipped"] = str(exc)
-            click.echo(
-                f"  Warning: secret cleanup skipped (failed to list secrets): {exc}", err=True
-            )
+            click.echo(f"  Warning: secret cleanup skipped (invalid manifest): {exc}", err=True)
         else:
             if not secrets:
-                text_lines.append("  No secrets found (already cleaned up or never uploaded).")
+                text_lines.append("  No manifest-owned secrets found.")
             else:
-                text_lines.append(f"  Deleting {len(secrets)} secret(s)...")
-                deleted: list[str] = []
-                failed: list[dict[str, str]] = []
-                for key in secrets:
+                try:
+                    backend = get_secrets_backend(config)
+                except ImportError as exc:
+                    cleanup["skipped"] = str(exc)
+                    click.echo(
+                        f"  Warning: secret cleanup skipped (missing cloud SDK dependency): {exc}",
+                        err=True,
+                    )
+                else:
+                    text_lines.append(f"  Deleting {len(secrets)} manifest-owned secret(s)...")
+                    deleted: list[str] = []
+                    failed: list[dict[str, str]] = []
+                    for key in secrets:
+                        try:
+                            backend.delete(key)
+                            deleted.append(key)
+                            text_lines.append(f"    deleted  {key}")
+                        except Exception as exc:  # noqa: BLE001 - continue cleaning up remaining secrets
+                            failed.append({"key": key, "error": str(exc)})
+                            click.echo(f"    failed   {key}: {exc}", err=True)
+                    cleanup["deleted"] = deleted
+                    cleanup["failed"] = failed
                     try:
-                        backend.delete(key)
-                        deleted.append(key)
-                        text_lines.append(f"    deleted  {key}")
-                    except Exception as exc:  # noqa: BLE001 - continue cleaning up remaining secrets
-                        failed.append({"key": key, "error": str(exc)})
-                        click.echo(f"    failed   {key}: {exc}", err=True)
-                cleanup["deleted"] = deleted
-                cleanup["failed"] = failed
-                text_lines.append(
-                    f"  Secret cleanup complete (deleted={len(deleted)}, failed={len(failed)})."
-                )
+                        write_manifest(keys_path, (failure["key"] for failure in failed))
+                    except (OSError, ValueError) as exc:
+                        cleanup["manifest_error"] = str(exc)
+                        click.echo(f"  Warning: could not update secret manifest: {exc}", err=True)
+                    text_lines.append(
+                        f"  Secret cleanup complete (deleted={len(deleted)}, failed={len(failed)})."
+                    )
     else:
         text_lines.extend(["", "Skipping secret cleanup (--keep-secrets specified)."])
 

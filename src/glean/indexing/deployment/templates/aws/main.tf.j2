@@ -27,6 +27,13 @@ provider "aws" {
   region = var.region
 }
 
+locals {
+  secret_keys = toset(jsondecode(var.secret_keys_json))
+  secret_names = {
+    for key in local.secret_keys : key => "{{ config.secret_prefix }}${key}"
+  }
+}
+
 data "aws_eks_cluster" "main" {
   name = var.cluster_name
 }
@@ -70,19 +77,27 @@ resource "aws_iam_role" "connector" {
   })
 }
 
-# Allow reading connector secrets by prefix.
+# Resolve each declared secret to its exact provider ARN.
+# Reference: https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret
+data "aws_secretsmanager_secret" "connector" {
+  for_each = local.secret_names
+  name     = each.value
+}
+
+# Allow reading only the exact declared secret values.
 # Reference: https://docs.aws.amazon.com/secretsmanager/latest/userguide/auth-and-access.html
 resource "aws_iam_role_policy" "secrets" {
-  name = "{{ config.connector_name }}-secrets"
-  role = aws_iam_role.connector.id
+  count = length(local.secret_names) == 0 ? 0 : 1
+  name  = "{{ config.connector_name }}-secrets"
+  role  = aws_iam_role.connector.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-        Resource = "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:CUSTOM_DATASOURCE_PLATFORM_{{ config.connector_name | upper }}_*"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [for secret in data.aws_secretsmanager_secret.connector : secret.arn]
       }
     ]
   })
@@ -188,6 +203,10 @@ resource "kubernetes_cron_job_v1" "connector" {
               env {
                 name  = "AWS_REGION"
                 value = var.region
+              }
+              env {
+                name  = "SECRET_KEYS_JSON"
+                value = var.secret_keys_json
               }
               env {
                 name  = "CONNECTOR_CLASS"

@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from glean.indexing.deployment.secret_manifest import validate_env_key
+
 if TYPE_CHECKING:
     from glean.indexing.deployment.config import DeploymentConfig
 
@@ -25,6 +27,7 @@ _REDLIST: frozenset[str] = frozenset(
         "DATASOURCE_NAME",
         "CLOUD_PLATFORM",
         "INDEXING_MODE",
+        "SECRET_KEYS_JSON",
         "CONNECTOR_CLASS",
         "CONNECTOR_MODULE",
         "CONNECTOR_FACTORY",
@@ -63,6 +66,7 @@ class SecretsBackend(ABC):
 
     def _secret_name(self, env_key: str) -> str:
         """Build and validate the full cloud secret name: CUSTOM_DATASOURCE_PLATFORM_<NAME>_<KEY>."""
+        validate_env_key(env_key)
         secret_name = f"{self._config.secret_prefix}{env_key}"
         self._validate_secret_name(secret_name)
         return secret_name

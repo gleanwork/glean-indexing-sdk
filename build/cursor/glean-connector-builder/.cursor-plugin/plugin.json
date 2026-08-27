@@ -1,7 +1,7 @@
 {
   "name": "glean-connector-builder",
   "displayName": "Glean Connector Builder",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Build a Glean connector from a description of your source: explore its API, plan, generate against the Indexing SDK, and test.",
   "author": {
     "name": "Glean",

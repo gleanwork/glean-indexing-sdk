@@ -1,3 +1,30 @@
+## v1.0.0 (2026-08-27)
+
+### Fix
+
+- **people**: preserve employee replacement compatibility (#198)
+- **deployment**: enforce exact connector secret access (#197)
+- **testing**: reject unbounded negative identity access (#196)
+- **connectors**: preserve incremental and empty full semantics (#195)
+- **cli**: honor deploy global options (#189)
+- **observability**: restore connector lifecycle parity (#192)
+- **release**: bind publish artifacts to tagged SHA (#184)
+- **deploy**: sanitize derived connector names (#188)
+- **deployment**: validate derived Kubernetes, GCP, and AWS resource names (#182)
+- **connectors**: preserve identity uploads and options (#185)
+- **gcp**: repair advertised cloud extra (#186)
+- **deploy**: make artifact generation non-destructive (#187)
+- **deploy**: synchronize container runtime IDs (#177)
+- **deploy**: accept valid AWS account IDs (#176)
+- **testing**: require explicit destructive opt-in for live runs (#172)
+- **testing**: reject unsafe live identity mutations (#175)
+- **testing**: reject live target changes after confirmation (#174)
+- **testing**: use current source data for live runs (#171)
+- **testing**: enforce the max-items contract (#173)
+- support connector factories in deployed runners (#169)
+- forward document_batch_size_bytes to all connector base classes (#150)
+- bump js-yaml to 3.15.1 to resolve npm audit high-severity findings (#147)
+
 ## v1.0.0rc0 (2026-08-05)
 
 ### Feat

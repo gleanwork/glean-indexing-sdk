@@ -147,17 +147,22 @@ class BaseStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData], ABC
                         max_batch_bytes=max_batch_bytes,
                     )
 
-            if self._force_restart:
-                logger.info("Force restarting upload - discarding any previous upload progress")
+            uploader = self._create_uploader(options)
+            if mode == IndexingMode.INCREMENTAL:
+                for document_batch in transformed_batches():
+                    uploader.index_documents(document_batch, upload_id=upload_id)
+            else:
+                if self._force_restart:
+                    logger.info("Force restarting upload - discarding any previous upload progress")
 
-            self._create_uploader(options).bulk_index_document_batches(
-                transformed_batches(),
-                upload_id=upload_id,
-                force_restart_upload=True if self._force_restart else None,
-                disable_stale_document_deletion_check=True
-                if (options and options.disable_stale_deletion_check)
-                else None,
-            )
+                uploader.bulk_index_document_batches(
+                    transformed_batches(),
+                    upload_id=upload_id,
+                    force_restart_upload=True if self._force_restart else None,
+                    disable_stale_document_deletion_check=True
+                    if (options and options.disable_stale_deletion_check)
+                    else None,
+                )
 
             self._observability.record_metric("documents_indexed", documents_transformed)
             logger.info(

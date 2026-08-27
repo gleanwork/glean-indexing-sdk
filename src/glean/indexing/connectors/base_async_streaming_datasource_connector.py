@@ -184,10 +184,32 @@ class BaseAsyncStreamingDatasourceConnector(BaseDatasourceConnector[TSourceData]
                         yield sub_batch
 
             batch_iterator = transformed_batches().__aiter__()
-            try:
-                first_batch = await batch_iterator.__anext__()
-            except StopAsyncIteration:
+            if mode == IndexingMode.INCREMENTAL:
+                async for document_batch in batch_iterator:
+                    await asyncio.to_thread(
+                        uploader.index_documents,
+                        document_batch,
+                        upload_id=upload_id,
+                    )
                 first_batch = None
+            else:
+                try:
+                    first_batch = await batch_iterator.__anext__()
+                except StopAsyncIteration:
+                    first_batch = None
+
+            if mode == IndexingMode.FULL and first_batch is None:
+                await asyncio.to_thread(
+                    uploader.bulk_index_single_batch_upload,
+                    documents=[],
+                    upload_id=upload_id,
+                    is_first_page=True,
+                    is_last_page=True,
+                    force_restart_upload=True if self._force_restart else None,
+                    disable_stale_document_deletion_check=True
+                    if (options and options.disable_stale_deletion_check)
+                    else None,
+                )
 
             if first_batch is not None:
                 try:

@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+from pathlib import Path
 
 from glean.indexing.deployment.bootstrap import (
     ConnectorConstructionError,
@@ -85,22 +86,27 @@ except ImportError:
 client = secretmanager.SecretManagerServiceClient()
 prefix = f"CUSTOM_DATASOURCE_PLATFORM_{connector_name.upper()}_"
 
-# List all secrets in this project with the connector prefix.
-parent = f"projects/{project_id}"
+# Load secret keys from the manifest written by 'glean-idx deploy secrets upload'.
+_keys_file = Path(__file__).parent / ".glean_secret_keys"
+if not _keys_file.exists():
+    print(
+        "WARNING: .glean_secret_keys not found — no secrets loaded. "
+        "Run 'glean-idx deploy secrets upload' before 'glean-idx deploy build --push'.",
+        file=sys.stderr,
+    )
+    _secret_keys: list[str] = []
+else:
+    _secret_keys = [ln.strip() for ln in _keys_file.read_text().splitlines() if ln.strip()]
+
 secrets_loaded = 0
-for secret in client.list_secrets(request={"parent": parent, "filter": f"name:{prefix}"}):
-    secret_name = secret.name.split("/")[-1]  # e.g. CUSTOM_DATASOURCE_PLATFORM_MY_CONN_API_KEY
-    if not secret_name.startswith(prefix):
-        continue
-
-    # Derive the env var name: strip the prefix to get the key part.
-    env_key = secret_name[len(prefix):]
-
-    # Access the latest version.
-    version_name = f"{secret.name}/versions/latest"
-    response = client.access_secret_version(request={"name": version_name})
-    os.environ[env_key] = response.payload.data.decode("utf-8")
-    secrets_loaded += 1
+for _key in _secret_keys:
+    _version = f"projects/{project_id}/secrets/{prefix}{_key}/versions/latest"
+    try:
+        _response = client.access_secret_version(request={"name": _version})
+        os.environ[_key] = _response.payload.data.decode("utf-8")
+        secrets_loaded += 1
+    except Exception as _exc:
+        print(f"WARNING: Could not load secret {_key!r}: {_exc}", file=sys.stderr)
 
 print(f"Loaded {secrets_loaded} secret(s) from GCP Secret Manager.")
 

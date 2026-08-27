@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+from pathlib import Path
 
 from glean.indexing.deployment.bootstrap import (
     ConnectorConstructionError,
@@ -85,21 +86,27 @@ except ImportError:
 sm_client = boto3.client("secretsmanager", region_name=aws_region)
 prefix = f"CUSTOM_DATASOURCE_PLATFORM_{connector_name.upper()}_"
 
-# List all secrets with the connector prefix.
-paginator = sm_client.get_paginator("list_secrets")
+# Load secret keys from the manifest written by 'glean-idx deploy secrets upload'.
+_keys_file = Path(__file__).parent / ".glean_secret_keys"
+if not _keys_file.exists():
+    print(
+        "WARNING: .glean_secret_keys not found — no secrets loaded. "
+        "Run 'glean-idx deploy secrets upload' before 'glean-idx deploy build --push'.",
+        file=sys.stderr,
+    )
+    _secret_keys: list[str] = []
+else:
+    _secret_keys = [ln.strip() for ln in _keys_file.read_text().splitlines() if ln.strip()]
+
 secrets_loaded = 0
-for page in paginator.paginate(Filters=[{"Key": "name", "Values": [prefix]}]):
-    for secret_meta in page.get("SecretList", []):
-        secret_name = secret_meta["Name"]
-        if not secret_name.startswith(prefix):
-            continue
-
-        # Derive the env var name: strip the prefix to get the key part.
-        env_key = secret_name[len(prefix):]
-
-        response = sm_client.get_secret_value(SecretId=secret_name)
-        os.environ[env_key] = response["SecretString"]
+for _key in _secret_keys:
+    _secret_name = f"{prefix}{_key}"
+    try:
+        _response = sm_client.get_secret_value(SecretId=_secret_name)
+        os.environ[_key] = _response["SecretString"]
         secrets_loaded += 1
+    except Exception as _exc:
+        print(f"WARNING: Could not load secret {_key!r}: {_exc}", file=sys.stderr)
 
 print(f"Loaded {secrets_loaded} secret(s) from AWS Secrets Manager.")
 

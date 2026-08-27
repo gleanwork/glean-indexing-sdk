@@ -81,11 +81,6 @@ resource "aws_iam_role_policy" "secrets" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["secretsmanager:ListSecrets"]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
         Resource = "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:CUSTOM_DATASOURCE_PLATFORM_{{ config.connector_name | upper }}_*"
       }

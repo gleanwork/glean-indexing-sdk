@@ -201,20 +201,7 @@ def test_generated_runner_uses_factory_for_connector_with_required_arguments(
 
     if cloud == "aws":
 
-        class FakePaginator:
-            def paginate(self, **_kwargs):
-                return [
-                    {
-                        "SecretList": [
-                            {"Name": "CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_SOURCE_API_TOKEN"}
-                        ]
-                    }
-                ]
-
         class FakeSecretsManager:
-            def get_paginator(self, _name):
-                return FakePaginator()
-
             def get_secret_value(self, *, SecretId):
                 assert SecretId.endswith("SOURCE_API_TOKEN")
                 return {"SecretString": "loaded-before-construction"}
@@ -227,17 +214,6 @@ def test_generated_runner_uses_factory_for_connector_with_required_arguments(
     else:
 
         class FakeSecretManagerClient:
-            def list_secrets(self, *, request):
-                assert request["parent"] == "projects/my-project"
-                return [
-                    SimpleNamespace(
-                        name=(
-                            "projects/my-project/secrets/"
-                            "CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_SOURCE_API_TOKEN"
-                        )
-                    )
-                ]
-
             def access_secret_version(self, *, request):
                 assert request["name"].endswith("SOURCE_API_TOKEN/versions/latest")
                 return SimpleNamespace(payload=SimpleNamespace(data=b"loaded-before-construction"))
@@ -261,6 +237,7 @@ def test_generated_runner_uses_factory_for_connector_with_required_arguments(
     )
     run_path = tmp_path / "run.py"
     run_path.write_text(generate_artifacts(config)["run.py"])
+    (tmp_path / ".glean_secret_keys").write_text("SOURCE_API_TOKEN\n")
     environment = {
         "DATASOURCE_NAME": "my_salesforce",
         "CLOUD_PLATFORM": cloud,
@@ -485,3 +462,37 @@ def test_aws_terraform_has_no_iam_condition():
     artifacts = generate_artifacts(AWS_CONFIG)
     tf = artifacts["terraform/main.tf"]
     assert "condition {" not in tf
+
+
+# ---------------------------------------------------------------------------
+# Secret discovery scoped via .glean_secret_keys manifest (#105)
+# ---------------------------------------------------------------------------
+
+
+def test_gcp_terraform_has_no_project_wide_secret_viewer():
+    artifacts = generate_artifacts(GCP_CONFIG)
+    tf = artifacts["terraform/main.tf"]
+    assert "secret_viewer" not in tf
+    assert "secretmanager.viewer" not in tf
+
+
+def test_aws_terraform_has_no_list_secrets_statement():
+    artifacts = generate_artifacts(AWS_CONFIG)
+    tf = artifacts["terraform/main.tf"]
+    assert "ListSecrets" not in tf
+
+
+def test_gcp_run_py_uses_keys_file_not_list_secrets():
+    artifacts = generate_artifacts(GCP_CONFIG)
+    run_py = artifacts["run.py"]
+    assert ".glean_secret_keys" in run_py
+    assert "list_secrets" not in run_py
+    assert "access_secret_version" in run_py
+
+
+def test_aws_run_py_uses_keys_file_not_list_secrets():
+    artifacts = generate_artifacts(AWS_CONFIG)
+    run_py = artifacts["run.py"]
+    assert ".glean_secret_keys" in run_py
+    assert "list_secrets" not in run_py
+    assert "get_paginator" not in run_py

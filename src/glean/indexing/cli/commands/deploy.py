@@ -272,8 +272,8 @@ def init(
         "Edit glean_deployment.yaml — set cluster_name, region, and registry.",
         *cloud_docs,
         "cp .env.example .env  # fill in connector credentials",
-        "glean-idx deploy build --push",
         "glean-idx deploy secrets upload",
+        "glean-idx deploy build --push",
         "glean-idx deploy apply",
     ]
     data = {
@@ -291,8 +291,8 @@ def init(
             "  1. Edit glean_deployment.yaml — set cluster_name, region, and registry.",
             *[f"     {reference}" for reference in cloud_docs],
             "  2. cp .env.example .env  # fill in connector credentials",
-            "  3. glean-idx deploy build --push",
-            "  4. glean-idx deploy secrets upload",
+            "  3. glean-idx deploy secrets upload",
+            "  4. glean-idx deploy build --push",
             "  5. glean-idx deploy apply",
         ]
     )
@@ -469,6 +469,11 @@ def secrets_upload(
         results = get_secrets_backend(config).upload(env_path)
     except Exception as exc:
         raise _backend_error("upload", config, exc) from exc
+
+    if results:
+        keys_file = Path(config_path).parent / ".glean_secret_keys"
+        keys_file.write_text("\n".join(results.keys()) + "\n", encoding="utf-8", newline="\n")
+
     data = {
         "connector": config.connector_name,
         "cloud": config.cloud,

@@ -62,14 +62,6 @@ resource "google_service_account" "connector" {
   project      = var.project_id
 }
 
-# Allow the connector to list secrets by prefix.
-# Reference: https://cloud.google.com/secret-manager/docs/access-control
-resource "google_project_iam_member" "secret_viewer" {
-  project = var.project_id
-  role    = "roles/secretmanager.viewer"
-  member  = "serviceAccount:${google_service_account.connector.email}"
-}
-
 # Allow writing structured logs.
 # Reference: https://cloud.google.com/logging/docs/access-control
 resource "google_project_iam_member" "log_writer" {

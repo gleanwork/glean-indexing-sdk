@@ -628,6 +628,39 @@ def test_secrets_upload_no_secrets(runner, tmp_path, gcp_deployment_yaml):
         assert "No secrets to upload" in result.output
 
 
+def test_secrets_upload_writes_glean_secret_keys(runner, tmp_path, gcp_deployment_yaml):
+    env_file = tmp_path / ".env"
+    env_file.write_text("API_KEY=secret\nDB_PASS=pass\n")
+
+    mock_backend = MagicMock()
+    mock_backend.upload.return_value = {"API_KEY": "created", "DB_PASS": "created"}
+    with patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend):
+        result = runner.invoke(
+            deploy,
+            ["secrets", "upload", "--env-file", str(env_file), "--config", str(gcp_deployment_yaml)],
+        )
+    assert result.exit_code == 0, result.output
+    keys_file = gcp_deployment_yaml.parent / ".glean_secret_keys"
+    assert keys_file.exists()
+    keys = keys_file.read_text().splitlines()
+    assert "API_KEY" in keys
+    assert "DB_PASS" in keys
+
+
+def test_secrets_upload_no_keys_file_when_empty(runner, tmp_path, gcp_deployment_yaml):
+    env_file = tmp_path / ".env"
+    env_file.write_text("")
+
+    mock_backend = MagicMock()
+    mock_backend.upload.return_value = {}
+    with patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend):
+        runner.invoke(
+            deploy,
+            ["secrets", "upload", "--env-file", str(env_file), "--config", str(gcp_deployment_yaml)],
+        )
+    assert not (gcp_deployment_yaml.parent / ".glean_secret_keys").exists()
+
+
 # ---------------------------------------------------------------------------
 # destroy (2-step confirmation)
 # ---------------------------------------------------------------------------

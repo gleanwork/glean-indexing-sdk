@@ -23,7 +23,7 @@ dependencies = [
 dev = [
     "commitizen>=4.4.1",
     "build>=1.0.0",
-    "twine>=4.0.0",
+    "twine>=7.0.0",
     "pip-audit>=2.6.0",
 ]
 test = [

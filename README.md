@@ -188,6 +188,10 @@ factory.
 | [Deployment](https://developers.glean.com/libraries/indexing-sdk/deployment/overview) | `glean-idx deploy` generates Docker and Terraform for AWS or GCP. |
 | [Connector Builder](https://developers.glean.com/libraries/indexing-sdk) | An agent plugin that builds a connector from a description of your source. |
 
+### Employee replacement compatibility
+
+`BasePeopleConnector` and `PushUploader.bulk_index_employees()` preserve the current full-replacement employee workflow in the 1.x SDK. The upstream `/bulkindexemployees` endpoint is deprecated and scheduled for removal after October 15, 2026. Until an equivalent replacement contract is available, the SDK constrains `glean-api-client` to the verified `0.13.x` line so dependency resolution cannot silently remove that generated-client surface. Removing or materially changing this workflow would require a new SDK major version.
+
 ## The CLI
 
 One command, `glean-idx`, covers the whole loop.

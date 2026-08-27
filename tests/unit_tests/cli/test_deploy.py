@@ -60,6 +60,8 @@ def test_root_output_json_wraps_deploy_init_in_one_document(runner, tmp_path):
             "init",
             "--cloud",
             "gcp",
+            "--connector-name",
+            "my_connector",
             "--output-dir",
             str(output_dir),
         ],
@@ -126,7 +128,14 @@ def test_every_deploy_leaf_honors_root_json_and_yes(
             str(tf_dir),
             "--keep-secrets",
         ],
-        ("init",): ["--cloud", "gcp", "--output-dir", str(tmp_path / "generated")],
+        ("init",): [
+            "--cloud",
+            "gcp",
+            "--connector-name",
+            "my_connector",
+            "--output-dir",
+            str(tmp_path / "generated"),
+        ],
         ("logs",): ["--config", str(gcp_deployment_yaml)],
         ("secrets", "delete"): ["API_KEY", "--config", str(gcp_deployment_yaml)],
         ("secrets", "list"): ["--config", str(gcp_deployment_yaml)],
@@ -152,7 +161,7 @@ def test_every_deploy_leaf_honors_root_json_and_yes(
 
     backend = MagicMock()
     backend.list.return_value = ["API_KEY"]
-    backend.upload.return_value = {"API_KEY": "created"}
+    backend.upload.return_value = {"CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_API_KEY": "created"}
     with (
         patch("subprocess.run", side_effect=run),
         patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=backend),
@@ -501,6 +510,9 @@ def test_init_gcp_shows_next_steps(runner, tmp_path):
         assert result.exit_code == 0
         assert "Next steps" in result.output
         assert "glean_deployment.yaml" in result.output
+        assert result.output.index("deploy build --push") < result.output.index(
+            "deploy secrets upload"
+        )
 
 
 def test_init_aws_shows_next_steps(runner, tmp_path):
@@ -513,7 +525,18 @@ def test_init_aws_shows_next_steps(runner, tmp_path):
 
 def test_init_with_custom_output_dir(runner, tmp_path):
     out = tmp_path / "output"
-    result = runner.invoke(deploy, ["init", "--cloud", "gcp", "--output-dir", str(out)])
+    result = runner.invoke(
+        deploy,
+        [
+            "init",
+            "--cloud",
+            "gcp",
+            "--connector-name",
+            "my_connector",
+            "--output-dir",
+            str(out),
+        ],
+    )
     assert result.exit_code == 0
     assert (out / "Dockerfile").exists()
 
@@ -628,6 +651,88 @@ def test_secrets_upload_no_secrets(runner, tmp_path, gcp_deployment_yaml):
         assert "No secrets to upload" in result.output
 
 
+def test_secrets_upload_writes_sorted_env_keys_from_backend_contract(
+    runner, tmp_path, gcp_deployment_yaml
+):
+    env_file = tmp_path / ".env"
+    env_file.write_text("DB_PASS=pass\nAPI_KEY=secret\n")
+
+    mock_backend = MagicMock()
+    mock_backend.upload.return_value = {
+        "CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_DB_PASS": "created",
+        "CUSTOM_DATASOURCE_PLATFORM_MY_SALESFORCE_API_KEY": "updated",
+    }
+    with patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend):
+        result = runner.invoke(
+            deploy,
+            [
+                "secrets",
+                "upload",
+                "--env-file",
+                str(env_file),
+                "--config",
+                str(gcp_deployment_yaml),
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert (gcp_deployment_yaml.parent / ".glean_secret_keys").read_text() == "API_KEY\nDB_PASS\n"
+
+
+def test_secrets_upload_rejects_malformed_backend_return_mapping(
+    runner, tmp_path, gcp_deployment_yaml
+):
+    env_file = tmp_path / ".env"
+    env_file.write_text("API_KEY=secret\n")
+    mock_backend = MagicMock()
+    mock_backend.upload.return_value = {"API_KEY": "created"}
+
+    with patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend):
+        result = runner.invoke(
+            deploy,
+            [
+                "secrets",
+                "upload",
+                "--env-file",
+                str(env_file),
+                "--config",
+                str(gcp_deployment_yaml),
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "could not update" in result.output.lower()
+    assert not (gcp_deployment_yaml.parent / ".glean_secret_keys").exists()
+
+
+def test_secrets_upload_atomically_rewrites_stale_manifest_when_empty(
+    runner, tmp_path, gcp_deployment_yaml
+):
+    env_file = tmp_path / ".env"
+    env_file.write_text("")
+    keys_file = gcp_deployment_yaml.parent / ".glean_secret_keys"
+    keys_file.write_text("STALE_KEY\n")
+
+    mock_backend = MagicMock()
+    mock_backend.upload.return_value = {}
+    with patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend):
+        result = runner.invoke(
+            deploy,
+            [
+                "secrets",
+                "upload",
+                "--env-file",
+                str(env_file),
+                "--config",
+                str(gcp_deployment_yaml),
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert keys_file.exists()
+    assert keys_file.read_bytes() == b""
+
+
 # ---------------------------------------------------------------------------
 # destroy (2-step confirmation)
 # ---------------------------------------------------------------------------
@@ -738,12 +843,14 @@ def test_destroy_yes_flag_skips_prompts(runner, tmp_path, gcp_deployment_yaml):
         assert mock_run.called
 
 
-def test_destroy_cleans_up_secrets_by_default(runner, tmp_path, gcp_deployment_yaml):
+def test_destroy_cleans_up_only_manifest_owned_secrets(runner, tmp_path, gcp_deployment_yaml):
     tf_dir = tmp_path / "terraform"
     tf_dir.mkdir()
+    keys_file = gcp_deployment_yaml.parent / ".glean_secret_keys"
+    keys_file.write_text("API_KEY\nAPI_SECRET\n")
 
     mock_backend = MagicMock()
-    mock_backend.list.return_value = ["API_KEY", "API_SECRET"]
+    mock_backend.list.return_value = ["API_KEY", "API_SECRET", "OTHER_CONNECTOR_KEY"]
     with (
         patch("subprocess.run") as mock_run,
         patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend),
@@ -764,10 +871,14 @@ def test_destroy_cleans_up_secrets_by_default(runner, tmp_path, gcp_deployment_y
         )
         assert result.exit_code == 0, result.output
         assert "Cleaning up secrets" in result.output
-        assert mock_backend.list.called
+        mock_backend.list.assert_not_called()
         assert mock_backend.delete.call_count == 2
         mock_backend.delete.assert_any_call("API_KEY")
         mock_backend.delete.assert_any_call("API_SECRET")
+        assert "OTHER_CONNECTOR_KEY" not in [
+            args.args[0] for args in mock_backend.delete.call_args_list
+        ]
+        assert keys_file.read_bytes() == b""
 
 
 def test_destroy_keep_secrets_flag_skips_cleanup(runner, tmp_path, gcp_deployment_yaml):
@@ -800,12 +911,11 @@ def test_destroy_keep_secrets_flag_skips_cleanup(runner, tmp_path, gcp_deploymen
         mock_backend.delete.assert_not_called()
 
 
-def test_destroy_no_secrets_shows_graceful_message(runner, tmp_path, gcp_deployment_yaml):
+def test_destroy_no_manifest_secrets_shows_graceful_message(runner, tmp_path, gcp_deployment_yaml):
     tf_dir = tmp_path / "terraform"
     tf_dir.mkdir()
 
     mock_backend = MagicMock()
-    mock_backend.list.return_value = []
     with (
         patch("subprocess.run") as mock_run,
         patch("glean.indexing.deployment.secrets.get_secrets_backend", return_value=mock_backend),
@@ -825,16 +935,18 @@ def test_destroy_no_secrets_shows_graceful_message(runner, tmp_path, gcp_deploym
             ],
         )
         assert result.exit_code == 0, result.output
-        assert "No secrets found" in result.output
-        assert "already cleaned up or never uploaded" in result.output
+        assert "No manifest-owned secrets found" in result.output
+        mock_backend.list.assert_not_called()
+        mock_backend.delete.assert_not_called()
 
 
 def test_destroy_handles_partial_secret_deletion_failures(runner, tmp_path, gcp_deployment_yaml):
     tf_dir = tmp_path / "terraform"
     tf_dir.mkdir()
+    keys_file = gcp_deployment_yaml.parent / ".glean_secret_keys"
+    keys_file.write_text("API_KEY\nAPI_SECRET\n")
 
     mock_backend = MagicMock()
-    mock_backend.list.return_value = ["API_KEY", "API_SECRET"]
 
     def delete_side_effect(key: str) -> None:
         if key == "API_SECRET":
@@ -863,6 +975,7 @@ def test_destroy_handles_partial_secret_deletion_failures(runner, tmp_path, gcp_
         assert result.exit_code == 0, result.output
         assert "deleted  API_KEY" in result.output
         assert "failed   API_SECRET" in result.stderr
+        assert keys_file.read_text() == "API_SECRET\n"
 
 
 # ---------------------------------------------------------------------------
@@ -1039,6 +1152,85 @@ def test_apply_prompts_before_mutating_infrastructure(runner, gcp_deployment_yam
     assert not any("apply" in " ".join(map(str, call[0])) for call in calls)
 
 
+def test_apply_passes_sorted_manifest_keys_as_json(runner, gcp_deployment_yaml, monkeypatch):
+    calls = []
+    (gcp_deployment_yaml.parent / ".glean_secret_keys").write_text("DB_PASS\nAPI_KEY\n")
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: calls.append(a) or _completed(0),
+    )
+    tf_dir = gcp_deployment_yaml.parent / "terraform"
+    tf_dir.mkdir(exist_ok=True)
+
+    result = runner.invoke(
+        deploy,
+        [
+            "apply",
+            "--config",
+            str(gcp_deployment_yaml),
+            "--terraform-dir",
+            str(tf_dir),
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    apply_command = next(call[0] for call in calls if "apply" in call[0])
+    assert '-var=secret_keys_json=["API_KEY", "DB_PASS"]' in apply_command
+
+
+def test_apply_missing_manifest_is_secretless(runner, gcp_deployment_yaml, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: calls.append(a) or _completed(0),
+    )
+    tf_dir = gcp_deployment_yaml.parent / "terraform"
+    tf_dir.mkdir(exist_ok=True)
+
+    result = runner.invoke(
+        deploy,
+        [
+            "apply",
+            "--config",
+            str(gcp_deployment_yaml),
+            "--terraform-dir",
+            str(tf_dir),
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    apply_command = next(call[0] for call in calls if "apply" in call[0])
+    assert "-var=secret_keys_json=[]" in apply_command
+
+
+def test_apply_rejects_malformed_manifest_before_terraform(
+    runner, gcp_deployment_yaml, monkeypatch
+):
+    (gcp_deployment_yaml.parent / ".glean_secret_keys").write_text("BAD.KEY\n")
+    run = MagicMock()
+    monkeypatch.setattr("subprocess.run", run)
+    tf_dir = gcp_deployment_yaml.parent / "terraform"
+    tf_dir.mkdir(exist_ok=True)
+
+    result = runner.invoke(
+        deploy,
+        [
+            "apply",
+            "--config",
+            str(gcp_deployment_yaml),
+            "--terraform-dir",
+            str(tf_dir),
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Could not read secret key manifest" in result.output
+    run.assert_not_called()
+
+
 def test_apply_yes_flag_skips_the_prompt(runner, gcp_deployment_yaml, monkeypatch):
     calls = []
     monkeypatch.setattr(
@@ -1087,6 +1279,25 @@ def test_secrets_delete_prompts_by_default(runner, gcp_deployment_yaml, monkeypa
     assert "Permanently delete" in result.stderr
     assert "Permanently delete" not in result.stdout
     assert deleted == []
+
+
+def test_secrets_delete_updates_manifest(runner, gcp_deployment_yaml, monkeypatch):
+    deleted = []
+    keys_file = gcp_deployment_yaml.parent / ".glean_secret_keys"
+    keys_file.write_text("Z_KEY\nMY_KEY\nA_KEY\n")
+    monkeypatch.setattr(
+        "glean.indexing.deployment.secrets.get_secrets_backend",
+        lambda _config: _FakeBackend(deleted),
+    )
+
+    result = runner.invoke(
+        deploy,
+        ["secrets", "delete", "MY_KEY", "--config", str(gcp_deployment_yaml), "--yes"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert deleted == ["MY_KEY"]
+    assert keys_file.read_text() == "A_KEY\nZ_KEY\n"
 
 
 def test_secrets_delete_yes_flag_makes_it_unattended(runner, gcp_deployment_yaml, monkeypatch):

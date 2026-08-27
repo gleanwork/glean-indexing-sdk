@@ -51,9 +51,9 @@ class TestConfig:
         refresh_cache: Force re-recording even when a cache hit exists.
         run_id_prefix: Prefix for upload run IDs in Phase 3 (end-to-end).
         clients: Per-client configuration keyed by client name.
-        negative_test_identities: Identities that must NOT appear in any
-            transformed document's ``allowedUsers`` or ``allowedGroups``.
-            Assertion is performed after Phase 2 transforms complete.
+        negative_test_identities: Identities that must NOT have access to any
+            transformed document. Literal ACL entries, missing permissions, and
+            broad-access settings are checked after Phase 2 transforms complete.
     """
 
     cache_dir: str = ".glean_test_cache/"

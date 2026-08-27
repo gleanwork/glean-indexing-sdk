@@ -7,7 +7,7 @@ import pytest
 
 from glean.api_client.models import DocumentDefinition
 from glean.indexing.connectors import BaseStreamingDataClient, BaseStreamingDatasourceConnector
-from glean.indexing.models import ConnectorOptions
+from glean.indexing.models import ConnectorOptions, IndexingMode
 from glean.indexing.observability import InMemoryMetricsProvider
 from glean.indexing.push import PushUploader
 
@@ -98,7 +98,11 @@ def test_index_data_empty():
         bulk_index = api_client().__enter__().indexing.documents.bulk_index
         connector.index_data()
 
-    assert bulk_index.call_count == 0
+    bulk_index.assert_called_once()
+    call_kwargs = bulk_index.call_args.kwargs
+    assert call_kwargs["documents"] == []
+    assert call_kwargs["is_first_page"] is True
+    assert call_kwargs["is_last_page"] is True
     operations = [getattr(record, "operation", None) for record in captured.records]
     assert operations.count("crawl_started") == 1
     assert operations.count("crawl_completed") == 1
@@ -142,6 +146,31 @@ def test_streaming_fetch_overlaps_middle_page_uploads():
 
     with patch.object(PushUploader, "bulk_index_single_batch_upload", side_effect=upload_batch):
         connector.index_data(options=ConnectorOptions(upload_max_workers=2))
+
+
+def test_incremental_index_data_uploads_each_batch_additively():
+    connector = DummyStreamingConnector("test_stream", DummyStreamingDataClient())
+    connector.batch_size = 2
+    options = ConnectorOptions(
+        upload_timeout_ms=120_000,
+        force_restart=True,
+        disable_stale_deletion_check=True,
+    )
+
+    with patch("glean.indexing.push.uploader.api_client") as api_client:
+        documents_api = api_client().__enter__().indexing.documents
+        connector.index_data(mode=IndexingMode.INCREMENTAL, options=options)
+
+    assert [len(call.kwargs["documents"]) for call in documents_api.index.call_args_list] == [
+        2,
+        2,
+        1,
+    ]
+    for call in documents_api.index.call_args_list:
+        assert call.kwargs["timeout_ms"] == 120_000
+        assert "force_restart_upload" not in call.kwargs
+        assert "disable_stale_document_deletion_check" not in call.kwargs
+    documents_api.bulk_index.assert_not_called()
 
 
 def test_index_data_error_handling():

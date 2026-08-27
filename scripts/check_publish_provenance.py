@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import zipfile
+from email.message import Message
 from email.parser import Parser
 from pathlib import Path
 from typing import NoReturn
@@ -26,6 +27,13 @@ VERSION_SOURCES = {
     "src/glean/indexing/__init__.py": re.compile(r'^\s*__version__\s*=\s*"([^"]+)"', re.MULTILINE),
 }
 PROJECT_PATTERN = re.compile(r'^\[project\]\s*$[\s\S]*?^name\s*=\s*"([^"]+)"', re.MULTILINE)
+CANONICAL_PROJECT_URLS = {
+    "Source Code": "https://github.com/gleanwork/glean-indexing-sdk",
+    "Issues": "https://github.com/gleanwork/glean-indexing-sdk/issues",
+    "Documentation": "https://developers.glean.com/libraries/indexing-sdk",
+}
+GA_BADGE = "[![GA]"
+PRERELEASE_BADGE = "[![Prerelease]"
 
 
 class ProvenanceError(Exception):
@@ -65,6 +73,41 @@ def canonical_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
+def validate_project_urls(metadata: Message, artifact: Path) -> None:
+    """Require canonical source, issue, and documentation links."""
+    values = metadata.get_all("Project-URL", [])
+    project_urls: dict[str, str] = {}
+    for value in values:
+        label, separator, url = value.partition(",")
+        if not separator:
+            fail(f"{artifact.name} has malformed Project-URL metadata: {value!r}.")
+        label = label.strip()
+        if label in project_urls:
+            fail(f"{artifact.name} contains duplicate Project-URL metadata for {label!r}.")
+        project_urls[label] = url.strip()
+
+    for label, expected in CANONICAL_PROJECT_URLS.items():
+        actual = project_urls.get(label)
+        if actual != expected:
+            fail(f"{artifact.name} Project-URL {label!r} is {actual!r}; expected {expected!r}.")
+
+
+def validate_long_description(metadata: Message, artifact: Path, version: str) -> None:
+    """Ensure a GA artifact cannot publish the prerelease README status."""
+    if re.search(r"(?:a|b|rc)\d+$", version):
+        return
+    description = metadata.get_payload()
+    if (
+        not isinstance(description, str)
+        or GA_BADGE not in description
+        or PRERELEASE_BADGE in description
+    ):
+        fail(
+            f"{artifact.name} GA long description must contain the GA badge "
+            "and must not contain the Prerelease badge."
+        )
+
+
 def metadata_values(text: str, artifact: Path) -> tuple[str, str]:
     """Read and validate project metadata from an artifact."""
     metadata = Parser().parsestr(text)
@@ -72,6 +115,8 @@ def metadata_values(text: str, artifact: Path) -> tuple[str, str]:
     version = metadata.get("Version")
     if not name or not version:
         fail(f"{artifact.name} metadata must contain Name and Version.")
+    validate_project_urls(metadata, artifact)
+    validate_long_description(metadata, artifact, version)
     return name, version
 
 

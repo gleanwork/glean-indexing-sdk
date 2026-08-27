@@ -54,7 +54,9 @@ gcp = [
 glean-idx = "glean.indexing.cli.main:cli"
 
 [project.urls]
-"Source Code" = "https://github.com/glean-io/glean-indexing-sdk"
+"Source Code" = "https://github.com/gleanwork/glean-indexing-sdk"
+Issues = "https://github.com/gleanwork/glean-indexing-sdk/issues"
+Documentation = "https://developers.glean.com/libraries/indexing-sdk"
 
 [tool.pyright]
 include = ["src", "tests"]

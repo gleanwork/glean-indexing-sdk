@@ -101,7 +101,7 @@ class KnowledgeBaseConnector(BaseStreamingDatasourceConnector[ArticleData]):
     """Transforms streamed articles into Glean documents."""
 
     configuration = CustomDatasourceConfig(
-        name="knowledge_base",
+        name="knowledgebase",
         display_name="Knowledge Base",
         url_regex=r"https://kb\.company\.com/.*",
         is_user_referenced_by_email=True,
@@ -153,7 +153,7 @@ data_client = LargeKnowledgeBaseClient(
     api_key=os.environ["SOURCE_API_TOKEN"],
 )
 connector = KnowledgeBaseConnector(
-    name="knowledge_base",
+    name="knowledgebase",
     data_client=data_client,
 )
 
@@ -303,7 +303,7 @@ class EventConnector(BaseAsyncStreamingDatasourceConnector[EventData]):
     """Transforms asynchronously streamed events into Glean documents."""
 
     configuration = CustomDatasourceConfig(
-        name="company_events",
+        name="companyevents",
         display_name="Company Events",
         url_regex=r"https://events\.company\.com/.*",
         is_user_referenced_by_email=True,
@@ -354,7 +354,7 @@ from glean.indexing.models import IndexingMode
 from .event_connector import EventConnector
 
 connector = EventConnector(
-    name="company_events",
+    name="companyevents",
     api_url="https://events-api.company.com",
     api_key=os.environ["SOURCE_API_TOKEN"],
 )

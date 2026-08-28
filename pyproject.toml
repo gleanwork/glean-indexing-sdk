@@ -13,6 +13,7 @@ requires-python = ">=3.10,<4.0"
 dependencies = [
     "click>=8.0",
     "glean-api-client>=0.13.0,<0.14.0",
+    "httpx>=0.27,<1",
     "jinja2>=3.1.2",
     "pydantic>=2.0",
     "python-dotenv>=1.1.0",

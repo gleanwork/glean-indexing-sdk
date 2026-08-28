@@ -10,7 +10,10 @@ import json
 import re
 import shlex
 import subprocess
+import time
+import uuid
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import click
 from pydantic import ValidationError
@@ -170,6 +173,38 @@ def _load_config(config_path: Path) -> DeploymentConfig:
         raise DeploymentError(f"Invalid deployment config at {config_path}: {exc}") from exc
 
 
+def _terraform_var_flags(config: DeploymentConfig, *, secret_keys_json: str = "[]") -> list[str]:
+    """Map the complete deployment config to Terraform input variables."""
+    variables: dict[str, str] = {
+        "connector_name": config.connector_name,
+        "k8s_name": config.k8s_name,
+        "connector_class": config.connector_class,
+        "connector_module": config.connector_module,
+        "region": config.region,
+        "cluster_name": config.cluster_name,
+        "namespace": config.namespace,
+        "image": config.image_reference,
+        "secret_keys_json": secret_keys_json,
+        "secret_prefix": config.secret_prefix,
+        "service_account_name": config.effective_service_account,
+        "cron_schedule": config.cron_schedule,
+        "indexing_mode": config.indexing_mode,
+        "cpu": config.cpu,
+        "memory": config.memory,
+    }
+    if config.connector_factory is not None:
+        variables["connector_factory"] = config.connector_factory
+    if config.cloud == "gcp":
+        assert config.project_id is not None
+        variables["project_id"] = config.project_id
+        if config.cluster_endpoint is not None:
+            variables["cluster_endpoint"] = config.cluster_endpoint
+    else:
+        assert config.account_id is not None
+        variables["account_id"] = config.account_id
+    return [f"-var={name}={value}" for name, value in variables.items()]
+
+
 @click.group()
 def deploy() -> None:
     """Deploy connectors to your own cloud.
@@ -279,9 +314,11 @@ def init(
         "Edit glean_deployment.yaml — set cluster_name, region, and registry.",
         *cloud_docs,
         "cp .env.example .env  # fill in connector credentials",
+        "glean-idx datasource configure",
         "glean-idx deploy build --push",
         "glean-idx deploy secrets upload",
         "glean-idx deploy apply",
+        "glean-idx deploy run",
     ]
     data = {
         "cloud": cloud,
@@ -298,9 +335,11 @@ def init(
             "  1. Edit glean_deployment.yaml — set cluster_name, region, and registry.",
             *[f"     {reference}" for reference in cloud_docs],
             "  2. cp .env.example .env  # fill in connector credentials",
-            "  3. glean-idx deploy build --push",
-            "  4. glean-idx deploy secrets upload",
-            "  5. glean-idx deploy apply",
+            "  3. glean-idx datasource configure",
+            "  4. glean-idx deploy build --push",
+            "  5. glean-idx deploy secrets upload",
+            "  6. glean-idx deploy apply",
+            "  7. glean-idx deploy run",
         ]
     )
     emit(data, cli_ctx.output, text=text)
@@ -308,7 +347,11 @@ def init(
 
 @deploy.command()
 @click.option("--push", is_flag=True, help="Push image to registry after building.")
-@click.option("--tag", default="latest", show_default=True)
+@click.option(
+    "--tag",
+    default=None,
+    help="Compatibility check; must match image_tag in glean_deployment.yaml.",
+)
 @click.option(
     "--platform",
     default="linux/amd64",
@@ -328,7 +371,7 @@ def init(
 def build(
     ctx: click.Context,
     push: bool,
-    tag: str,
+    tag: str | None,
     platform: str,
     config_path: str,
     output: str | None,
@@ -342,7 +385,12 @@ def build(
     """
     cli_ctx = context(ctx, output=output, assume_yes=assume_yes)
     config = _load_config(Path(config_path))
-    image = f"{config.image_name}:{tag}"
+    if tag is not None and tag != config.image_tag:
+        raise DeploymentError(
+            f"--tag {tag!r} does not match image_tag {config.image_tag!r} in {config_path}. "
+            "Edit image_tag in glean_deployment.yaml so build and apply use the same image."
+        )
+    image = config.image_reference
     build_dir = Path(config_path).resolve().parent
 
     # buildx build with explicit platform; --push sends directly to the registry,
@@ -552,26 +600,7 @@ def apply(
     except (OSError, ValueError) as exc:
         raise DeploymentError(f"Could not read secret key manifest {keys_path}: {exc}") from exc
 
-    if config.cloud == "gcp":
-        var_flags = [
-            f"-var=project_id={config.project_id}",
-            f"-var=region={config.region}",
-            f"-var=cluster_name={config.cluster_name}",
-            f"-var=namespace={config.namespace}",
-            f"-var=image={config.image_name}:latest",
-            f"-var=secret_keys_json={secret_keys_json}",
-        ]
-        if config.cluster_endpoint:
-            var_flags.append(f"-var=cluster_endpoint={config.cluster_endpoint}")
-    else:
-        var_flags = [
-            f"-var=account_id={config.account_id}",
-            f"-var=region={config.region}",
-            f"-var=cluster_name={config.cluster_name}",
-            f"-var=namespace={config.namespace}",
-            f"-var=image={config.image_name}:latest",
-            f"-var=secret_keys_json={secret_keys_json}",
-        ]
+    var_flags = _terraform_var_flags(config, secret_keys_json=secret_keys_json)
 
     _run_tool(
         ["terraform", "init"],
@@ -580,21 +609,27 @@ def apply(
         failure_message="terraform init failed.",
     )
 
-    # terraform runs with -auto-approve below, so this is the only thing standing
-    # between an accidental invocation and mutated cloud infrastructure. Read the
-    # plan first: `terraform plan` in the generated directory.
-    _confirm(
-        ctx,
-        f"Apply Terraform to {config.cloud.upper()} "
-        f"cluster {config.cluster_name!r} for connector {config.connector_name!r}?",
-    )
+    with TemporaryDirectory(prefix="glean-idx-plan-") as plan_directory:
+        plan_path = Path(plan_directory) / "deploy.tfplan"
+        _run_tool(
+            ["terraform", "plan", f"-out={plan_path}"] + var_flags,
+            cli_ctx,
+            cwd=tf_dir,
+            failure_message="terraform plan failed.",
+        )
 
-    _run_tool(
-        ["terraform", "apply", "-auto-approve"] + var_flags,
-        cli_ctx,
-        cwd=tf_dir,
-        failure_message="terraform apply failed.",
-    )
+        _confirm(
+            ctx,
+            f"Apply the Terraform plan above to {config.cloud.upper()} "
+            f"cluster {config.cluster_name!r} for connector {config.connector_name!r}?",
+        )
+
+        _run_tool(
+            ["terraform", "apply", "-auto-approve", str(plan_path)],
+            cli_ctx,
+            cwd=tf_dir,
+            failure_message="terraform apply failed.",
+        )
 
     emit(
         {
@@ -604,7 +639,70 @@ def apply(
             "applied": True,
         },
         cli_ctx.output,
-        text=f"Running terraform init in {tf_dir}/\nRunning terraform apply...\nTerraform applied.",
+        text=(
+            f"Running terraform init in {tf_dir}/\n"
+            "Running terraform plan...\n"
+            "Applying the reviewed Terraform plan...\n"
+            "Terraform applied."
+        ),
+    )
+
+
+@deploy.command()
+@click.option(
+    "--config",
+    "config_path",
+    default="glean_deployment.yaml",
+    show_default=True,
+    type=click.Path(dir_okay=False),
+)
+@global_options
+@click.pass_context
+def run(
+    ctx: click.Context,
+    config_path: str,
+    output: str | None,
+    assume_yes: bool,
+) -> None:
+    """Start one connector Job immediately from the deployed CronJob."""
+    cli_ctx = context(ctx, output=output, assume_yes=assume_yes)
+    config = _load_config(Path(config_path))
+    suffix = f"-manual-{int(time.time())}-{uuid.uuid4().hex[:8]}"
+    prefix = config.k8s_name[: 63 - len(suffix)].rstrip("-")
+    job_name = f"{prefix}{suffix}"
+
+    _run_tool(
+        [
+            "kubectl",
+            "create",
+            "job",
+            f"--from=cronjob/{config.k8s_name}",
+            job_name,
+            "--namespace",
+            config.namespace,
+        ],
+        cli_ctx,
+        echo_stdout=False,
+        failure_message="kubectl could not start the connector Job.",
+        hint=[
+            f"kubectl get cronjob {config.k8s_name} --namespace {config.namespace}",
+            "Check that kubectl is authenticated to the cluster in glean_deployment.yaml.",
+        ],
+    )
+
+    emit(
+        {
+            "connector": config.connector_name,
+            "cronjob": config.k8s_name,
+            "job": job_name,
+            "namespace": config.namespace,
+            "started": True,
+        },
+        cli_ctx.output,
+        text=(
+            f"Started Job {job_name!r} from CronJob {config.k8s_name!r}.\n"
+            "Run `glean-idx deploy status` or `glean-idx deploy logs --follow` to monitor it."
+        ),
     )
 
 
@@ -799,24 +897,7 @@ def destroy(
     if not tf_dir.exists():
         raise DeploymentError(f"Terraform directory not found: {tf_dir}.")
 
-    if config.cloud == "gcp":
-        var_flags = [
-            f"-var=project_id={config.project_id}",
-            f"-var=region={config.region}",
-            f"-var=cluster_name={config.cluster_name}",
-            f"-var=namespace={config.namespace}",
-            f"-var=image={config.image_name}:latest",
-        ]
-        if config.cluster_endpoint:
-            var_flags.append(f"-var=cluster_endpoint={config.cluster_endpoint}")
-    else:
-        var_flags = [
-            f"-var=account_id={config.account_id}",
-            f"-var=region={config.region}",
-            f"-var=cluster_name={config.cluster_name}",
-            f"-var=namespace={config.namespace}",
-            f"-var=image={config.image_name}:latest",
-        ]
+    var_flags = _terraform_var_flags(config)
 
     _run_tool(
         ["terraform", "destroy", "-auto-approve"] + var_flags,
@@ -877,13 +958,31 @@ def destroy(
     else:
         text_lines.extend(["", "Skipping secret cleanup (--keep-secrets specified)."])
 
-    text_lines.extend(["", "Destroy complete."])
+    retained = {
+        "container_image": config.image_reference,
+        "datasource_registration": "not managed by deploy",
+        "kubernetes_namespace": config.namespace,
+        "local_files": [Path(config_path).name, f"{Path(terraform_dir).name}/"],
+    }
+    text_lines.extend(
+        [
+            "",
+            "Retained customer-owned or local artifacts:",
+            f"  container image: {retained['container_image']}",
+            f"  Kubernetes namespace: {retained['kubernetes_namespace']}",
+            "  Glean datasource registration: not managed by deploy",
+            f"  local files: {', '.join(retained['local_files'])}",
+            "",
+            "Destroy complete.",
+        ]
+    )
     emit(
         {
             "connector": config.connector_name,
             "cloud": config.cloud,
             "destroyed": True,
             "secret_cleanup": cleanup,
+            "retained": retained,
         },
         cli_ctx.output,
         text="\n".join(text_lines),

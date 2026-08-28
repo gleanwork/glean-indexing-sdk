@@ -62,6 +62,15 @@ def test_gcp_generates_all_expected_files():
     assert set(artifacts.keys()) == expected
 
 
+def test_generated_yaml_lists_the_complete_deployment_sequence():
+    deployment_yaml = generate_artifacts(GCP_CONFIG)["glean_deployment.yaml"]
+
+    assert deployment_yaml.index("datasource configure") < deployment_yaml.index(
+        "deploy build --push"
+    )
+    assert deployment_yaml.index("deploy apply") < deployment_yaml.index("deploy run")
+
+
 def test_gcp_dockerfile_has_secret_manager():
     artifacts = generate_artifacts(GCP_CONFIG)
     assert "google-cloud-secret-manager" in artifacts["Dockerfile"]
@@ -81,9 +90,19 @@ def test_gcp_terraform_has_reference_links():
     assert "https://cloud.google.com/secret-manager/docs" in tf
 
 
-def test_gcp_terraform_has_connector_name():
+def test_gcp_terraform_reads_connector_name_at_apply_time():
     artifacts = generate_artifacts(GCP_CONFIG)
-    assert "my_salesforce" in artifacts["terraform/main.tf"]
+    assert "var.connector_name" in artifacts["terraform/main.tf"]
+    assert 'variable "connector_name"' in artifacts["terraform/variables.tf"]
+
+
+def test_gcp_terraform_uses_system_trust_for_explicit_dns_endpoint():
+    terraform = generate_artifacts(GCP_CONFIG)["terraform/main.tf"]
+
+    assert (
+        "cluster_ca_certificate = var.cluster_endpoint == null ? "
+        "base64decode(data.google_container_cluster.main.master_auth[0].cluster_ca_certificate) : null"
+    ) in terraform
 
 
 def test_gcp_run_py_has_gcp_secret_manager():
@@ -362,7 +381,11 @@ def test_factory_is_rendered_into_deployment_control_plane(base_config):
     )
     assert "CONNECTOR_FACTORY=create_connector" in artifacts[".env.example"]
     assert 'name  = "CONNECTOR_FACTORY"' in artifacts["terraform/main.tf"]
-    assert 'value = "create_connector"' in artifacts["terraform/main.tf"]
+    assert (
+        "for_each = var.connector_factory == null ? [] : [var.connector_factory]"
+        in artifacts["terraform/main.tf"]
+    )
+    assert 'variable "connector_factory"' in artifacts["terraform/variables.tf"]
 
 
 # ---------------------------------------------------------------------------
@@ -544,7 +567,7 @@ def test_gcp_terraform_grants_accessor_on_each_exact_derived_secret():
     assert 'resource "google_secret_manager_secret_iam_member" "secret_accessor"' in tf
     assert "for_each  = local.secret_names" in tf
     assert "secret_id = each.value" in tf
-    assert GCP_CONFIG.secret_prefix in tf
+    assert '"${var.secret_prefix}${key}"' in tf
     assert "roles/secretmanager.secretAccessor" in tf
     assert 'google_project_iam_member" "secret_accessor' not in tf
     assert "resource.name.startsWith" not in tf
@@ -591,3 +614,33 @@ def test_runner_uses_keys_json_for_direct_access_without_enumeration(config):
 @pytest.mark.parametrize("config", [AWS_CONFIG, GCP_CONFIG])
 def test_dockerignore_excludes_local_secret_manifest(config):
     assert ".glean_secret_keys" in generate_artifacts(config)[".dockerignore"].splitlines()
+
+
+@pytest.mark.parametrize("config", [AWS_CONFIG, GCP_CONFIG])
+@pytest.mark.parametrize(
+    "entry",
+    [
+        ".venv/",
+        "venv/",
+        ".pytest_cache/",
+        ".tox/",
+        ".nox/",
+        ".coverage",
+        ".coverage.*",
+        "htmlcov/",
+        "build/",
+        "dist/",
+        "*.egg-info/",
+    ],
+)
+def test_dockerignore_excludes_python_development_artifacts(config, entry):
+    assert entry in generate_artifacts(config)[".dockerignore"].splitlines()
+
+
+@pytest.mark.parametrize("config", [AWS_CONFIG, GCP_CONFIG])
+def test_terraform_requires_an_existing_customer_managed_namespace(config):
+    terraform = generate_artifacts(config)["terraform/main.tf"]
+
+    assert 'data "kubernetes_namespace_v1" "target"' in terraform
+    assert 'resource "kubernetes_namespace_v1"' not in terraform
+    assert "namespace = data.kubernetes_namespace_v1.target.metadata[0].name" in terraform

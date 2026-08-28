@@ -1,0 +1,29 @@
+{
+  "documents": {
+    "bulkUploadHistory": [
+      {
+        "uploadId": "sanitized-upload-id",
+        "startTime": "2026-08-28T16:30:50.506Z",
+        "endTime": "2026-08-28T16:30:51.200Z",
+        "status": "SUCCESSFUL",
+        "processingState": "UPLOAD COMPLETED"
+      }
+    ],
+    "counts": {
+      "uploaded": [
+        {"objectType": "smokeDocument", "count": 2}
+      ],
+      "indexed": [
+        {"objectType": "smokeDocument", "count": 2}
+      ]
+    },
+    "processingHistory": []
+  },
+  "identity": {
+    "processingHistory": [],
+    "users": {"bulkUploadHistory": []},
+    "groups": {"bulkUploadHistory": []},
+    "memberships": {"bulkUploadHistory": []}
+  },
+  "datasourceVisibility": "NOT_ENABLED"
+}

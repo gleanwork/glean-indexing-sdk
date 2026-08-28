@@ -4,8 +4,13 @@ import time
 import uuid
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
+from enum import Enum
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, TypeVar
 
+import httpx
+from pydantic import BaseModel
+
+from glean.api_client.errors import GleanError as GeneratedGleanError
 from glean.api_client.models import (
     CheckDocumentAccessResponse,
     CustomDatasourceConfig,
@@ -24,10 +29,79 @@ from glean.api_client.models import (
 )
 from glean.indexing.common import BatchProcessor, DocumentBatchProcessor, api_client
 from glean.indexing.common.batch_processor import DEFAULT_DOCUMENT_BATCH_SIZE_BYTES
+from glean.indexing.common.validation import validate_datasource_name_for_configuration
 from glean.indexing.models import DEFAULT_UPLOAD_MAX_WORKERS
 from glean.indexing.observability import ConnectorObservability
 
 T = TypeVar("T")
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
+_CONFIGURE_RECOVERY_ATTEMPTS = 3
+_CONFIGURE_RECOVERY_DELAY_SECONDS = 1.0
+
+
+def _recover_generated_json_200(error: GeneratedGleanError, model: type[ModelT]) -> ModelT:
+    """Recover from generated-client media-type dispatch failures on valid JSON 200s."""
+    media_type = error.headers.get("content-type", "").partition(";")[0].strip().lower()
+    if error.status_code != 200 or media_type != "application/json":
+        raise error
+    try:
+        return model.model_validate_json(error.body)
+    except Exception as validation_error:
+        raise error from validation_error
+
+
+def _configuration_values_match(expected: Any, actual: Any) -> bool:
+    """Compare requested model fields while ignoring server-added defaults."""
+    if isinstance(expected, BaseModel):
+        if not isinstance(actual, BaseModel):
+            return False
+        return all(
+            _configuration_values_match(
+                getattr(expected, field_name),
+                getattr(actual, field_name, None),
+            )
+            for field_name in expected.model_fields_set
+        )
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(expected) != len(actual):
+            return False
+        if expected and all(
+            isinstance(item, BaseModel) and hasattr(item, "name") for item in expected
+        ):
+            actual_by_name = {getattr(item, "name", None): item for item in actual}
+            return len(actual_by_name) == len(actual) and all(
+                _configuration_values_match(item, actual_by_name.get(getattr(item, "name", None)))
+                for item in expected
+            )
+        return all(
+            _configuration_values_match(expected_item, actual_item)
+            for expected_item, actual_item in zip(expected, actual)
+        )
+    if isinstance(expected, Enum):
+        expected = expected.value
+    if isinstance(actual, Enum):
+        actual = actual.value
+    return expected == actual
+
+
+def _configuration_matches(
+    expected: CustomDatasourceConfig, actual: CustomDatasourceConfig
+) -> bool:
+    """Return whether server state contains every explicitly requested value."""
+    for field_name in expected.model_fields_set:
+        expected_value = getattr(expected, field_name)
+        actual_value = getattr(actual, field_name, None)
+        if field_name == "name":
+            accepted_names = {
+                expected.name,
+                f"CUSTOM_{expected.name.upper()}",
+            }
+            if actual_value not in accepted_names:
+                return False
+        elif not _configuration_values_match(expected_value, actual_value):
+            return False
+    return True
 
 
 class StatusClient:
@@ -52,10 +126,13 @@ class StatusClient:
     def get_datasource_status(self) -> DebugDatasourceStatusResponse:
         """Get overall datasource upload and processing status."""
         with api_client() as client:
-            return client.indexing.datasource.status(
-                datasource=self.datasource,
-                **self._request_options(),
-            )
+            try:
+                return client.indexing.datasource.status(
+                    datasource=self.datasource,
+                    **self._request_options(),
+                )
+            except GeneratedGleanError as error:
+                return _recover_generated_json_200(error, DebugDatasourceStatusResponse)
 
     def get_documents_status(
         self,
@@ -63,11 +140,14 @@ class StatusClient:
     ) -> DebugDocumentsResponse:
         """Get upload, indexing, and permission status for documents."""
         with api_client() as client:
-            return client.indexing.documents.debug_many(
-                datasource=self.datasource,
-                debug_documents=list(documents),
-                **self._request_options(),
-            )
+            try:
+                return client.indexing.documents.debug_many(
+                    datasource=self.datasource,
+                    debug_documents=list(documents),
+                    **self._request_options(),
+                )
+            except GeneratedGleanError as error:
+                return _recover_generated_json_200(error, DebugDocumentsResponse)
 
     def check_document_access(
         self,
@@ -137,6 +217,7 @@ class PushUploader:
 
     def configure_datasource(self, config: CustomDatasourceConfig) -> None:
         """Configure a datasource using `datasources.add()`."""
+        validate_datasource_name_for_configuration(config.name)
         # Use attribute access instead of model_dump() because certain
         # pydantic/api-client version combinations return camelCase aliases
         # even with by_alias=False, and datasources.add() expects snake_case.
@@ -146,7 +227,46 @@ class PushUploader:
             if name in config.model_fields_set
         }
         with api_client() as client:
-            self._call_api("datasources.add", lambda: client.indexing.datasources.add(**kwargs))
+            try:
+                self._call_api(
+                    "datasources.add",
+                    lambda: client.indexing.datasources.add(
+                        **kwargs,
+                        **self._request_options(),
+                    ),
+                )
+            except httpx.TransportError as exc:
+                self._reconcile_ambiguous_datasource_configuration(client, config, exc)
+
+    def _reconcile_ambiguous_datasource_configuration(
+        self, client: Any, config: CustomDatasourceConfig, write_error: Exception
+    ) -> None:
+        """Read after an ambiguous transport failure without issuing a second write."""
+        last_detail = str(write_error)
+        for attempt in range(_CONFIGURE_RECOVERY_ATTEMPTS):
+            try:
+                actual = self._call_api(
+                    "datasources.retrieve_config",
+                    lambda: client.indexing.datasources.retrieve_config(
+                        datasource=self.datasource,
+                        **self._request_options(),
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001 - bounded recovery reports unknown outcome
+                last_detail = f"read-back failed: {exc}"
+            else:
+                if _configuration_matches(config, actual):
+                    return
+                last_detail = "read-back configuration differs from the requested configuration"
+
+            if attempt + 1 < _CONFIGURE_RECOVERY_ATTEMPTS:
+                time.sleep(_CONFIGURE_RECOVERY_DELAY_SECONDS)
+
+        raise RuntimeError(
+            "Datasource configuration outcome is unknown after a transport failure; "
+            "do not retry blindly. Retrieve the datasource configuration and compare it "
+            f"with the requested values. Last recovery result: {last_detail}"
+        ) from write_error
 
     def index_documents(
         self,

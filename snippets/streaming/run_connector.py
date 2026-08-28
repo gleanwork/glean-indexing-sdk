@@ -10,7 +10,7 @@ data_client = LargeKnowledgeBaseClient(
     api_key=os.environ["SOURCE_API_TOKEN"],
 )
 connector = KnowledgeBaseConnector(
-    name="knowledge_base",
+    name="knowledgebase",
     data_client=data_client,
 )
 

@@ -5,40 +5,92 @@
 #   Terraform input variables: https://developer.hashicorp.com/terraform/language/values/variables
 #   GCP Terraform provider:    https://registry.terraform.io/providers/hashicorp/google/latest/docs
 
+variable "connector_name" {
+  description = "Connector deployment name and runtime secret namespace."
+  type        = string
+}
+
+variable "k8s_name" {
+  description = "Kubernetes-safe connector resource name."
+  type        = string
+}
+
+variable "connector_class" {
+  description = "Python connector class name."
+  type        = string
+}
+
+variable "connector_module" {
+  description = "Python module containing the connector."
+  type        = string
+}
+
+variable "connector_factory" {
+  description = "Optional zero-argument connector factory."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
 variable "project_id" {
   description = "GCP project ID. See https://cloud.google.com/resource-manager/docs/creating-managing-projects"
   type        = string
-  default     = "{{ config.project_id }}"
 }
 
 variable "region" {
-  description = "GCP region. See https://cloud.google.com/compute/docs/regions-zones"
+  description = "GCP cluster location (region or zone). See https://cloud.google.com/compute/docs/regions-zones"
   type        = string
-  default     = "{{ config.region }}"
 }
 
 variable "cluster_name" {
   description = "GKE cluster name. See https://cloud.google.com/kubernetes-engine/docs"
   type        = string
-  default     = "{{ config.cluster_name }}"
 }
 
 variable "namespace" {
-  description = "Kubernetes namespace for the CronJob."
+  description = "Existing customer-managed Kubernetes namespace for the CronJob."
   type        = string
-  default     = "{{ config.namespace }}"
 }
 
 variable "image" {
-  description = "Container image URI in Artifact Registry. See https://cloud.google.com/artifact-registry/docs"
+  description = "Container image URI and tag in Artifact Registry. See https://cloud.google.com/artifact-registry/docs"
   type        = string
-  default     = "{{ config.image_name }}:latest"
+}
+
+variable "service_account_name" {
+  description = "GCP service account name for the connector."
+  type        = string
+}
+
+variable "secret_prefix" {
+  description = "Prefix for exact connector secrets in Secret Manager."
+  type        = string
 }
 
 variable "secret_keys_json" {
   description = "JSON array of connector secret environment keys."
   type        = string
   default     = "[]"
+}
+
+variable "cron_schedule" {
+  description = "UTC CronJob schedule."
+  type        = string
+}
+
+variable "indexing_mode" {
+  description = "Connector indexing mode."
+  type        = string
+}
+
+variable "cpu" {
+  description = "Kubernetes CPU request and limit."
+  type        = string
+}
+
+variable "memory" {
+  description = "Kubernetes memory request and limit."
+  type        = string
 }
 
 variable "cluster_endpoint" {
@@ -50,5 +102,6 @@ variable "cluster_endpoint" {
     Reference: https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-architecture#control_plane_endpoint_modes
   EOT
   type        = string
-  default     = {{ ('"%s"' % config.cluster_endpoint) if config.cluster_endpoint else 'null' }}
+  default     = null
+  nullable    = true
 }

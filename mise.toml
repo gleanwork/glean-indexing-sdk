@@ -35,6 +35,7 @@ run = [
   "mise run lint:ruff:config",
   "mise run lint:ruff",
   "mise run lint:format:check",
+  "mise run lint:terraform",
   "mise run lint:pyright",
   "mise run lint:readme",
 ]
@@ -99,6 +100,10 @@ run = "uv run ruff check . --exclude .venv/ --exclude **/site-packages/"
 [tasks."lint:format:check"]
 description = "Check code formatting"
 run = "uv run ruff format . --diff"
+
+[tasks."lint:terraform"]
+description = "Check generated deployment Terraform formatting and validity"
+run = "mise exec terraform@1.16.0 -- uv run python scripts/check_deployment_terraform_format.py"
 
 [tasks."lint:pyright"]
 description = "Run Pyright type checker"

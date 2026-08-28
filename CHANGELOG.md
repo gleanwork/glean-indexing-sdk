@@ -1,3 +1,9 @@
+## v1.1.0 (2026-08-28)
+
+### Feat
+
+- **deployment**: harden managed connector workflows (#201)
+
 ## v1.0.0 (2026-08-27)
 
 ### Fix

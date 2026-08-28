@@ -79,6 +79,7 @@ DEPLOY_LEAVES = [
     ("destroy",),
     ("init",),
     ("logs",),
+    ("run",),
     ("secrets", "delete"),
     ("secrets", "list"),
     ("secrets", "upload"),
@@ -137,6 +138,7 @@ def test_every_deploy_leaf_honors_root_json_and_yes(
             str(tmp_path / "generated"),
         ],
         ("logs",): ["--config", str(gcp_deployment_yaml)],
+        ("run",): ["--config", str(gcp_deployment_yaml)],
         ("secrets", "delete"): ["API_KEY", "--config", str(gcp_deployment_yaml)],
         ("secrets", "list"): ["--config", str(gcp_deployment_yaml)],
         ("secrets", "upload"): [
@@ -510,9 +512,13 @@ def test_init_gcp_shows_next_steps(runner, tmp_path):
         assert result.exit_code == 0
         assert "Next steps" in result.output
         assert "glean_deployment.yaml" in result.output
+        assert result.output.index("datasource configure") < result.output.index(
+            "deploy build --push"
+        )
         assert result.output.index("deploy build --push") < result.output.index(
             "deploy secrets upload"
         )
+        assert result.output.index("deploy apply") < result.output.index("deploy run")
 
 
 def test_init_aws_shows_next_steps(runner, tmp_path):
@@ -843,6 +849,40 @@ def test_destroy_yes_flag_skips_prompts(runner, tmp_path, gcp_deployment_yaml):
         assert mock_run.called
 
 
+def test_destroy_reports_resources_that_remain_customer_owned(
+    runner, tmp_path, gcp_deployment_yaml
+):
+    tf_dir = tmp_path / "terraform"
+    tf_dir.mkdir()
+
+    with patch("subprocess.run", return_value=MagicMock(returncode=0)):
+        result = runner.invoke(
+            deploy,
+            [
+                "destroy",
+                "--config",
+                str(gcp_deployment_yaml),
+                "--terraform-dir",
+                str(tf_dir),
+                "--keep-secrets",
+                "--yes",
+                "--output",
+                "json",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    retained = json.loads(result.output)["data"]["retained"]
+    assert retained == {
+        "container_image": (
+            "us-central1-docker.pkg.dev/my-project/connectors/my_salesforce:latest"
+        ),
+        "datasource_registration": "not managed by deploy",
+        "kubernetes_namespace": "default",
+        "local_files": ["glean_deployment.yaml", "terraform/"],
+    }
+
+
 def test_destroy_cleans_up_only_manifest_owned_secrets(runner, tmp_path, gcp_deployment_yaml):
     tf_dir = tmp_path / "terraform"
     tf_dir.mkdir()
@@ -1012,6 +1052,38 @@ def test_build_invokes_docker_build(runner, tmp_path, gcp_deployment_yaml):
         assert "--load" in cmd  # no --push → load into local daemon
 
 
+def test_build_uses_image_tag_from_config(runner, gcp_deployment_yaml):
+    config = yaml.safe_load(gcp_deployment_yaml.read_text())
+    config["image_tag"] = "candidate-42"
+    gcp_deployment_yaml.write_text(yaml.safe_dump(config))
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(deploy, ["build", "--config", str(gcp_deployment_yaml)])
+
+    assert result.exit_code == 0, result.output
+    command = mock_run.call_args_list[0].args[0]
+    assert "us-central1-docker.pkg.dev/my-project/connectors/my_salesforce:candidate-42" in command
+
+
+def test_build_rejects_tag_that_would_diverge_from_apply(runner, gcp_deployment_yaml):
+    with patch("subprocess.run") as mock_run:
+        result = runner.invoke(
+            deploy,
+            [
+                "build",
+                "--config",
+                str(gcp_deployment_yaml),
+                "--tag",
+                "different-tag",
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "image_tag" in result.output
+    mock_run.assert_not_called()
+
+
 def test_build_uses_config_parent_as_cwd(runner, tmp_path, gcp_deployment_yaml):
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
@@ -1069,6 +1141,80 @@ def test_logs_no_jobs_shows_error(runner, tmp_path, gcp_deployment_yaml):
         result = runner.invoke(deploy, ["logs", "--config", str(gcp_deployment_yaml)])
         assert result.exit_code != 0
         assert "No jobs found" in result.output or "Error" in result.output
+
+
+# ---------------------------------------------------------------------------
+# run
+# ---------------------------------------------------------------------------
+
+
+def test_run_creates_a_job_from_the_configured_cronjob(runner, gcp_deployment_yaml, monkeypatch):
+    calls = []
+    monkeypatch.setattr("time.time", lambda: 1_777_777_777)
+    monkeypatch.setattr("uuid.uuid4", lambda: MagicMock(hex="abcdef1234567890"))
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: calls.append(a) or _completed(0),
+    )
+
+    result = runner.invoke(
+        deploy, ["run", "--config", str(gcp_deployment_yaml), "--output", "json"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls[0][0] == [
+        "kubectl",
+        "create",
+        "job",
+        "--from=cronjob/my-salesforce",
+        "my-salesforce-manual-1777777777-abcdef12",
+        "--namespace",
+        "default",
+    ]
+    data = json.loads(result.output)["data"]
+    assert data["job"] == "my-salesforce-manual-1777777777-abcdef12"
+    assert data["cronjob"] == "my-salesforce"
+
+
+def test_run_generated_job_name_stays_within_kubernetes_limit(
+    runner, gcp_deployment_yaml, monkeypatch
+):
+    config = yaml.safe_load(gcp_deployment_yaml.read_text())
+    config["connector_name"] = "a" * 52
+    config["service_account_name"] = "long-connector-runtime"
+    gcp_deployment_yaml.write_text(yaml.safe_dump(config))
+    calls = []
+    monkeypatch.setattr("time.time", lambda: 1_777_777_777)
+    monkeypatch.setattr("uuid.uuid4", lambda: MagicMock(hex="abcdef1234567890"))
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: calls.append(a) or _completed(0),
+    )
+
+    result = runner.invoke(deploy, ["run", "--config", str(gcp_deployment_yaml)])
+
+    assert result.exit_code == 0, result.output
+    job_name = calls[0][0][4]
+    assert len(job_name) <= 63
+    assert job_name.endswith("-manual-1777777777-abcdef12")
+
+
+def test_run_names_do_not_collide_within_one_second(runner, gcp_deployment_yaml, monkeypatch):
+    identifiers = iter(["aaaaaaaa11111111", "bbbbbbbb22222222"])
+    monkeypatch.setattr("time.time", lambda: 1_777_777_777)
+    monkeypatch.setattr("uuid.uuid4", lambda: MagicMock(hex=next(identifiers)))
+    calls = []
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: calls.append(a) or _completed(0),
+    )
+
+    first = runner.invoke(deploy, ["run", "--config", str(gcp_deployment_yaml)])
+    second = runner.invoke(deploy, ["run", "--config", str(gcp_deployment_yaml)])
+
+    assert first.exit_code == 0, first.output
+    assert second.exit_code == 0, second.output
+    assert calls[0][0][4] != calls[1][0][4]
 
 
 # ---------------------------------------------------------------------------
@@ -1146,10 +1292,148 @@ def test_apply_prompts_before_mutating_infrastructure(runner, gcp_deployment_yam
         input="n\n",
     )
     assert result.exit_code != 0
-    assert "Apply Terraform" in result.stderr
-    assert "Apply Terraform" not in result.stdout
+    assert "Apply the Terraform plan" in result.stderr
+    assert "Apply the Terraform plan" not in result.stdout
     # terraform init runs before the prompt; apply must not.
     assert not any("apply" in " ".join(map(str, call[0])) for call in calls)
+
+
+def test_apply_forwards_every_mutable_config_value(runner, gcp_deployment_yaml, monkeypatch):
+    config = yaml.safe_load(gcp_deployment_yaml.read_text())
+    config.update(
+        {
+            "connector_name": "edited_connector",
+            "connector_class": "EditedConnector",
+            "connector_module": "edited.connector",
+            "connector_factory": "create_connector",
+            "region": "us-central1-a",
+            "cluster_name": "edited-cluster",
+            "namespace": "edited-namespace",
+            "cpu": "750m",
+            "memory": "768Mi",
+            "cron_schedule": "*/15 * * * *",
+            "indexing_mode": "INCREMENTAL",
+            "project_id": "edited-project",
+            "artifact_registry_repo": "us-central1-docker.pkg.dev/edited-project/connectors",
+            "service_account_name": "edited-connector-runtime",
+            "cluster_endpoint": "gke-abc123.us-central1-a.gke.goog",
+            "image_tag": "candidate-42",
+        }
+    )
+    gcp_deployment_yaml.write_text(yaml.safe_dump(config))
+    calls = []
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: calls.append(a) or _completed(0),
+    )
+    tf_dir = gcp_deployment_yaml.parent / "terraform"
+    tf_dir.mkdir(exist_ok=True)
+
+    result = runner.invoke(
+        deploy,
+        [
+            "apply",
+            "--config",
+            str(gcp_deployment_yaml),
+            "--terraform-dir",
+            str(tf_dir),
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    plan_command = next(call[0] for call in calls if "plan" in call[0])
+    expected = {
+        "connector_name": "edited_connector",
+        "k8s_name": "edited-connector",
+        "connector_class": "EditedConnector",
+        "connector_module": "edited.connector",
+        "connector_factory": "create_connector",
+        "region": "us-central1-a",
+        "cluster_name": "edited-cluster",
+        "namespace": "edited-namespace",
+        "cpu": "750m",
+        "memory": "768Mi",
+        "cron_schedule": "*/15 * * * *",
+        "indexing_mode": "INCREMENTAL",
+        "project_id": "edited-project",
+        "service_account_name": "edited-connector-runtime",
+        "secret_prefix": "CUSTOM_DATASOURCE_PLATFORM_EDITED_CONNECTOR_",
+        "cluster_endpoint": "gke-abc123.us-central1-a.gke.goog",
+        "image": "us-central1-docker.pkg.dev/edited-project/connectors/edited_connector:candidate-42",
+    }
+    for name, value in expected.items():
+        assert f"-var={name}={value}" in plan_command
+
+
+def test_apply_forwards_every_mutable_aws_config_value(runner, tmp_path, monkeypatch):
+    config_path = tmp_path / "glean_deployment.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "connector_name": "edited_connector",
+                "connector_class": "EditedConnector",
+                "connector_module": "edited.connector",
+                "connector_factory": "create_connector",
+                "cloud": "aws",
+                "region": "us-west-2",
+                "cluster_name": "edited-cluster",
+                "namespace": "edited-namespace",
+                "image_tag": "candidate-42",
+                "cpu": "750m",
+                "memory": "768Mi",
+                "cron_schedule": "*/15 * * * *",
+                "indexing_mode": "INCREMENTAL",
+                "account_id": "210987654321",
+                "ecr_repo": ("210987654321.dkr.ecr.us-west-2.amazonaws.com/connectors"),
+                "iam_role_name": "edited-connector-role",
+            }
+        )
+    )
+    calls = []
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: calls.append(a) or _completed(0),
+    )
+    tf_dir = tmp_path / "terraform"
+    tf_dir.mkdir()
+
+    result = runner.invoke(
+        deploy,
+        [
+            "apply",
+            "--config",
+            str(config_path),
+            "--terraform-dir",
+            str(tf_dir),
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    plan_command = next(call[0] for call in calls if "plan" in call[0])
+    expected = {
+        "connector_name": "edited_connector",
+        "k8s_name": "edited-connector",
+        "connector_class": "EditedConnector",
+        "connector_module": "edited.connector",
+        "connector_factory": "create_connector",
+        "region": "us-west-2",
+        "cluster_name": "edited-cluster",
+        "namespace": "edited-namespace",
+        "cpu": "750m",
+        "memory": "768Mi",
+        "cron_schedule": "*/15 * * * *",
+        "indexing_mode": "INCREMENTAL",
+        "account_id": "210987654321",
+        "service_account_name": "edited-connector-role",
+        "secret_prefix": "CUSTOM_DATASOURCE_PLATFORM_EDITED_CONNECTOR_",
+        "image": (
+            "210987654321.dkr.ecr.us-west-2.amazonaws.com/connectors/edited_connector:candidate-42"
+        ),
+    }
+    for name, value in expected.items():
+        assert f"-var={name}={value}" in plan_command
 
 
 def test_apply_passes_sorted_manifest_keys_as_json(runner, gcp_deployment_yaml, monkeypatch):
@@ -1175,8 +1459,8 @@ def test_apply_passes_sorted_manifest_keys_as_json(runner, gcp_deployment_yaml, 
     )
 
     assert result.exit_code == 0, result.output
-    apply_command = next(call[0] for call in calls if "apply" in call[0])
-    assert '-var=secret_keys_json=["API_KEY", "DB_PASS"]' in apply_command
+    plan_command = next(call[0] for call in calls if "plan" in call[0])
+    assert '-var=secret_keys_json=["API_KEY", "DB_PASS"]' in plan_command
 
 
 def test_apply_missing_manifest_is_secretless(runner, gcp_deployment_yaml, monkeypatch):
@@ -1201,8 +1485,8 @@ def test_apply_missing_manifest_is_secretless(runner, gcp_deployment_yaml, monke
     )
 
     assert result.exit_code == 0, result.output
-    apply_command = next(call[0] for call in calls if "apply" in call[0])
-    assert "-var=secret_keys_json=[]" in apply_command
+    plan_command = next(call[0] for call in calls if "plan" in call[0])
+    assert "-var=secret_keys_json=[]" in plan_command
 
 
 def test_apply_rejects_malformed_manifest_before_terraform(
@@ -1229,6 +1513,36 @@ def test_apply_rejects_malformed_manifest_before_terraform(
     assert result.exit_code != 0
     assert "Could not read secret key manifest" in result.output
     run.assert_not_called()
+
+
+def test_apply_uses_the_exact_saved_plan_it_displayed(runner, gcp_deployment_yaml, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: calls.append(a) or _completed(0),
+    )
+    tf_dir = gcp_deployment_yaml.parent / "terraform"
+    tf_dir.mkdir(exist_ok=True)
+
+    result = runner.invoke(
+        deploy,
+        [
+            "apply",
+            "--config",
+            str(gcp_deployment_yaml),
+            "--terraform-dir",
+            str(tf_dir),
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    plan_command = next(call[0] for call in calls if "plan" in call[0])
+    apply_command = next(call[0] for call in calls if "apply" in call[0])
+    plan_path = next(
+        argument.removeprefix("-out=") for argument in plan_command if argument.startswith("-out=")
+    )
+    assert apply_command == ["terraform", "apply", "-auto-approve", plan_path]
 
 
 def test_apply_yes_flag_skips_the_prompt(runner, gcp_deployment_yaml, monkeypatch):

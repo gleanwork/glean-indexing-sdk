@@ -10,10 +10,11 @@ from typing import Any, Optional
 
 import click
 
-from glean.indexing.cli.errors import RemoteError
+from glean.indexing.cli.errors import RemoteError, ValidationFailedError
 from glean.indexing.cli.main import context, global_options
 from glean.indexing.cli.output import emit
 from glean.indexing.cli.preconditions import project_option, requires
+from glean.indexing.common.validation import validate_datasource_name_for_configuration
 
 DOCS = "https://developers.glean.com/libraries/indexing-sdk/status-and-debugging"
 
@@ -226,6 +227,10 @@ def datasource_configure(
 
     connector_class = load_connector(cli_ctx.project_dir, cli_ctx.project_config, reference)
     config = _connector_configuration(connector_class)
+    try:
+        validate_datasource_name_for_configuration(config.name)
+    except ValueError as exc:
+        raise ValidationFailedError(str(exc), docs=DOCS) from exc
 
     data: dict[str, Any] = {
         "datasource": config.name,

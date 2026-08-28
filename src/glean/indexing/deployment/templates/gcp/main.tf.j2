@@ -38,7 +38,7 @@ data "google_container_cluster" "main" {
 locals {
   secret_keys = toset(jsondecode(var.secret_keys_json))
   secret_names = {
-    for key in local.secret_keys : key => "{{ config.secret_prefix }}${key}"
+    for key in local.secret_keys : key => "${var.secret_prefix}${key}"
   }
 }
 
@@ -49,7 +49,7 @@ provider "kubernetes" {
   # Reference: https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-architecture#control_plane_endpoint_modes
   host                   = "https://${coalesce(var.cluster_endpoint, data.google_container_cluster.main.endpoint)}"
   token                  = data.google_client_config.default.access_token
-  cluster_ca_certificate = base64decode(data.google_container_cluster.main.master_auth[0].cluster_ca_certificate)
+  cluster_ca_certificate = var.cluster_endpoint == null ? base64decode(data.google_container_cluster.main.master_auth[0].cluster_ca_certificate) : null
 }
 
 # ----- Service Account -----
@@ -57,8 +57,8 @@ provider "kubernetes" {
 # Reference: https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity
 
 resource "google_service_account" "connector" {
-  account_id   = "{{ config.effective_service_account }}"
-  display_name = "Glean connector: {{ config.connector_name }}"
+  account_id   = var.service_account_name
+  display_name = "Glean connector: ${var.connector_name}"
   project      = var.project_id
 }
 
@@ -83,7 +83,7 @@ resource "google_project_iam_member" "metric_writer" {
 resource "google_service_account_iam_member" "workload_identity" {
   service_account_id = google_service_account.connector.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.namespace}/{{ config.k8s_name }}-ksa]"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${data.kubernetes_namespace_v1.target.metadata[0].name}/${var.k8s_name}-ksa]"
 }
 
 # Allow accessing only the exact declared secret values at runtime.
@@ -96,10 +96,16 @@ resource "google_secret_manager_secret_iam_member" "secret_accessor" {
   member    = "serviceAccount:${google_service_account.connector.email}"
 }
 
+data "kubernetes_namespace_v1" "target" {
+  metadata {
+    name = var.namespace
+  }
+}
+
 resource "kubernetes_service_account_v1" "connector" {
   metadata {
-    name      = "{{ config.k8s_name }}-ksa"
-    namespace = var.namespace
+    name      = "${var.k8s_name}-ksa"
+    namespace = data.kubernetes_namespace_v1.target.metadata[0].name
     annotations = {
       "iam.gke.io/gcp-service-account" = google_service_account.connector.email
     }
@@ -111,17 +117,17 @@ resource "kubernetes_service_account_v1" "connector" {
 
 resource "kubernetes_cron_job_v1" "connector" {
   metadata {
-    name      = "{{ config.k8s_name }}"
-    namespace = var.namespace
+    name      = var.k8s_name
+    namespace = data.kubernetes_namespace_v1.target.metadata[0].name
     labels = {
-      app        = "{{ config.k8s_name }}"
+      app = var.k8s_name
       # Not "glean-idx deploy": Kubernetes label values cannot contain spaces.
       managed-by = "glean-idx"
     }
   }
 
   spec {
-    schedule                      = "{{ config.cron_schedule }}"
+    schedule                      = var.cron_schedule
     concurrency_policy            = "Forbid"
     failed_jobs_history_limit     = 3
     successful_jobs_history_limit = 3
@@ -129,7 +135,7 @@ resource "kubernetes_cron_job_v1" "connector" {
     job_template {
       metadata {
         labels = {
-          app = "{{ config.k8s_name }}"
+          app = var.k8s_name
         }
       }
       spec {
@@ -137,7 +143,7 @@ resource "kubernetes_cron_job_v1" "connector" {
         template {
           metadata {
             labels = {
-              app = "{{ config.k8s_name }}"
+              app = var.k8s_name
             }
           }
           spec {
@@ -145,13 +151,13 @@ resource "kubernetes_cron_job_v1" "connector" {
             restart_policy       = "Never"
 
             container {
-              name  = "{{ config.k8s_name }}"
+              name  = var.k8s_name
               image = var.image
 
               # Deployment-control env vars — NOT loaded from secret manager.
               env {
                 name  = "DATASOURCE_NAME"
-                value = "{{ config.connector_name }}"
+                value = var.connector_name
               }
               env {
                 name  = "CLOUD_PLATFORM"
@@ -159,7 +165,7 @@ resource "kubernetes_cron_job_v1" "connector" {
               }
               env {
                 name  = "INDEXING_MODE"
-                value = "{{ config.indexing_mode }}"
+                value = var.indexing_mode
               }
               env {
                 name  = "GOOGLE_CLOUD_PROJECT"
@@ -171,27 +177,28 @@ resource "kubernetes_cron_job_v1" "connector" {
               }
               env {
                 name  = "CONNECTOR_CLASS"
-                value = "{{ config.connector_class }}"
+                value = var.connector_class
               }
               env {
                 name  = "CONNECTOR_MODULE"
-                value = "{{ config.connector_module }}"
+                value = var.connector_module
               }
-{% if config.connector_factory %}
-              env {
-                name  = "CONNECTOR_FACTORY"
-                value = "{{ config.connector_factory }}"
+              dynamic "env" {
+                for_each = var.connector_factory == null ? [] : [var.connector_factory]
+                content {
+                  name  = "CONNECTOR_FACTORY"
+                  value = env.value
+                }
               }
-{% endif %}
 
               resources {
                 requests = {
-                  cpu    = "{{ config.cpu }}"
-                  memory = "{{ config.memory }}"
+                  cpu    = var.cpu
+                  memory = var.memory
                 }
                 limits = {
-                  cpu    = "{{ config.cpu }}"
-                  memory = "{{ config.memory }}"
+                  cpu    = var.cpu
+                  memory = var.memory
                 }
               }
 

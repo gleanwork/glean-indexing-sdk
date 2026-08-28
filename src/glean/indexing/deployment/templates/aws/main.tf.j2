@@ -30,7 +30,7 @@ provider "aws" {
 locals {
   secret_keys = toset(jsondecode(var.secret_keys_json))
   secret_names = {
-    for key in local.secret_keys : key => "{{ config.secret_prefix }}${key}"
+    for key in local.secret_keys : key => "${var.secret_prefix}${key}"
   }
 }
 
@@ -57,7 +57,7 @@ data "aws_iam_openid_connect_provider" "eks" {
 }
 
 resource "aws_iam_role" "connector" {
-  name = "{{ config.effective_service_account }}"
+  name = var.service_account_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -69,7 +69,7 @@ resource "aws_iam_role" "connector" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "${trimprefix(data.aws_iam_openid_connect_provider.eks.url, "https://")}:sub" = "system:serviceaccount:${var.namespace}:{{ config.k8s_name }}-ksa"
+          "${trimprefix(data.aws_iam_openid_connect_provider.eks.url, "https://")}:sub" = "system:serviceaccount:${data.kubernetes_namespace_v1.target.metadata[0].name}:${var.k8s_name}-ksa"
           "${trimprefix(data.aws_iam_openid_connect_provider.eks.url, "https://")}:aud" = "sts.amazonaws.com"
         }
       }
@@ -88,7 +88,7 @@ data "aws_secretsmanager_secret" "connector" {
 # Reference: https://docs.aws.amazon.com/secretsmanager/latest/userguide/auth-and-access.html
 resource "aws_iam_role_policy" "secrets" {
   count = length(local.secret_names) == 0 ? 0 : 1
-  name  = "{{ config.connector_name }}-secrets"
+  name  = "${var.connector_name}-secrets"
   role  = aws_iam_role.connector.id
 
   policy = jsonencode({
@@ -106,7 +106,7 @@ resource "aws_iam_role_policy" "secrets" {
 # Allow writing logs and metrics to CloudWatch.
 # Reference: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/WhatIsCloudWatch.html
 resource "aws_iam_role_policy" "cloudwatch" {
-  name = "{{ config.connector_name }}-cloudwatch"
+  name = "${var.connector_name}-cloudwatch"
   role = aws_iam_role.connector.id
 
   policy = jsonencode({
@@ -119,7 +119,7 @@ resource "aws_iam_role_policy" "cloudwatch" {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
-        Resource = "arn:aws:logs:${var.region}:${var.account_id}:log-group:/glean/connectors/{{ config.connector_name }}:*"
+        Resource = "arn:aws:logs:${var.region}:${var.account_id}:log-group:/glean/connectors/${var.connector_name}:*"
       },
       {
         Effect   = "Allow"
@@ -135,10 +135,16 @@ resource "aws_iam_role_policy" "cloudwatch" {
   })
 }
 
+data "kubernetes_namespace_v1" "target" {
+  metadata {
+    name = var.namespace
+  }
+}
+
 resource "kubernetes_service_account_v1" "connector" {
   metadata {
-    name      = "{{ config.k8s_name }}-ksa"
-    namespace = var.namespace
+    name      = "${var.k8s_name}-ksa"
+    namespace = data.kubernetes_namespace_v1.target.metadata[0].name
     annotations = {
       "eks.amazonaws.com/role-arn" = aws_iam_role.connector.arn
     }
@@ -150,17 +156,17 @@ resource "kubernetes_service_account_v1" "connector" {
 
 resource "kubernetes_cron_job_v1" "connector" {
   metadata {
-    name      = "{{ config.k8s_name }}"
-    namespace = var.namespace
+    name      = var.k8s_name
+    namespace = data.kubernetes_namespace_v1.target.metadata[0].name
     labels = {
-      app        = "{{ config.k8s_name }}"
+      app = var.k8s_name
       # Not "glean-idx deploy": Kubernetes label values cannot contain spaces.
       managed-by = "glean-idx"
     }
   }
 
   spec {
-    schedule                      = "{{ config.cron_schedule }}"
+    schedule                      = var.cron_schedule
     concurrency_policy            = "Forbid"
     failed_jobs_history_limit     = 3
     successful_jobs_history_limit = 3
@@ -168,7 +174,7 @@ resource "kubernetes_cron_job_v1" "connector" {
     job_template {
       metadata {
         labels = {
-          app = "{{ config.k8s_name }}"
+          app = var.k8s_name
         }
       }
       spec {
@@ -176,7 +182,7 @@ resource "kubernetes_cron_job_v1" "connector" {
         template {
           metadata {
             labels = {
-              app = "{{ config.k8s_name }}"
+              app = var.k8s_name
             }
           }
           spec {
@@ -184,13 +190,13 @@ resource "kubernetes_cron_job_v1" "connector" {
             restart_policy       = "Never"
 
             container {
-              name  = "{{ config.k8s_name }}"
+              name  = var.k8s_name
               image = var.image
 
               # Deployment-control env vars — NOT loaded from secret manager.
               env {
                 name  = "DATASOURCE_NAME"
-                value = "{{ config.connector_name }}"
+                value = var.connector_name
               }
               env {
                 name  = "CLOUD_PLATFORM"
@@ -198,7 +204,7 @@ resource "kubernetes_cron_job_v1" "connector" {
               }
               env {
                 name  = "INDEXING_MODE"
-                value = "{{ config.indexing_mode }}"
+                value = var.indexing_mode
               }
               env {
                 name  = "AWS_REGION"
@@ -210,27 +216,28 @@ resource "kubernetes_cron_job_v1" "connector" {
               }
               env {
                 name  = "CONNECTOR_CLASS"
-                value = "{{ config.connector_class }}"
+                value = var.connector_class
               }
               env {
                 name  = "CONNECTOR_MODULE"
-                value = "{{ config.connector_module }}"
+                value = var.connector_module
               }
-{% if config.connector_factory %}
-              env {
-                name  = "CONNECTOR_FACTORY"
-                value = "{{ config.connector_factory }}"
+              dynamic "env" {
+                for_each = var.connector_factory == null ? [] : [var.connector_factory]
+                content {
+                  name  = "CONNECTOR_FACTORY"
+                  value = env.value
+                }
               }
-{% endif %}
 
               resources {
                 requests = {
-                  cpu    = "{{ config.cpu }}"
-                  memory = "{{ config.memory }}"
+                  cpu    = var.cpu
+                  memory = var.memory
                 }
                 limits = {
-                  cpu    = "{{ config.cpu }}"
-                  memory = "{{ config.memory }}"
+                  cpu    = var.cpu
+                  memory = var.memory
                 }
               }
 

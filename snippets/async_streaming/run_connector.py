@@ -6,7 +6,7 @@ from glean.indexing.models import IndexingMode
 from .event_connector import EventConnector
 
 connector = EventConnector(
-    name="company_events",
+    name="companyevents",
     api_url="https://events-api.company.com",
     api_key=os.environ["SOURCE_API_TOKEN"],
 )

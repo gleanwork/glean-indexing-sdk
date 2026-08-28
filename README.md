@@ -117,7 +117,7 @@ class CompanyWikiConnector(BaseDatasourceConnector[WikiPage]):
     """Transforms wiki pages into Glean documents."""
 
     configuration = CustomDatasourceConfig(
-        name="company_wiki",
+        name="companywiki",
         display_name="Company Wiki",
         url_regex=r"https://wiki\.company\.com/.*",
         is_user_referenced_by_email=True,
@@ -144,7 +144,7 @@ class CompanyWikiConnector(BaseDatasourceConnector[WikiPage]):
 def create_connector() -> CompanyWikiConnector:
     """Build the production connector after runtime secrets are loaded."""
     return CompanyWikiConnector(
-        name="company_wiki",
+        name="companywiki",
         data_client=WikiDataClient(
             base_url="https://wiki.company.com",
             api_token=os.environ["WIKI_API_TOKEN"],
@@ -163,8 +163,8 @@ Test it without touching the network:
 ```python
 from glean.indexing.testing import StaticDataClient, run_connector
 
-result = run_connector(CompanyWikiConnector("company_wiki", StaticDataClient([...])))
-result.assert_documents_posted(count=1, datasource="company_wiki")
+result = run_connector(CompanyWikiConnector("companywiki", StaticDataClient([...])))
+result.assert_documents_posted(count=1, datasource="companywiki")
 ```
 
 The module-level `create_connector()` function is the production construction seam for CLI and

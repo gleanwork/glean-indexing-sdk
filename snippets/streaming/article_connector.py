@@ -18,7 +18,7 @@ class KnowledgeBaseConnector(BaseStreamingDatasourceConnector[ArticleData]):
     """Transforms streamed articles into Glean documents."""
 
     configuration = CustomDatasourceConfig(
-        name="knowledge_base",
+        name="knowledgebase",
         display_name="Knowledge Base",
         url_regex=r"https://kb\.company\.com/.*",
         is_user_referenced_by_email=True,

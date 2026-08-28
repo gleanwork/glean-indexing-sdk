@@ -535,6 +535,7 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "glean-api-client" },
+    { name = "httpx" },
     { name = "jinja2" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -588,6 +589,7 @@ requires-dist = [
     { name = "google-cloud-logging", marker = "extra == 'gcp'", specifier = ">=3.11.0,<4" },
     { name = "google-cloud-monitoring", marker = "extra == 'gcp'", specifier = ">=2.22.0,<3" },
     { name = "google-cloud-secret-manager", marker = "extra == 'gcp'", specifier = ">=2.20.0,<3" },
+    { name = "httpx", specifier = ">=0.27,<1" },
     { name = "jinja2", specifier = ">=3.1.2" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.6.0" },
     { name = "pydantic", specifier = ">=2.0" },

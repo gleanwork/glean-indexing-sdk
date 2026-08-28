@@ -18,7 +18,8 @@ Use this skill when deployment or hosting is in scope for a connector build. It 
 
 ## Rules
 
-- Use `glean-idx deploy` for deployment artifacts and operations. Do not invent Terraform, Docker, Kubernetes, or secret-manager files by hand.
+- Use `glean-idx deploy` for connector-specific deployment artifacts and operations. It delegates to Docker Buildx, Terraform, provider SDKs, and `kubectl`; keep those standard tools and their authentication visible rather than inventing files or alternate clients by hand.
+- Treat the cloud project/account, cluster, registry, Workload Identity/IRSA foundation, and namespace as customer-managed prerequisites. Do not create or delete them implicitly.
 - Do not run cloud-mutating commands (`secrets upload`, `apply`, `destroy`) without explicit user confirmation.
 - Do not build, push, upload secrets, or apply until the confirmed connector plan has been revalidated against the current implementation and generated deployment configuration for production use.
 - Resolve every known follow-up recorded in the connector plan or source investigation before deployment.
@@ -34,10 +35,12 @@ Use this skill when deployment or hosting is in scope for a connector build. It 
 Before using `glean-idx deploy`, confirm the user has:
 
 - The Glean Indexing SDK installed in the active Python environment. The `glean-idx deploy` console command is registered by the SDK package.
-- Colima installed and running. If Colima is unavailable, ask the user whether they want to install and start it or use another Docker-compatible runtime, such as Docker Desktop. Verify the selected runtime is working with `docker info` before building an image.
+- A Docker-compatible runtime, such as Docker Desktop or Colima, with Buildx. Verify it with `docker info` and `docker buildx version`.
+- Terraform 1.0 or later and `kubectl`.
 - Cloud CLI authenticated:
-  - GCP: `gcloud auth login && gcloud auth application-default login`
-  - AWS: `aws configure`
+  - GCP: `gcloud auth login --update-adc`, Artifact Registry Docker authentication, and explicit cluster credentials.
+  - AWS: an authenticated AWS profile, ECR Docker authentication, and explicit EKS kubeconfig.
+- An existing cluster, container registry repository, workload identity foundation, and Kubernetes namespace.
 - **GCP only**: verify no stale service account impersonation is active before deploying:
   ```bash
   gcloud config get auth/impersonate_service_account
@@ -78,14 +81,20 @@ glean-idx deploy init --cloud gcp --connector-factory create_connector   # or --
 # Edit glean_deployment.yaml: image registry, schedule, cluster, resources, etc.
 # Edit .env: GLEAN_INDEXING_API_TOKEN, GLEAN_SERVER_URL, source credentials, etc.
 
-# 2. Build and push container image (linux/amd64 by default — correct for GKE/EKS amd64 nodes)
+# 2. Register the API-facing datasource configuration.
+glean-idx datasource configure
+
+# 3. Build and push the configured image/tag (linux/amd64 by default).
 glean-idx deploy build --push
 
-# 3. Upload secrets from .env to cloud secret manager
+# 4. Upload exact secrets from .env to cloud secret manager.
 glean-idx deploy secrets upload
 
-# 4. Deploy the Kubernetes CronJob
+# 5. Display an exact Terraform plan, confirm it, and apply that same plan.
 glean-idx deploy apply
+
+# 6. Start one Job immediately instead of waiting for the schedule.
+glean-idx deploy run
 ```
 
 After deployment:
@@ -93,6 +102,7 @@ After deployment:
 ```bash
 glean-idx deploy status
 glean-idx deploy logs -f
+glean-idx document status --datasource NAME --document TYPE ID --poll
 ```
 
 ## Known Issues and Mitigations
@@ -107,13 +117,11 @@ docker inspect <image> | grep Architecture
 # Should be: "amd64"
 ```
 
-### Private GKE cluster — Terraform kubernetes provider timeout
+### Private GKE control-plane endpoint
 
-Symptom: GCP-side resources (service account, IAM roles, Workload Identity) apply successfully, but Terraform fails creating Kubernetes resources with a connection timeout to a private IP (e.g. `10.x.x.x`).
+For private-only clusters, the machine running Terraform needs network access to either the private IP or a GKE DNS control-plane endpoint. The generated provider uses the cluster CA for the discovered IP endpoint and system trust for an explicit DNS endpoint.
 
-Cause: `data.google_container_cluster.main.endpoint` returns the private IP for clusters with `enablePublicEndpoint: false`. The generated Terraform uses `coalesce(var.cluster_endpoint, endpoint)` to allow override.
-
-Fix: get the GKE DNS endpoint and add it to `glean_deployment.yaml`:
+Get the GKE DNS endpoint and add it to `glean_deployment.yaml`:
 ```bash
 gcloud container clusters describe <cluster-name> \
   --region <region> \
@@ -135,15 +143,16 @@ Use the `glean-idx deploy` CLI:
 | `glean-idx deploy init --cloud gcp|aws` | Scaffold `Dockerfile`, `terraform/`, `run.py`, `glean_deployment.yaml`, and `.env.example`. |
 | `glean-idx deploy build` | Build the connector container image locally. |
 | `glean-idx deploy build --push` | Build and push the connector image to the configured registry. |
-| `glean-idx deploy build --tag v1.2` | Build with a specific image tag instead of `latest`. |
+| `glean-idx deploy build --tag v1.2` | Compatibility check only: the value must match `image_tag` in the YAML so build and apply cannot diverge. |
 | `glean-idx deploy secrets upload` | Upload connector secrets from `.env` to GCP Secret Manager or AWS Secrets Manager. |
 | `glean-idx deploy secrets list` | List connector secrets currently stored in the cloud. |
 | `glean-idx deploy secrets delete KEY` | Delete a specific connector secret after confirmation. |
-| `glean-idx deploy apply` | Run Terraform apply to deploy or update the Kubernetes CronJob. |
+| `glean-idx deploy apply` | Run Terraform init, display an exact saved plan, prompt, and apply that same plan. |
+| `glean-idx deploy run` | Create one immediate Job from the configured CronJob and namespace. |
 | `glean-idx deploy status` | Show CronJob status and recent job history. |
 | `glean-idx deploy logs` | Show logs from the most recent run. |
 | `glean-idx deploy logs -f` | Tail logs in follow mode. |
-| `glean-idx deploy destroy` | Tear down the deployment — two-step confirmation: y/n prompt then type the connector name. |
+| `glean-idx deploy destroy` | Tear down Terraform resources and manifest-owned secrets, then report retained image, namespace, datasource registration, and local files. Two-step confirmation: y/n prompt then type the connector name. |
 | `glean-idx deploy destroy --yes` | Tear down without prompts (CI only). |
 
 For `glean-idx deploy init`, only `--cloud` is required. If omitted, `--connector-name` defaults to the current directory name, `--connector-class` defaults to `MyConnector`, and `--connector-module` defaults to `connector`. Pass those options when the generated connector uses different names. When the class takes a name, data client, or other dependencies, pass `--connector-factory create_connector`; the named module-level function must take no arguments and return an instance of `connector_class`.
@@ -176,10 +185,11 @@ Ensure `glean_deployment.yaml` has the correct fields before running build/apply
 - `connector_class`
 - `connector_module`
 - `connector_factory` (optional zero-argument production construction hook)
-- `cloud`
+- `cloud` (fixed by provider-specific artifacts at `deploy init`; rerun init to change providers)
 - `region`
 - `cluster_name`
-- `namespace`
+- `namespace` (must already exist and remains customer-managed)
+- `image_tag`
 - `cpu`
 - `memory`
 - `cron_schedule`

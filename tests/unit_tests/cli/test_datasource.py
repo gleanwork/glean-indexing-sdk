@@ -16,7 +16,7 @@ from glean.api_client.models import (
     DatasourceObjectTypeDocumentCountEntry,
 )
 from glean.indexing.cli.commands.datasource import datasource
-from glean.indexing.cli.errors import EXIT_PRECONDITION, EXIT_REMOTE
+from glean.indexing.cli.errors import EXIT_PRECONDITION, EXIT_REMOTE, EXIT_VALIDATION
 from glean.indexing.cli.project import PROJECT_FILE
 
 
@@ -191,6 +191,24 @@ def test_configure_show_does_not_call_glean(uploader: Mock, project, credentials
     assert result.exit_code == 0, result.output
     uploader.return_value.configure_datasource.assert_not_called()
     assert json.loads(result.output)["data"]["registered"] is False
+
+
+@patch("glean.indexing.push.PushUploader")
+def test_configure_show_rejects_an_invalid_datasource_name_locally(
+    uploader: Mock, project, credentials
+):
+    connector_path = project / "connector.py"
+    connector_path.write_text(
+        connector_path.read_text().replace('name="wiki"', 'name="company_wiki"')
+    )
+
+    result = CliRunner().invoke(
+        datasource, ["configure", "--project", str(project), "--show", "--output", "json"]
+    )
+
+    assert result.exit_code == EXIT_VALIDATION
+    assert "ASCII letters and digits" in json.loads(result.output)["error"]["message"]
+    uploader.assert_not_called()
 
 
 @patch("glean.indexing.push.PushUploader")

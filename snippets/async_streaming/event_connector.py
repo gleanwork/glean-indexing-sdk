@@ -18,7 +18,7 @@ class EventConnector(BaseAsyncStreamingDatasourceConnector[EventData]):
     """Transforms asynchronously streamed events into Glean documents."""
 
     configuration = CustomDatasourceConfig(
-        name="company_events",
+        name="companyevents",
         display_name="Company Events",
         url_regex=r"https://events\.company\.com/.*",
         is_user_referenced_by_email=True,

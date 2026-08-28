@@ -5,38 +5,90 @@
 #   Terraform input variables: https://developer.hashicorp.com/terraform/language/values/variables
 #   AWS Terraform provider:    https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
+variable "connector_name" {
+  description = "Connector deployment name and runtime secret namespace."
+  type        = string
+}
+
+variable "k8s_name" {
+  description = "Kubernetes-safe connector resource name."
+  type        = string
+}
+
+variable "connector_class" {
+  description = "Python connector class name."
+  type        = string
+}
+
+variable "connector_module" {
+  description = "Python module containing the connector."
+  type        = string
+}
+
+variable "connector_factory" {
+  description = "Optional zero-argument connector factory."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
 variable "region" {
   description = "AWS region. See https://docs.aws.amazon.com/general/latest/gr/rande.html"
   type        = string
-  default     = "{{ config.region }}"
 }
 
 variable "cluster_name" {
   description = "EKS cluster name. See https://docs.aws.amazon.com/eks/latest/userguide/what-is-eks.html"
   type        = string
-  default     = "{{ config.cluster_name }}"
 }
 
 variable "account_id" {
   description = "AWS account ID (12-digit number)."
   type        = string
-  default     = "{{ config.account_id }}"
 }
 
 variable "namespace" {
-  description = "Kubernetes namespace for the CronJob."
+  description = "Existing customer-managed Kubernetes namespace for the CronJob."
   type        = string
-  default     = "{{ config.namespace }}"
 }
 
 variable "image" {
-  description = "Container image URI in ECR. See https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html"
+  description = "Container image URI and tag in ECR. See https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html"
   type        = string
-  default     = "{{ config.image_name }}:latest"
+}
+
+variable "service_account_name" {
+  description = "AWS IAM role name for the connector."
+  type        = string
+}
+
+variable "secret_prefix" {
+  description = "Prefix for exact connector secrets in Secrets Manager."
+  type        = string
 }
 
 variable "secret_keys_json" {
   description = "JSON array of connector secret environment keys."
   type        = string
   default     = "[]"
+}
+
+variable "cron_schedule" {
+  description = "UTC CronJob schedule."
+  type        = string
+}
+
+variable "indexing_mode" {
+  description = "Connector indexing mode."
+  type        = string
+}
+
+variable "cpu" {
+  description = "Kubernetes CPU request and limit."
+  type        = string
+}
+
+variable "memory" {
+  description = "Kubernetes memory request and limit."
+  type        = string
 }

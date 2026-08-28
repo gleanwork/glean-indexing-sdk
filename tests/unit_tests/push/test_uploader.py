@@ -4,6 +4,7 @@ import threading
 import time
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from glean.api_client.models import (
@@ -16,6 +17,7 @@ from glean.api_client.models import (
     DebugDocumentRequest,
     DocumentDefinition,
     EmployeeInfoDefinition,
+    ObjectDefinition,
     ProcessAllDocumentsRequest,
 )
 from glean.indexing import StatusClient as TopLevelStatusClient
@@ -34,9 +36,9 @@ def _document(document_id: str = "doc-1") -> DocumentDefinition:
 
 
 def test_configure_datasource_calls_generated_client():
-    uploader = PushUploader(datasource="test_datasource")
+    uploader = PushUploader(datasource="testdatasource")
     config = CustomDatasourceConfig(
-        name="test_datasource",
+        name="testdatasource",
         display_name="Test Datasource",
         url_regex=r"https://example\.com/.*",
         trust_url_regex_for_view_activity=True,
@@ -47,10 +49,97 @@ def test_configure_datasource_calls_generated_client():
 
     client.indexing.datasources.add.assert_called_once()
     call_args = client.indexing.datasources.add.call_args[1]
-    assert call_args["name"] == "test_datasource"
+    assert call_args["name"] == "testdatasource"
     assert call_args["display_name"] == "Test Datasource"
     assert call_args["url_regex"] == r"https://example\.com/.*"
     assert call_args["trust_url_regex_for_view_activity"] is True
+
+
+@pytest.mark.parametrize("name", ["company_wiki", "company-wiki", "company wiki", "café"])
+def test_configure_datasource_rejects_non_ascii_alphanumeric_names_before_api_call(name):
+    uploader = PushUploader(datasource=name)
+    config = CustomDatasourceConfig(name=name, display_name="Company Wiki")
+
+    with mock_glean_client() as client:
+        with pytest.raises(ValueError, match="ASCII letters and digits"):
+            uploader.configure_datasource(config)
+
+    client.indexing.datasources.add.assert_not_called()
+
+
+def test_configure_datasource_forwards_request_options():
+    uploader = PushUploader(datasource="wiki", timeout_ms=120_000)
+    config = CustomDatasourceConfig(name="wiki", display_name="Company Wiki")
+
+    with mock_glean_client() as client:
+        uploader.configure_datasource(config)
+
+    client.indexing.datasources.add.assert_called_once_with(
+        name="wiki",
+        display_name="Company Wiki",
+        timeout_ms=120_000,
+    )
+
+
+def test_configure_datasource_recovers_when_timeout_committed_equivalent_state():
+    uploader = PushUploader(datasource="wiki")
+    config = CustomDatasourceConfig(
+        name="wiki",
+        display_name="Company Wiki",
+        object_definitions=[ObjectDefinition(name="Article"), ObjectDefinition(name="Page")],
+    )
+    timeout = httpx.ReadTimeout(
+        "timed out after request was sent",
+        request=httpx.Request("POST", "https://example.com/adddatasource"),
+    )
+
+    with mock_glean_client() as client:
+        client.indexing.datasources.add.side_effect = timeout
+        client.indexing.datasources.retrieve_config.return_value = CustomDatasourceConfig(
+            name="CUSTOM_WIKI",
+            display_name="Company Wiki",
+            object_definitions=[
+                ObjectDefinition(name="Page", display_label="Page"),
+                ObjectDefinition(name="Article", display_label="Article"),
+            ],
+        )
+        uploader.configure_datasource(config)
+
+    client.indexing.datasources.add.assert_called_once()
+    client.indexing.datasources.retrieve_config.assert_called_once_with(datasource="wiki")
+
+
+def test_configure_datasource_reports_ambiguous_timeout_when_state_differs():
+    uploader = PushUploader(datasource="wiki")
+    config = CustomDatasourceConfig(name="wiki", display_name="Company Wiki")
+    timeout = httpx.ReadTimeout(
+        "timed out after request was sent",
+        request=httpx.Request("POST", "https://example.com/adddatasource"),
+    )
+
+    with mock_glean_client() as client:
+        client.indexing.datasources.add.side_effect = timeout
+        client.indexing.datasources.retrieve_config.return_value = CustomDatasourceConfig(
+            name="CUSTOM_WIKI",
+            display_name="Different Wiki",
+        )
+        with patch("glean.indexing.push.uploader.time.sleep"):
+            with pytest.raises(RuntimeError, match="outcome is unknown"):
+                uploader.configure_datasource(config)
+
+    assert client.indexing.datasources.retrieve_config.call_count == 3
+
+
+def test_configure_datasource_does_not_reconcile_ordinary_api_errors():
+    uploader = PushUploader(datasource="wiki")
+    config = CustomDatasourceConfig(name="wiki", display_name="Company Wiki")
+
+    with mock_glean_client() as client:
+        client.indexing.datasources.add.side_effect = RuntimeError("HTTP 400")
+        with pytest.raises(RuntimeError, match="HTTP 400"):
+            uploader.configure_datasource(config)
+
+    client.indexing.datasources.retrieve_config.assert_not_called()
 
 
 def test_status_client_is_exported_from_top_level_package():

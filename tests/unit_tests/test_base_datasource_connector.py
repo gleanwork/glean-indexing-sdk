@@ -42,7 +42,7 @@ class TestDatasourceConnector(BaseDatasourceConnector[dict]):
     """Test implementation of BaseDatasourceConnector."""
 
     configuration: CustomDatasourceConfig = CustomDatasourceConfig(
-        name="test_connector",
+        name="testconnector",
         display_name="Test Connector",
         url_regex=r"https://test\.example\.com/.*",
         trust_url_regex_for_view_activity=True,
@@ -89,7 +89,7 @@ class TestBaseDatasourceConnector:
         connector = TestDatasourceConnector(name="test_connector", data_client=data_client)
 
         config = connector.configuration
-        assert config.name == "test_connector"
+        assert config.name == "testconnector"
         assert config.display_name == "Test Connector"
         assert config.url_regex == r"https://test\.example\.com/.*"
         assert config.trust_url_regex_for_view_activity is True
@@ -107,7 +107,7 @@ class TestBaseDatasourceConnector:
 
         mock_client.indexing.datasources.add.assert_called_once()
         call_args = mock_client.indexing.datasources.add.call_args[1]
-        assert call_args["name"] == "test_connector"
+        assert call_args["name"] == "testconnector"
         assert call_args["display_name"] == "Test Connector"
 
     def test_get_data(self):

@@ -55,6 +55,31 @@ def test_gcp_config_defaults():
     assert config.memory == "512Mi"
     assert config.cron_schedule == "0 2 * * *"
     assert config.indexing_mode == "FULL"
+    assert config.image_tag == "latest"
+    assert config.image_reference == f"{config.image_name}:latest"
+
+
+def test_gcp_config_accepts_bare_cluster_dns_endpoint():
+    endpoint = "gke-abc123.us-central1-a.gke.goog"
+    config = DeploymentConfig(**{**GCP_KWARGS, "cluster_endpoint": endpoint})
+
+    assert config.cluster_endpoint == endpoint
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://gke-abc123.us-central1-a.gke.goog",
+        "gke-abc123.us-central1-a.gke.goog:443",
+        "gke-abc123.us-central1-a.gke.goog/path",
+        "gke-abc123.us-central1-a.gke.goog/",
+        "gke-abc123.us-central1-a.gke.goog ",
+        "bad_name.gke.goog",
+    ],
+)
+def test_gcp_config_rejects_non_bare_cluster_dns_endpoint(endpoint):
+    with pytest.raises(ValidationError, match="cluster_endpoint must be a bare DNS hostname"):
+        DeploymentConfig(**{**GCP_KWARGS, "cluster_endpoint": endpoint})
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +142,12 @@ def test_quoted_aws_account_id_preserves_leading_zero():
 def test_invalid_connector_name_raises():
     with pytest.raises(ValidationError, match="connector_name must be lowercase"):
         DeploymentConfig(**{**GCP_KWARGS, "connector_name": "MyConnector"})
+
+
+@pytest.mark.parametrize("image_tag", ["", ".invalid", "invalid tag", "a" * 129])
+def test_invalid_image_tag_raises(image_tag):
+    with pytest.raises(ValidationError, match="image_tag"):
+        DeploymentConfig(**{**GCP_KWARGS, "image_tag": image_tag})
 
 
 def test_connector_name_with_hyphen_valid():

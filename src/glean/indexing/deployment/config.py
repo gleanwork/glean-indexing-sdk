@@ -11,11 +11,13 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 _CONNECTOR_NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]*", re.ASCII)
 _KUBERNETES_DNS_LABEL_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", re.ASCII)
+_DNS_LABEL_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", re.ASCII)
 _CRONJOB_NAME_RE = _KUBERNETES_DNS_LABEL_RE
 _GCP_SERVICE_ACCOUNT_RE = re.compile(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", re.ASCII)
 _AWS_IAM_ROLE_RE = re.compile(r"[A-Za-z0-9_+=,.@-]+", re.ASCII)
 _GCP_IMAGE_COMPONENT_RE = re.compile(r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*", re.ASCII)
 _AWS_ECR_COMPONENT_RE = re.compile(r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*", re.ASCII)
+_IMAGE_TAG_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", re.ASCII)
 _SCAFFOLD_REPOSITORY_PLACEHOLDERS = frozenset({"<account>", "<project>", "<region>"})
 
 
@@ -60,6 +62,7 @@ class DeploymentConfig(BaseModel):
     )
     cluster_name: str = Field(description="Kubernetes cluster name.")
     namespace: str = Field(default="default", description="Kubernetes namespace for the CronJob.")
+    image_tag: str = Field(default="latest", description="Container image tag to build and deploy.")
 
     cpu: str = Field(default="500m", description="Pod CPU request/limit (Kubernetes format).")
     memory: str = Field(
@@ -127,6 +130,34 @@ class DeploymentConfig(BaseModel):
         if not _CONNECTOR_NAME_RE.fullmatch(v):
             raise ValueError(
                 f"connector_name must be lowercase ASCII alphanumeric with underscores or hyphens, got: {v!r}"
+            )
+        return v
+
+    @field_validator("image_tag")
+    @classmethod
+    def validate_image_tag(cls, v: str) -> str:
+        """Validate the Docker image tag syntax and length."""
+        if _IMAGE_TAG_RE.fullmatch(v) is None:
+            raise ValueError(
+                "image_tag must be 1-128 ASCII alphanumeric, underscore, period, or hyphen "
+                "characters and must start with alphanumeric or underscore"
+            )
+        return v
+
+    @field_validator("cluster_endpoint")
+    @classmethod
+    def validate_cluster_endpoint(cls, v: str | None) -> str | None:
+        """Validate the optional GKE DNS endpoint as a bare hostname."""
+        if v is None:
+            return v
+        labels = v.split(".")
+        if (
+            len(v) > 253
+            or len(labels) < 2
+            or any(_DNS_LABEL_RE.fullmatch(label) is None for label in labels)
+        ):
+            raise ValueError(
+                "cluster_endpoint must be a bare DNS hostname without a scheme, port, path, or trailing dot"
             )
         return v
 
@@ -239,6 +270,11 @@ class DeploymentConfig(BaseModel):
         if self.cloud == "aws" and self.ecr_repo:
             return f"{self.ecr_repo}/{self.connector_name}"
         return self.connector_name
+
+    @property
+    def image_reference(self) -> str:
+        """Full container image URI including the configured tag."""
+        return f"{self.image_name}:{self.image_tag}"
 
     @property
     def secret_prefix(self) -> str:

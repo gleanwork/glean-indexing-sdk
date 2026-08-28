@@ -11,12 +11,23 @@ terraform/
 .env.*
 .glean_secret_keys
 
-# Python cache
+# Python environments, caches, coverage, and build output
+.venv/
+venv/
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
 
 # Tests and local tools
 tests/

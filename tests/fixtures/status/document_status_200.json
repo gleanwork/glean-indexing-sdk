@@ -1,0 +1,32 @@
+{
+  "documentStatuses": [
+    {
+      "docId": "document-a",
+      "objectType": "smokeDocument",
+      "debugInfo": {
+        "status": {
+          "uploadStatus": "UPLOADED",
+          "lastUploadedAt": "2026-08-28T16:30:50.956293Z",
+          "indexingStatus": "INDEXED",
+          "lastIndexedAt": "2026-08-28T16:30:51.333Z",
+          "permissionIdentityStatus": "UPLOADED"
+        },
+        "uploadedPermissions": {"allowAnonymousAccess": true}
+      }
+    },
+    {
+      "docId": "document-b",
+      "objectType": "smokeDocument",
+      "debugInfo": {
+        "status": {
+          "uploadStatus": "UPLOADED",
+          "lastUploadedAt": "2026-08-28T16:30:50.956244Z",
+          "indexingStatus": "INDEXED",
+          "lastIndexedAt": "2026-08-28T16:30:51.364Z",
+          "permissionIdentityStatus": "UPLOADED"
+        },
+        "uploadedPermissions": {"allowAnonymousAccess": true}
+      }
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+connector_name: gleanfplleague
+connector_module: connector
+connector_class: FPLConnector
+indexing_mode: full

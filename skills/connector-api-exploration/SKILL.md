@@ -75,6 +75,7 @@ When the user provides credentials:
 - Test authentication first with the smallest safe endpoint.
 - Prefer small page sizes and narrow filters.
 - Probe list and detail endpoints for each in-scope entity when available.
+- For each list endpoint, probe with all documented filter and scope parameters (such as type filters, date ranges, and user-vs-organisation scope) before concluding that per-entity iteration is required. Prefer a small number of broad-scope or typed passes over per-entity loops; recommend per-entity iteration only when probing confirms that no broader option covers the required data.
 - Capture complete response shape, including nested fields that may affect mapping.
 - Capture pagination tokens, cursors, link headers, and rate-limit headers.
 - Never log raw bearer tokens, API keys, cookies, or secrets. Use `<REDACTED>`.

@@ -11,6 +11,7 @@
   "homepage": "https://developers.glean.com/libraries/indexing-sdk",
   "repository": "https://github.com/gleanwork/glean-indexing-sdk",
   "license": "MIT",
+  "skills": "./skills/",
   "keywords": [
     "glean",
     "indexing-sdk",
@@ -22,6 +23,5 @@
     "connectors",
     "sdk",
     "skills"
-  ],
-  "skills": "./skills/"
+  ]
 }

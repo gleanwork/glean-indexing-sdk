@@ -7,6 +7,7 @@
     "build/cursor/glean-connector-builder/skills/connector-api-exploration/SKILL.md",
     "build/cursor/glean-connector-builder/skills/connector-auth/SKILL.md",
     "build/cursor/glean-connector-builder/skills/connector-builder/SKILL.md",
+    "build/cursor/glean-connector-builder/skills/connector-code-formatting/SKILL.md",
     "build/cursor/glean-connector-builder/skills/connector-deployment/SKILL.md",
     "build/cursor/glean-connector-builder/skills/connector-observability/SKILL.md",
     "build/cursor/glean-connector-builder/skills/connector-pull/SKILL.md",

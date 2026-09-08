@@ -14,7 +14,7 @@ Start from a connector-level `handler.py` and organize the implementation by obj
 ```text
 connector-folder/
 ├── handler.py
-├── model/                          # Source DTOs only, when typed models are useful
+├── models/                         # Request, response, and source/domain models
 ├── service/
 │   ├── documents_service.py
 │   └── users_service.py
@@ -77,9 +77,9 @@ Create one parser per object type. A parser converts a source model into the SDK
 
 If a parser needs reusable formatting logic, extract a narrow helper with a domain-specific name. Do not create a catch-all utility module.
 
-### `model/` (optional)
+### `models/`
 
-Use source models for API response records when they clarify boundaries or improve type safety. Keep these models source-oriented. SDK output types belong at the parser/connector boundary, not in repository models.
+Make `models/` a required contract boundary for the connector. Define the source API request and response shapes, pagination/filter request types, source/domain object models, and other typed data contracts here. Keep models independent of services, repositories, parsers, and indexing side effects. SDK output types belong at the parser/connector boundary; models describe the data those layers exchange.
 
 ## Implementation order
 
@@ -88,7 +88,7 @@ Follow this order after the connector plan is confirmed:
 1. List the indexed object types and their relationships from the confirmed plan.
 2. Create the package skeleton and `handler.py` entry point.
 3. Add one service, repository, and parser per object type.
-4. Add source models only where they improve clarity or typing.
+4. Add the request, response, and source/domain models required by each object type under `models/`.
 5. Implement source retrieval inside repositories, object-type orchestration inside services, and source-to-SDK conversion inside parsers.
 6. Wire the services and the required SDK connector/factory in the handler.
 7. Use the connector builder's pull, push, auth, observability, deployment, and testing skills for their respective behavior; do not duplicate their instructions here.
@@ -100,7 +100,7 @@ handler → service → repository → source clients
        ↘ service → parser → SDK output types
 ```
 
-A service can depend on its parser and repository. A parser must not depend on a service or repository, and a repository must not depend on a parser. Avoid circular imports by passing dependencies into constructors and keeping shared types in `model/` or a narrowly scoped types module.
+A service can depend on its parser, repository, and relevant models. A parser must not depend on a service or repository, and a repository must not depend on a parser. Models must remain lower-level contracts and must not import services, repositories, parsers, or indexing handlers. Avoid circular imports by passing dependencies into constructors and keeping shared types in `models/`.
 
 ## Scope boundaries
 

@@ -75,7 +75,11 @@ When the user provides credentials:
 - Test authentication first with the smallest safe endpoint.
 - Prefer small page sizes and narrow filters.
 - Probe list and detail endpoints for each in-scope entity when available.
-- For each list endpoint, probe with all documented filter and scope parameters (such as type filters, date ranges, and user-vs-organisation scope) before concluding that per-entity iteration is required. Prefer a small number of broad-scope or typed passes over per-entity loops; recommend per-entity iteration only when probing confirms that no broader option covers the required data.
+- For each list endpoint, probe each relevant documented filter or scope parameter independently first.
+- Keep probes bounded with a small page size, narrow date range, and bounded identifiers where available.
+- Test only a small number of documented parameter combinations when needed to understand interactions; do not run an exhaustive parameter matrix.
+- Use a broad-scope or typed pass only when the request and expected response remain safely bounded. The goal is to discover whether a broader endpoint exists, not to perform a full crawl.
+- Recommend per-entity iteration only when these bounded probes confirm that no broader option covers the required data.
 - Capture complete response shape, including nested fields that may affect mapping.
 - Capture pagination tokens, cursors, link headers, and rate-limit headers.
 - Never log raw bearer tokens, API keys, cookies, or secrets. Use `<REDACTED>`.

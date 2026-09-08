@@ -1,0 +1,77 @@
+name: Sync generated agent plugins
+
+# Keep authored plugin changes independent from generated marketplace output.
+# The source PR merges first; this workflow then opens and auto-merges a
+# machine-owned PR containing the pluginpack output for each target.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Sync ${{ matrix.target }} plugin
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [claude, cursor, codex]
+    concurrency:
+      group: pluginpack-sync-${{ matrix.target }}
+      cancel-in-progress: true
+    steps:
+      # Use an App token so the generated PR starts its normal CI workflow.
+      - name: Mint pluginpack App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.PLUGINPACK_CLIENT_ID }}
+          private-key: ${{ secrets.PLUGINPACK_APP_KEY }}
+          owner: gleanwork
+          repositories: glean-indexing-sdk
+
+      - name: Check out plugin source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install plugin build dependencies
+        run: npm ci
+
+      - name: Resolve pinned pluginpack version
+        id: pluginpack
+        run: echo "version=$(node -p \"require('./node_modules/@gleanwork/pluginpack/package.json').version\")" >> "$GITHUB_OUTPUT"
+
+      - name: Sync generated ${{ matrix.target }} plugin
+        id: sync-plugin
+        uses: gleanwork/pluginpack-action@52a7c266ffa90d35289f2a34e83db028c7945ccc
+        with:
+          target: ${{ matrix.target }}
+          output-repo: gleanwork/glean-indexing-sdk
+          token: ${{ steps.app-token.outputs.token }}
+          pluginpack-version: ${{ steps.pluginpack.outputs.version }}
+          mode: sync
+
+      - name: Enable auto-merge
+        if: steps.sync-plugin.outputs.pr-number != ''
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          pull-request-number: ${{ steps.sync-plugin.outputs.pr-number }}
+          merge-method: squash

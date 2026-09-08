@@ -9,11 +9,10 @@ import pkg from "./package.json" with { type: "json" };
 // The emitted plugin content under build/ is committed rather than ignored:
 // each manifest's `source` points at it, so it has to exist in a fresh clone —
 // that clone is exactly what `claude plugin marketplace add
-// gleanwork/glean-indexing-sdk` gets. Same arrangement as
-// gleanwork/glean-cookbook and gleanwork/claude-plugins, both of which also
-// commit generated output. Editing a skill therefore changes its source under
-// skills/ and the three emitted copies; regenerate with `npm run build:plugins`
-// rather than editing anything under build/ directly. CI fails on drift.
+// gleanwork/glean-indexing-sdk` gets. The source under skills/ is authored by
+// hand; sync-plugin.yml uses pluginpack-action to regenerate each target in a
+// bot-owned PR after the source change reaches main. Do not edit build/ or the
+// marketplace manifests directly.
 //
 // Claude, Cursor, and Codex each write a different marketplace path, so those
 // don't collide at the shared root — but claude and codex both default to

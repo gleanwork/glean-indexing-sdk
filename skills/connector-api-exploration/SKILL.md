@@ -78,7 +78,7 @@ When the user provides credentials:
 - For each list endpoint, probe each relevant documented filter or scope parameter independently first.
 - Keep probes bounded with a small page size, narrow date range, and bounded identifiers where available.
 - Test only a small number of documented parameter combinations when needed to understand interactions; do not run an exhaustive parameter matrix.
-- Use a broad-scope or typed pass only when the request and expected response remain safely bounded. The goal is to discover whether a broader endpoint exists, not to perform a full crawl.
+- Use broad-scope or typed passes only for bounded samples; never use probes for unrestricted retrieval.
 - Recommend per-entity iteration only when these bounded probes confirm that no broader option covers the required data.
 - Capture complete response shape, including nested fields that may affect mapping.
 - Capture pagination tokens, cursors, link headers, and rate-limit headers.

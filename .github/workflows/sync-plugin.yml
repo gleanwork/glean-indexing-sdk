@@ -1,4 +1,4 @@
-name: Sync generated agent plugins
+name: Sync plugin outputs
 
 # Keep authored plugin changes independent from generated marketplace output.
 # The source PR merges first; this workflow then opens and auto-merges a

@@ -159,9 +159,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: npm run check:plugin-version-policy -- "$BASE_SHA"
 
-      # Generated marketplace output is synced by sync-plugin.yml after a
-      # successful main-branch run. Feature PRs validate from authored skills
-      # without requiring generated files in the same change.
       - name: Build plugin artifacts
         run: npm run build:plugins
 

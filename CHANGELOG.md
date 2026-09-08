@@ -1,3 +1,9 @@
+## v1.2.0 (2026-09-07)
+
+### Feat
+
+- identify Indexing SDK requests (#206)
+
 ## v1.1.0 (2026-08-28)
 
 ### Feat

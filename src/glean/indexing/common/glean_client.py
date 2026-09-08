@@ -23,5 +23,12 @@ def api_client() -> Glean:
         raise MissingEnvironmentVariableError(missing)
 
     if server_url:
-        return Glean(api_token=api_token, server_url=server_url, timeout_ms=DEFAULT_TIMEOUT_MS)
-    return Glean(api_token=api_token, instance=instance, timeout_ms=DEFAULT_TIMEOUT_MS)
+        client = Glean(api_token=api_token, server_url=server_url, timeout_ms=DEFAULT_TIMEOUT_MS)
+    else:
+        client = Glean(api_token=api_token, instance=instance, timeout_ms=DEFAULT_TIMEOUT_MS)
+
+    # Import lazily because this module is imported while glean.indexing is initialized.
+    from glean.indexing import __version__
+
+    client.sdk_configuration.user_agent = f"glean-indexing-sdk/{__version__}"
+    return client

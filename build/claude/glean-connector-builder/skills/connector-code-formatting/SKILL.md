@@ -102,13 +102,12 @@ handler → service → repository → source clients
 
 A service can depend on its parser and repository. A parser must not depend on a service or repository, and a repository must not depend on a parser. Avoid circular imports by passing dependencies into constructors and keeping shared types in `model/` or a narrowly scoped types module.
 
-## Deliberate omissions
+## Scope boundaries
 
-This is not a Conduit porting guide. Do not copy Conduit-only scaffolding into an SDK connector unless the confirmed connector requirements explicitly need it:
+Keep this skill focused on connector structure. Do not introduce scaffolding that is not required by the confirmed SDK connector plan:
 
 - No repository-wide `constants.py` for dynamic/default configuration that the reusable SDK or connector configuration already provides.
-- No Conduit `v1/` namespace, `setup.py`, `run.sh`, `custom_connector.md`, or JSON crawl-config tree merely for familiarity.
-- No Conduit-specific crawler, API-library, Glean client, metrics, or parent-handler abstractions when the SDK builder already supplies the equivalent.
+- No versioned namespaces, setup scripts, runtime configuration trees, or duplicate client/metrics abstractions merely for familiarity.
 - No speculative support for object types, incremental crawling, or configuration options outside the confirmed plan.
 
 Prefer the smallest structure that preserves the boundaries above. The code-writing skill decides which SDK classes and public library APIs are correct; this skill decides where that code lives and which layer owns it.
@@ -122,6 +121,6 @@ Before considering the structure complete, verify:
 - Repositories return source records and own crawling/cache concerns.
 - Parsers perform source-to-SDK conversion without network or indexing side effects.
 - Services coordinate one object type without becoming a second handler.
-- SDK-required connector classes/factories remain intact and are not replaced by Conduit abstractions.
-- No unnecessary Conduit configuration/constants/runtime scaffolding was introduced.
+- SDK-required connector classes/factories remain intact; this skill only controls code placement and responsibility boundaries.
+- No unnecessary configuration/constants/runtime scaffolding was introduced.
 - Imports flow from handler toward lower layers without cycles.

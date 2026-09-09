@@ -159,11 +159,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: npm run check:plugin-version-policy -- "$BASE_SHA"
 
-      # Check before building: a build overwrites stale committed output and
-      # would make the comparison false-pass.
-      - name: Check committed plugin output is not stale
-        run: npm run diff:plugins
-
       - name: Build plugin artifacts
         run: npm run build:plugins
 

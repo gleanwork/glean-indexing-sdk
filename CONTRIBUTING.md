@@ -66,7 +66,7 @@ mise run release
 
 ## Agent plugin versioning
 
-The bundled `glean-connector-builder` agent plugin (`skills/`, packaged with [pluginpack](https://github.com/gleanwork/pluginpack)) is released in lockstep with the SDK. Feature PRs must rebuild committed plugin artifacts but must not change their version. Existing installs intentionally receive accumulated skill changes only when a new SDK version is released.
+The bundled `glean-connector-builder` agent plugin (`skills/`, packaged with [pluginpack](https://github.com/gleanwork/pluginpack)) is released in lockstep with the SDK. Feature PRs should change authored files under `skills/` only; they do not need to include generated marketplace output. After a source change reaches `main`, `.github/workflows/sync-plugin.yml` uses `pluginpack-action` to open and auto-merge a bot-owned PR for each generated target. Do not edit generated files under `build/` or the root marketplace manifests directly.
 
 Always use the shared release task:
 

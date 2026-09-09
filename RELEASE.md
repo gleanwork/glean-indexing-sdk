@@ -88,6 +88,6 @@ Check:
 
 ## Agent plugin releases
 
-The bundled agent plugin is part of the SDK release, not an independent product release. Feature PRs rebuild its committed artifacts without changing their version. `mise run release` applies the same semantic version to the plugin package, lockfile, and all generated manifests in the SDK release commit. GA versions are identical; Python prereleases are normalized to npm syntax (`1.0.0rc1` → `1.0.0-rc.1`).
+The bundled agent plugin is part of the SDK release, not an independent product release. Feature PRs change authored plugin sources without including generated artifacts; `sync-plugin.yml` regenerates those artifacts in bot-owned PRs after the source merge. `mise run release` applies the same semantic version to the plugin package, lockfile, and all generated manifests in the SDK release commit. GA versions are identical; Python prereleases are normalized to npm syntax (`1.0.0rc1` → `1.0.0-rc.1`).
 
 Release-it performs only the plugin version update and rebuild. Commitizen and the mise task retain ownership of the single release commit, annotated `vX.Y.Z` tag, changelog, GitHub Release, and PyPI publication. The private plugin package is not published to npm. If any post-bump step fails, the task restores the starting commit and removes the incomplete tag.

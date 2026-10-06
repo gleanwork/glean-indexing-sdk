@@ -14,6 +14,7 @@ from glean.api_client.errors import GleanError as GeneratedGleanError
 from glean.api_client.models import (
     CheckDocumentAccessResponse,
     CustomDatasourceConfig,
+    CustomDatasourceConfigConnectorType,
     DatasourceBulkMembershipDefinition,
     DatasourceGroupDefinition,
     DatasourceMembershipDefinition,
@@ -226,6 +227,9 @@ class PushUploader:
             for name in type(config).model_fields
             if name in config.model_fields_set
         }
+        # Custom connectors push through the Indexing API, so connector_type should
+        # always be PUSH_API unless some explicit requirement to not do so.
+        kwargs.setdefault("connector_type", CustomDatasourceConfigConnectorType.PUSH_API)
         with api_client() as client:
             try:
                 self._call_api(

@@ -10,6 +10,7 @@ import pytest
 from glean.api_client.models import (
     ContentDefinition,
     CustomDatasourceConfig,
+    CustomDatasourceConfigConnectorType,
     DatasourceBulkMembershipDefinition,
     DatasourceGroupDefinition,
     DatasourceMembershipDefinition,
@@ -53,6 +54,22 @@ def test_configure_datasource_calls_generated_client():
     assert call_args["display_name"] == "Test Datasource"
     assert call_args["url_regex"] == r"https://example\.com/.*"
     assert call_args["trust_url_regex_for_view_activity"] is True
+    assert call_args["connector_type"] == CustomDatasourceConfigConnectorType.PUSH_API
+
+
+def test_configure_datasource_keeps_an_explicit_connector_type():
+    uploader = PushUploader(datasource="wiki")
+    config = CustomDatasourceConfig(
+        name="wiki",
+        display_name="Company Wiki",
+        connector_type=CustomDatasourceConfigConnectorType.FEDERATED_SEARCH,
+    )
+
+    with mock_glean_client() as client:
+        uploader.configure_datasource(config)
+
+    call_args = client.indexing.datasources.add.call_args[1]
+    assert call_args["connector_type"] == CustomDatasourceConfigConnectorType.FEDERATED_SEARCH
 
 
 @pytest.mark.parametrize("name", ["company_wiki", "company-wiki", "company wiki", "café"])
@@ -77,6 +94,7 @@ def test_configure_datasource_forwards_request_options():
     client.indexing.datasources.add.assert_called_once_with(
         name="wiki",
         display_name="Company Wiki",
+        connector_type=CustomDatasourceConfigConnectorType.PUSH_API,
         timeout_ms=120_000,
     )
 

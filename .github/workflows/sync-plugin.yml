@@ -58,7 +58,7 @@ jobs:
 
       - name: Resolve pinned pluginpack version
         id: pluginpack
-        run: echo "version=$(node -p \"require('./node_modules/@gleanwork/pluginpack/package.json').version\")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('./node_modules/@gleanwork/pluginpack/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Sync generated ${{ matrix.target }} plugin
         id: sync-plugin

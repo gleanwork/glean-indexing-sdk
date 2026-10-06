@@ -402,7 +402,8 @@ def test_configure_emits_snake_case_keys_and_only_declared_fields(
     """`model_dump()` would return camelCase keys plus unset defaults.
 
     The rest of this CLI's JSON is snake_case, and an agent reading the payload
-    should see what the connector declared rather than the model's defaults.
+    should see what would be registered: the fields the connector declared plus
+    the SDK's `PUSH_API` connector type, rather than the model's defaults.
     """
     result = CliRunner().invoke(
         datasource, ["configure", "--project", str(project), "--show", "--output", "json"]
@@ -414,5 +415,24 @@ def test_configure_emits_snake_case_keys_and_only_declared_fields(
         "display_name",
         "datasource_category",
         "object_definitions",
+        "connector_type",
     }
     assert configuration["object_definitions"] == [{"name": "Article"}]
+    assert configuration["connector_type"] == "PUSH_API"
+
+
+@patch("glean.indexing.push.PushUploader")
+def test_configure_show_keeps_an_explicit_connector_type(uploader: Mock, project, credentials):
+    connector_path = project / "connector.py"
+    connector_path.write_text(
+        connector_path.read_text().replace(
+            'name="wiki",', 'name="wiki",\n        connector_type="API_CRAWL",', 1
+        )
+    )
+
+    result = CliRunner().invoke(
+        datasource, ["configure", "--project", str(project), "--show", "--output", "json"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["data"]["configuration"]["connector_type"] == "API_CRAWL"

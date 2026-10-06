@@ -86,6 +86,32 @@ def _configuration_values_match(expected: Any, actual: Any) -> bool:
     return expected == actual
 
 
+def datasource_configuration_arguments(config: CustomDatasourceConfig) -> dict[str, Any]:
+    """Return the `datasources.add()` arguments for a datasource configuration.
+
+    Only fields the connector explicitly set are included, plus `connector_type`,
+    which defaults to `PUSH_API` because custom connectors push through the
+    Indexing API. An explicitly set `connector_type` is kept unchanged.
+
+    Attribute access is used instead of `model_dump()` because certain
+    pydantic/api-client version combinations return camelCase aliases even with
+    `by_alias=False`, and `datasources.add()` expects snake_case.
+
+    Args:
+        config: The connector's datasource configuration.
+
+    Returns:
+        Keyword arguments for `datasources.add()`, keyed by snake_case field name.
+    """
+    arguments = {
+        name: getattr(config, name)
+        for name in type(config).model_fields
+        if name in config.model_fields_set
+    }
+    arguments.setdefault("connector_type", CustomDatasourceConfigConnectorType.PUSH_API)
+    return arguments
+
+
 def _configuration_matches(
     expected: CustomDatasourceConfig, actual: CustomDatasourceConfig
 ) -> bool:
@@ -219,17 +245,7 @@ class PushUploader:
     def configure_datasource(self, config: CustomDatasourceConfig) -> None:
         """Configure a datasource using `datasources.add()`."""
         validate_datasource_name_for_configuration(config.name)
-        # Use attribute access instead of model_dump() because certain
-        # pydantic/api-client version combinations return camelCase aliases
-        # even with by_alias=False, and datasources.add() expects snake_case.
-        kwargs = {
-            name: getattr(config, name)
-            for name in type(config).model_fields
-            if name in config.model_fields_set
-        }
-        # Custom connectors push through the Indexing API, so connector_type should
-        # always be PUSH_API unless some explicit requirement to not do so.
-        kwargs.setdefault("connector_type", CustomDatasourceConfigConnectorType.PUSH_API)
+        kwargs = datasource_configuration_arguments(config)
         with api_client() as client:
             try:
                 self._call_api(

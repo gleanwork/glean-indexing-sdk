@@ -1,3 +1,11 @@
+## v1.2.1 (2026-10-06)
+
+### Fix
+
+- **ci**: correct shell quoting when resolving the pinned pluginpack version (#216)
+- **cli**: show defaulted connector_type and clarify skill schedule guidance (#212)
+- **push**: default datasource connector_type to PUSH_API (#210)
+
 ## v1.2.0 (2026-09-07)
 
 ### Feat

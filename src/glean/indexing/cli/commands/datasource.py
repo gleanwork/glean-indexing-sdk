@@ -221,6 +221,7 @@ def datasource_configure(
     """
     from glean.indexing.cli.project import load_connector
     from glean.indexing.push import PushUploader
+    from glean.indexing.push.uploader import datasource_configuration_arguments
 
     cli_ctx = context(ctx, output=output, assume_yes=assume_yes, project_dir=project_dir)
     assert cli_ctx.project_dir is not None  # guaranteed by requires(project=True)
@@ -234,7 +235,12 @@ def datasource_configure(
 
     data: dict[str, Any] = {
         "datasource": config.name,
-        "configuration": _configuration_dict(config),
+        # Build from the same arguments `configure_datasource` sends, so `--show`
+        # reports exactly what would be registered, including SDK defaults.
+        "configuration": {
+            name: _configuration_dict(value)
+            for name, value in datasource_configuration_arguments(config).items()
+        },
         "registered": False,
     }
     if show:
@@ -284,10 +290,11 @@ def _configuration_dict(value: Any) -> Any:
 
     `model_dump()` is not used here: on some pydantic and api-client version
     pairs it returns camelCase keys even with `by_alias=False`, and it fills in
-    defaults for fields the connector never set. Walking `model_fields_set`
-    keeps the keys snake_case like the rest of this CLI's output, and keeps the
-    payload to what the connector actually declared. `configure_datasource`
-    builds its request the same way, for the same reason.
+    model defaults for fields the connector never set. Walking `model_fields_set`
+    keeps the keys snake_case like the rest of this CLI's output, and keeps nested
+    models to what the connector actually declared. The top-level fields come
+    from `datasource_configuration_arguments`, the same builder
+    `configure_datasource` uses for its request.
     """
     fields = getattr(type(value), "model_fields", None)
     if fields is not None and hasattr(value, "model_fields_set"):

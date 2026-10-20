@@ -26,7 +26,7 @@ from glean.indexing.cli.main import context, global_options
 from glean.indexing.cli.output import OutputMode, emit
 from glean.indexing.cli.preconditions import project_option, requires
 
-DOCS = "https://developers.glean.com/libraries/indexing-sdk/running-connectors"
+DOCS = "https://developers.glean.com/libraries/indexing-sdk/cli"
 
 LOG_LEVELS = ("debug", "info", "warning", "error")
 

@@ -114,7 +114,7 @@ class LiveEndToEndNotConfirmedError(GleanConfigurationError):
         target: The resolved Glean server URL/instance this run would upload to.
     """
 
-    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing"
+    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing/end-to-end"
 
     def __init__(self, target: str) -> None:
         self.target = target
@@ -135,7 +135,7 @@ class LiveEndToEndNotConfirmedError(GleanConfigurationError):
 class LiveEndToEndTargetChangedError(GleanConfigurationError):
     """Raised when a live run's target changes after confirmation."""
 
-    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing"
+    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing/end-to-end"
 
     def __init__(self, confirmed_target: str, actual_target: str) -> None:
         self.confirmed_target = confirmed_target
@@ -154,7 +154,7 @@ class LiveEndToEndTargetChangedError(GleanConfigurationError):
 class UnsafeLiveEndToEndRunError(GleanConfigurationError):
     """Raised when a live test lacks explicit destructive-replacement opt-in."""
 
-    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing"
+    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing/end-to-end"
 
     def __init__(self, target: str) -> None:
         self.target = target
@@ -174,7 +174,7 @@ class UnsafeLiveEndToEndRunError(GleanConfigurationError):
 class UnsafeLiveIdentityTestError(GleanConfigurationError):
     """Raised when a live harness run could replace identity data."""
 
-    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing"
+    DOCS_URL = "https://developers.glean.com/libraries/indexing-sdk/testing/end-to-end"
 
     def __init__(self, connector_type: str) -> None:
         self.connector_type = connector_type

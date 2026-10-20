@@ -17,7 +17,7 @@
 {% else %}
 #   AWS Secrets Manager: https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html
 {% endif %}
-#   Glean Indexing API:  https://developers.glean.com/indexing/api
+#   Glean Indexing API:  https://developers.glean.com/api-info/indexing/getting-started/overview
 
 # ============================================================
 # DEPLOYMENT CONTROL (never uploaded to secret manager)
@@ -39,7 +39,7 @@ AWS_REGION={{ config.region }}
 # GLEAN API CREDENTIALS (uploaded to secret manager)
 # ============================================================
 GLEAN_SERVER_URL=https://<your-instance>-be.glean.com  # Your Glean backend URL
-GLEAN_INDEXING_API_TOKEN=your-glean-api-token-here      # https://developers.glean.com/indexing/api#authentication
+GLEAN_INDEXING_API_TOKEN=your-glean-api-token-here      # https://developers.glean.com/api-info/indexing/authentication/overview
 
 # ============================================================
 # CONNECTOR SECRETS (uploaded to secret manager)

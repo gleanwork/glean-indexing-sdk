@@ -27,7 +27,7 @@ from glean.indexing.cli.preconditions import (
     requires,
 )
 
-DOCS = "https://developers.glean.com/libraries/indexing-sdk/testing"
+DOCS = "https://developers.glean.com/libraries/indexing-sdk/testing/overview"
 
 CONFIG_FILE = "testing_config.yaml"
 

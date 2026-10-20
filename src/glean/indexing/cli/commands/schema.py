@@ -16,7 +16,7 @@ from glean.indexing.cli.errors import EXIT_USAGE, CliError
 from glean.indexing.cli.main import context, global_options
 from glean.indexing.cli.output import emit
 
-DOCS = "https://developers.glean.com/libraries/indexing-sdk/models"
+DOCS = "https://developers.glean.com/api-info/indexing/documents/document-model"
 
 #: Short name -> the API model it describes. Named for what they are used for
 #: rather than after the class, since that is what a caller is looking for.

@@ -43,7 +43,7 @@ The agent explores the source's API, confirms a plan with you, generates the con
 ### Requirements
 
 - Python >= 3.10
-- A Glean instance and an [indexing API token](https://developers.glean.com/indexing/tag/Authentication/)
+- A Glean instance and an [indexing API token](https://developers.glean.com/api-info/indexing/authentication/overview)
 
 ### Installation
 
@@ -190,7 +190,7 @@ factory.
 
 ### Employee replacement compatibility
 
-`BasePeopleConnector` and `PushUploader.bulk_index_employees()` preserve the current full-replacement employee workflow in the 1.x SDK. The upstream `/bulkindexemployees` endpoint is deprecated and scheduled for removal after October 15, 2026. Until an equivalent replacement contract is available, the SDK constrains `glean-api-client` to the verified `0.13.x` line so dependency resolution cannot silently remove that generated-client surface. Removing or materially changing this workflow would require a new SDK major version.
+`BasePeopleConnector` and `PushUploader.bulk_index_employees()` preserve the current full-replacement employee workflow in the 1.x SDK. The upstream `/bulkindexemployees` endpoint is deprecated and scheduled for removal on January 15, 2027 ([deprecations](https://developers.glean.com/deprecations)). Until an equivalent replacement contract is available, the SDK constrains `glean-api-client` to the verified `0.13.x` line so dependency resolution cannot silently remove that generated-client surface. Removing or materially changing this workflow would require a new SDK major version.
 
 ## The CLI
 

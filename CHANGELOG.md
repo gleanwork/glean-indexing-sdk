@@ -1,3 +1,9 @@
+## v1.2.2 (2026-10-26)
+
+### Fix
+
+- **deps**: update certifi for GHSA-6q48-6c7w-9gw2 (#219)
+
 ## v1.2.1 (2026-10-06)
 
 ### Fix
